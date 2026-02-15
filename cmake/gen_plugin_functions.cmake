@@ -1,5 +1,31 @@
-# CMake script to auto-generate Plugin class function declarations and bindings
-# Usage: cmake -Dapi_header=<path> -Doutput_header=<path> -Doutput_move_semantics=<path> -Doutput_impl=<path> -P gen_plugin_functions.cmake
+#
+# gen_plugin_functions.cmake
+#
+# Generates plugin system boilerplate code by parsing the C API header file and extracting function declarations.
+# This script automates the creation of:
+#
+# 1. plugin_functions.hh - Macros for:
+#    - Function pointer declarations for each API function
+#    - Function registration logic that loads functions from plugin DLLs
+#
+# 2. plugin_move_semantics.hh - Macros for:
+#    - Move constructor initialization list
+#    - Move constructor nullification
+#    - Move assignment operator copy operations
+#    - Move assignment operator nullification
+#
+# 3. plugin_function_registration.hh - Helper function to register all plugin functions
+#
+# The script extracts VERTEX_EXPORT/VERTEX_API function declarations from the API header,
+# distinguishes between required (vertex_init, vertex_exit) and optional functions,
+# and generates type-safe C++ wrappers for dynamic loading.
+#
+# Required variables:
+# - api_header: Path to the C API header file (sdk/api.h)
+# - output_header: Path for plugin_functions.hh output
+# - output_move_semantics: Path for plugin_move_semantics.hh output
+# - output_impl: Path for plugin_function_registration.hh output
+#
 
 if(NOT api_header)
     message(FATAL_ERROR "api_header parameter is required")

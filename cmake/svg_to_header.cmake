@@ -1,4 +1,21 @@
-# Convert SVG files into C++ header containing the svg data as a string.
+#
+# svg_to_header.cmake
+#
+# Converts a single SVG file into a C++ header file containing the SVG content as a string literal.
+# The SVG content is embedded as a const char array within the Vertex::Gui namespace.
+#
+# The script:
+# - Reads the SVG file content
+# - Escapes special characters (quotes, backslashes, newlines) for C++ string literals
+# - Generates a header file with the SVG data as a compile-time constant
+#
+# This allows SVG icons to be embedded directly in the executable without runtime file I/O.
+#
+# Command line arguments (passed via CMAKE_ARGV):
+# - CMAKE_ARGV3: Path to input SVG file
+# - CMAKE_ARGV4: Path to output header file
+# - CMAKE_ARGV5: Variable name for the SVG content array
+#
 
 set(SVG_FILE ${CMAKE_ARGV3})
 set(OUTPUT_HEADER ${CMAKE_ARGV4})

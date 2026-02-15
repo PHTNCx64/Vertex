@@ -1,5 +1,17 @@
-# This script generates the Icons.hh wrapper header for all SVG icons.
-# It is called from CMakeLists.txt as a custom command.
+#
+# gen_icon_wrapper.cmake
+#
+# Generates Icons.hh header file that serves as a central include point for all individual icon headers.
+# This script scans the resources/lightmode and resources/darkmode directories for SVG files
+# and generates #include directives for each corresponding icon header file.
+#
+# This allows the main codebase to include a single header to access all icons instead of
+# manually including each icon header separately.
+#
+# Required variables:
+# - out: Path to the output wrapper header file
+# - src_dir: Path to the source directory containing resources/
+#
 
 # Get output file from command line
 if(NOT DEFINED out)

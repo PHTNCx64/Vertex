@@ -1,5 +1,17 @@
-# Dieses Skript generiert IconMap.hh mit dynamischen Icon-Mappings für beide Themes.
-# Es wird von CMakeLists.txt als custom command aufgerufen.
+#
+# gen_icon_map.cmake
+#
+# Generates IconMap.hh header file containing:
+# - Extern declarations for all SVG icon variables (both lightmode and darkmode)
+# - Static unordered_maps (LightIconMap and DarkIconMap) that map icon names to their SVG content
+#
+# This script scans the resources/lightmode and resources/darkmode directories for SVG files
+# and creates C++ data structures for runtime icon lookup by name.
+#
+# Required variables:
+# - out: Path to the output header file
+# - src_dir: Path to the source directory containing resources/
+#
 
 if(NOT DEFINED out)
     message(FATAL_ERROR "gen_icon_map.cmake: 'out' variable not set!")
