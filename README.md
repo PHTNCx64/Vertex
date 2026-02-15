@@ -52,6 +52,7 @@ This can ultimately slow down development and make it more complex, but I believ
 - Support for Linux specifically
 - Scripting support
 - Extend and stabilize the API
+- Code base consistency and robustness improvements
 
 ## Building Vertex
 
