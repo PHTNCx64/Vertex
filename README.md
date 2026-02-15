@@ -1,5 +1,11 @@
 # Vertex
 
+### NOTE:
+
+1. **There are some outdated informations in the docs that were removed throughout the development.**
+2. **The code base is in some parts inconsistent, specifically there is some discrepancy between Vertex and Vertex User Mode Runtime**
+3. **Not everything in the API SDK is in use in the runtime and certain things are subject to change or removed**
+
 <img width="786" height="855" alt="grafik" src="https://github.com/user-attachments/assets/7575e5cb-6b73-4e7c-8d56-c7dc86efd102" /> <img width="2554" height="1402" alt="grafik" src="https://github.com/user-attachments/assets/2869e6e4-06a5-4095-8ac1-897f1fb614ab" />
 
 
