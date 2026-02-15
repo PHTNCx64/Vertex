@@ -142,7 +142,7 @@ namespace debugger
 
         bool set_trap_flag_native(const HANDLE threadHandle, const bool enable)
         {
-            if (SuspendThread(threadHandle) == static_cast<DWORD>(-1))
+            if (suspend_thread(threadHandle) == static_cast<DWORD>(-1))
             {
                 return false;
             }
@@ -164,13 +164,13 @@ namespace debugger
                 result = SetThreadContext(threadHandle, &context) != FALSE;
             }
 
-            ResumeThread(threadHandle);
+            resume_thread(threadHandle);
             return result;
         }
 
         bool set_trap_flag_wow64(const HANDLE threadHandle, const bool enable)
         {
-            if (Wow64SuspendThread(threadHandle) == static_cast<DWORD>(-1))
+            if (suspend_thread(threadHandle) == static_cast<DWORD>(-1))
             {
                 return false;
             }
@@ -192,7 +192,7 @@ namespace debugger
                 result = Wow64SetThreadContext(threadHandle, &context) != FALSE;
             }
 
-            ResumeThread(threadHandle);
+            resume_thread(threadHandle);
             return result;
         }
     }
@@ -536,7 +536,7 @@ namespace debugger
 
         if (isWow64)
         {
-            if (Wow64SuspendThread(threadHandle) == static_cast<DWORD>(-1))
+            if (suspend_thread(threadHandle) == static_cast<DWORD>(-1))
             {
                 return STATUS_ERROR_THREAD_NOT_FOUND;
             }
@@ -560,7 +560,7 @@ namespace debugger
         }
         else
         {
-            if (SuspendThread(threadHandle) == static_cast<DWORD>(-1))
+            if (suspend_thread(threadHandle) == static_cast<DWORD>(-1))
             {
                 return STATUS_ERROR_THREAD_NOT_FOUND;
             }
@@ -583,7 +583,7 @@ namespace debugger
             }
         }
 
-        ResumeThread(threadHandle);
+        resume_thread(threadHandle);
         return result;
     }
 
@@ -612,7 +612,7 @@ namespace debugger
 
         if (isWow64)
         {
-            if (Wow64SuspendThread(threadHandle) == static_cast<DWORD>(-1))
+            if (suspend_thread(threadHandle) == static_cast<DWORD>(-1))
             {
                 return STATUS_ERROR_THREAD_NOT_FOUND;
             }
@@ -636,7 +636,7 @@ namespace debugger
         }
         else
         {
-            if (SuspendThread(threadHandle) == static_cast<DWORD>(-1))
+            if (suspend_thread(threadHandle) == static_cast<DWORD>(-1))
             {
                 return STATUS_ERROR_THREAD_NOT_FOUND;
             }
@@ -659,7 +659,7 @@ namespace debugger
             }
         }
 
-        ResumeThread(threadHandle);
+        resume_thread(threadHandle);
         return result;
     }
 

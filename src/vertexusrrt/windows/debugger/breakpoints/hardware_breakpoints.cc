@@ -280,7 +280,6 @@ namespace debugger
         }
 
         const bool isWow64 = get_process_architecture() == ProcessArchitecture::X86;
-        DWORD(__stdcall *suspend_thread)(HANDLE) = isWow64 ? &Wow64SuspendThread : &SuspendThread;
 
         if (suspend_thread(threadHandle) == static_cast<DWORD>(-1))
         {
@@ -300,7 +299,7 @@ namespace debugger
 
             if (!success)
             {
-                ResumeThread(threadHandle);
+                resume_thread(threadHandle);
                 return STATUS_ERROR_BREAKPOINT_SET_FAILED;
             }
         }
@@ -321,12 +320,12 @@ namespace debugger
 
             if (!success)
             {
-                ResumeThread(threadHandle);
+                resume_thread(threadHandle);
                 return STATUS_ERROR_BREAKPOINT_SET_FAILED;
             }
         }
 
-        ResumeThread(threadHandle);
+        resume_thread(threadHandle);
         return STATUS_OK;
     }
 
@@ -371,7 +370,6 @@ namespace debugger
         const bool isWow64 = get_process_architecture() == ProcessArchitecture::X86;
         const auto bpType = convert_watchpoint_type_to_breakpoint(wp.type);
         const auto wpSize = static_cast<std::uint8_t>(wp.size);
-        DWORD(__stdcall *suspend_thread)(HANDLE) = isWow64 ? &Wow64SuspendThread : &SuspendThread;
 
         auto& cache = get_thread_handle_cache();
         std::scoped_lock cacheLock{cache.mutex};
@@ -394,7 +392,7 @@ namespace debugger
                 OutputDebugStringA(logMsg.c_str());
             }
 
-            ResumeThread(threadHandle);
+            resume_thread(threadHandle);
         }
 
         return STATUS_OK;
@@ -415,7 +413,6 @@ namespace debugger
         wp.temporarilyDisabled = true;
 
         const bool isWow64 = get_process_architecture() == ProcessArchitecture::X86;
-        DWORD(__stdcall *suspend_thread)(HANDLE) = isWow64 ? &Wow64SuspendThread : &SuspendThread;
 
         auto& cache = get_thread_handle_cache();
         std::scoped_lock cacheLock{cache.mutex};
@@ -450,7 +447,7 @@ namespace debugger
                 }
             }
 
-            ResumeThread(threadHandle);
+            resume_thread(threadHandle);
         }
 
         return STATUS_OK;
@@ -476,7 +473,6 @@ namespace debugger
         }
 
         const bool isWow64 = get_process_architecture() == ProcessArchitecture::X86;
-        DWORD(__stdcall *suspend_thread)(HANDLE) = isWow64 ? &Wow64SuspendThread : &SuspendThread;
 
         auto& cache = get_thread_handle_cache();
         std::scoped_lock cacheLock{cache.mutex};
@@ -511,7 +507,7 @@ namespace debugger
                 }
             }
 
-            ResumeThread(threadHandle);
+            resume_thread(threadHandle);
         }
 
         return STATUS_OK;
@@ -525,7 +521,6 @@ namespace debugger
         }
 
         const bool isWow64 = get_process_architecture() == ProcessArchitecture::X86;
-        DWORD(__stdcall *suspend_thread)(HANDLE) = isWow64 ? &Wow64SuspendThread : &SuspendThread;
 
         auto& cache = get_thread_handle_cache();
         std::scoped_lock cacheLock{cache.mutex};
@@ -590,7 +585,7 @@ namespace debugger
                 }
             }
 
-            ResumeThread(threadHandle);
+            resume_thread(threadHandle);
         }
 
         return STATUS_OK;

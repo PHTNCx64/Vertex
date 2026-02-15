@@ -3,6 +3,7 @@
 // Licensed under LGPLv3.0+
 //
 #include <vertexusrrt/native_handle.hh>
+#include <vertexusrrt/debugger_internal.hh>
 
 #include <sdk/api.h>
 
@@ -55,31 +56,6 @@ namespace
     {
         static ThreadList threadList;
         return &threadList;
-    }
-
-    DWORD suspend_thread(const HANDLE hThread)
-    {
-        if (hThread == GetCurrentThread())
-        {
-            return 0;
-        }
-
-        const ProcessArchitecture arch = get_process_architecture();
-        if (arch == ProcessArchitecture::X86)
-        {
-            return Wow64SuspendThread(hThread);
-        }
-        return SuspendThread(hThread);
-    }
-
-    DWORD resume_thread(const HANDLE hThread)
-    {
-        if (hThread == GetCurrentThread())
-        {
-            return 0;
-        }
-
-        return ResumeThread(hThread);
     }
 
     void set_register_name(char* dest, const std::string_view src) noexcept
@@ -222,6 +198,34 @@ namespace
     }
 } // namespace
 
+namespace debugger
+{
+    DWORD suspend_thread(const HANDLE hThread)
+    {
+        if (hThread == GetCurrentThread())
+        {
+            return 0;
+        }
+
+        const ProcessArchitecture arch = get_process_architecture();
+        if (arch == ProcessArchitecture::X86)
+        {
+            return Wow64SuspendThread(hThread);
+        }
+        return SuspendThread(hThread);
+    }
+
+    DWORD resume_thread(const HANDLE hThread)
+    {
+        if (hThread == GetCurrentThread())
+        {
+            return 0;
+        }
+
+        return ResumeThread(hThread);
+    }
+} // namespace debugger
+
 extern "C"
 {
     VERTEX_EXPORT StatusCode VERTEX_API vertex_debugger_get_threads(ThreadList* threadList)
@@ -291,7 +295,7 @@ extern "C"
             stackPointer = 0;
             state = VERTEX_THREAD_RUNNING;
 
-            const DWORD suspendCount = suspend_thread(hThread);
+            const DWORD suspendCount = debugger::suspend_thread(hThread);
             if (suspendCount != static_cast<DWORD>(-1))
             {
                 if (suspendCount > 0)
@@ -323,7 +327,7 @@ extern "C"
                     }
                 }
 
-                ResumeThread(hThread);
+                debugger::resume_thread(hThread);
             }
 
             CloseHandle(hThread);
@@ -365,7 +369,7 @@ extern "C"
             return StatusCode::STATUS_ERROR_THREAD_INVALID_ID;
         }
 
-        const DWORD result = suspend_thread(hThread);
+        const DWORD result = debugger::suspend_thread(hThread);
         CloseHandle(hThread);
 
         if (result == static_cast<DWORD>(-1))
@@ -386,7 +390,7 @@ extern "C"
             return StatusCode::STATUS_ERROR_THREAD_INVALID_ID;
         }
 
-        const DWORD result = resume_thread(hThread);
+        const DWORD result = debugger::resume_thread(hThread);
         CloseHandle(hThread);
 
         if (result == static_cast<DWORD>(-1))

@@ -147,4 +147,7 @@ namespace debugger
 
     [[nodiscard]] StatusCode enable_watchpoint_on_thread(HANDLE threadHandle, std::uint8_t registerIndex, bool isWow64);
     [[nodiscard]] StatusCode enable_watchpoint_on_thread(DWORD threadId, std::uint8_t registerIndex, bool isWow64);
+
+    [[nodiscard]] DWORD suspend_thread(HANDLE hThread);
+    [[nodiscard]] DWORD resume_thread(HANDLE hThread);
 }
