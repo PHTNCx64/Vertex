@@ -115,7 +115,7 @@ Before building Vertex, ensure you have the following installed:
 
 1. **Clone the repository**
    ```powershell
-   git clone https://github.com/[username]/Vertex.git
+   git clone https://github.com/PHTNCx64/Vertex.git
    cd Vertex
    ```
 
