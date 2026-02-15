@@ -1,5 +1,9 @@
 # Vertex
 
+<img width="786" height="855" alt="grafik" src="https://github.com/user-attachments/assets/7575e5cb-6b73-4e7c-8d56-c7dc86efd102" /> <img width="2554" height="1402" alt="grafik" src="https://github.com/user-attachments/assets/2869e6e4-06a5-4095-8ac1-897f1fb614ab" />
+
+
+
 Vertex is a software that is focused on dynamic reverse engineering.
 
 It is designed to be quite portable and flexible through the Plugin API that comes with it.
