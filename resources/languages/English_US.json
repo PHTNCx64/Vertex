@@ -1,0 +1,542 @@
+{
+  "metadata": {
+    "name": "English (US)",
+    "author": "PHTNC"
+  },
+  "general": {
+    "error": "Error",
+    "criticalError": "Critical Error!",
+    "warning": "Warning",
+    "information": "Information",
+    "question": "Question",
+    "ok": "OK",
+    "cancel": "Cancel",
+    "apply": "Apply",
+    "resetToDefaults": "Reset to Defaults",
+    "close": "Close"
+  },
+  "threads": {
+    "id": "ID",
+    "name": "Name",
+    "status": "Status",
+    "state": "State",
+    "instructionPointer": "Instruction Pointer",
+    "priority": "Priority",
+    "switchToThread": "Switch To Thread",
+    "suspendThread": "Suspend Thread",
+    "resumeThread": "Resume Thread",
+    "terminateThread": "Terminate Thread",
+    "copyThreadId": "Copy Thread ID",
+    "running": "Running",
+    "suspended": "Suspended",
+    "waiting": "Waiting",
+    "terminated": "Terminated",
+    "unknown": "Unknown"
+  },
+  "memoryAttributeWindow": {
+    "title": "Memory Attributes",
+    "protectionGroup": "Protection",
+    "stateGroup": "State",
+    "typeGroup": "Type",
+    "noOptionsAvailable": "No memory attribute options are available. Please ensure a plugin is loaded.",
+    "failedToLoadOptions": "Failed to load memory attribute options.",
+    "invalidAttributeType": "Invalid attribute type"
+  },
+  "plugin": {
+    "noLoadedPlugin": "There is no plugin active. Load a plugin in the settings in order to proceed.",
+    "loadingFailed": "Failed to load plugin."
+  },
+  "processListView": {
+    "ui": {
+      "title": "Process List",
+      "informationText": "Select a process from the process list",
+      "filterOptionsGroup": "Filter Options",
+      "filterLabel": "Filter:",
+      "filterByProcessName": "Filter by Process Name",
+      "filterByProcessId": "Filter by Process ID",
+      "filterByProcessOwner": "Filter by Process Owner",
+      "openProcessButton": "Open Process",
+      "cancelButton": "Cancel"
+    },
+    "columns": {
+      "processName": "Process Name",
+      "processId": "Process ID",
+      "processOwner": "Process Owner"
+    },
+    "accessibility": {
+      "selectProcessInstruction": "Select a process from the list to enable the Open Process button",
+      "filterInstructions": "Use the filter options to search for specific processes",
+      "sortInstructions": "Click on column headers to sort the process list"
+    }
+  },
+  "mainWindow": {
+    "ui": {
+      "scannedColumnAddress": "Address",
+      "scannedColumnCurrentValue": "Current Value",
+      "scannedColumnPreviousValue": "Previous Value",
+      "scannedColumnFirstValue": "First Value",
+      "scannedColumnType": "Type",
+      "savedColumnFreeze": "Freeze",
+      "savedColumnAddress": "Address",
+      "savedColumnType": "Type",
+      "savedColumnValue": "Value",
+      "noProcessSelected": "No Process Selected.",
+      "noProcessOpenedMessage": "There is currently no process opened.",
+      "valuesFound": "%lld Values Found.",
+      "scanOptions": "Scan Options",
+      "value": "Value:",
+      "betweenValue": "Between Value:",
+      "andValue": "and Value:",
+      "hexadecimal": "Hexadecimal",
+      "valueType": "Value Type:",
+      "scanType": "Scan Type:",
+      "endianness": "Endianness:",
+      "alignment": "Alignment:",
+      "alignedScan": "Aligned Scan",
+      "memoryRegionSettings": "Memory Region Scan Settings",
+      "memoryView": "Memory View",
+      "addAddressManually": "Add Address Manually",
+      "newProject": "New Project",
+      "newProjectDescription": "Create a new project",
+      "openProject": "Open Project",
+      "openProjectDescription": "Open an existing project file",
+      "exitApplication": "Exit",
+      "exitApplicationDescription": "Exit the application",
+      "settings": "Settings",
+      "settingsDescription": "Open application settings",
+      "about": "About",
+      "aboutDescription": "Shows information about the application",
+      "file": "File",
+      "tools": "Tools",
+      "help": "Help",
+      "processAndProgress": "Process & Progress",
+      "scannedValues": "Scanned Values",
+      "scanControls": "Scan Controls",
+      "memoryControls": "Memory Controls",
+      "editValues": "Edit Values"
+    },
+    "toolbar": {
+      "processList": "Process List",
+      "processListDescription": "Open the Process List",
+      "killProcess": "Kill Process",
+      "killProcessDescription": "Kills the currently opened process",
+      "closeProcess": "Close Process",
+      "closeProcessDescription": "Closes the currently opened process",
+      "newProcess": "New Process",
+      "newProcessDescription": "Opens up a new specified process by its path",
+      "terminal": "Terminal",
+      "terminalDescription": "Opens up the console terminal",
+      "debugger": "Debugger",
+      "debuggerDescription": "Opens up the debugger window",
+      "settings": "Settings",
+      "settingsDescription": "Opens up the settings window",
+      "analytics": "Analytics",
+      "analyticsDescription": "Opens up the analytics window"
+    },
+    "buttons": {
+      "initialScan": "Initial Scan",
+      "newScan": "New Scan",
+      "nextScan": "Next Scan",
+      "undoScan": "Undo Scan"
+    },
+    "context": {
+      "addToTable": "Add to Table",
+      "copyAddress": "Copy Address",
+      "copyValue": "Copy Value",
+      "copyAll": "Copy All",
+      "freeze": "Freeze",
+      "unfreeze": "Unfreeze",
+      "pointerScan": "Pointer Scan...",
+      "viewInDisassembly": "View address in Disassembly",
+      "findAccess": "Find out what accesses this address",
+      "delete": "Delete"
+    },
+    "dialog": {
+      "editAddress": "Edit Address",
+      "editValue": "Edit Value",
+      "addressLabel": "Address (hexadecimal):",
+      "valueLabel": "Value:"
+    },
+    "errors": {
+      "addressAlreadyAdded": "Address 0x{:X} is already added."
+    },
+    "scanTypes": {
+      "exact": "Exact",
+      "greaterThan": "Greater Than",
+      "lessThan": "Less Than",
+      "inBetweenOf": "In Between Of",
+      "changed": "Changed Value",
+      "unchanged": "Unchanged Value",
+      "increased": "Increased Value",
+      "decreased": "Decreased Value",
+      "unknownInitialValue": "Unknown Initial Value"
+    },
+    "endianness": {
+      "littleEndian": "Little Endian",
+      "bigEndian": "Big Endian",
+      "hostCpu": "Host CPU",
+      "targetCpu": "Target CPU"
+    }
+  },
+  "settingsWindow": {
+    "title": "Settings",
+    "general": "General",
+    "plugins": "Plugins",
+    "language": "Language",
+    "memoryScanner": "Memory Scanner",
+    "closeDlgMsg": "Do you want to save your changes before closing?",
+    "closeDlgCaption": "Settings",
+    "unsavedChangesMsg": "You have unsaved changes. Do you want to save them?",
+    "unsavedChangesCaption": "Unsaved Changes",
+    "discardChangesMsg": "Are you sure you want to discard your changes?",
+    "discardChangesCaption": "Discard Changes",
+    "buttons": {
+      "resetToDefaults": "Reset to Defaults",
+      "apply": "Apply",
+      "cancel": "Cancel",
+      "ok": "OK"
+    },
+    "generalTab": {
+      "application": "Application",
+      "enableAutoSave": "Enable Auto Save",
+      "autoSaveInterval": "Auto Save Interval (minutes):",
+      "rememberWindowPos": "Remember Window Position",
+      "theme": "Theme:",
+      "themes": {
+        "light": "Light",
+        "dark": "Dark",
+        "auto": "System"
+      },
+      "logging": "Logging",
+      "enableLogging": "Enable Logging"
+    },
+    "memoryScannerTab": {
+      "readerThreads": "Reader Threads",
+      "threadBufferSize": "Thread Buffer Size (MB)",
+      "threadBufferSizeDescription": "Initial buffer size per reader thread (1-512 MB). Larger values reduce allocations but use more memory."
+    },
+    "pluginsTab": {
+      "unloadedMsgInfo": "The plugin is currently not loaded in the system. Load it first in order to obtain more details about the plugin.",
+      "loadedMsgInfo": "The plugin provides the following information:",
+      "availablePlugins": "Available Plugins:",
+      "columnName": "Name",
+      "columnStatus": "Status",
+      "loaded": "Loaded",
+      "notLoaded": "Not Loaded",
+      "currentlyActive": "Currently Active",
+      "refreshList": "Refresh List",
+      "pluginInformation": "Plugin Information",
+      "info": {
+        "name": "Name:",
+        "version": "Version:",
+        "author": "Author:",
+        "description": "Description:"
+      },
+      "loadPlugin": "Load Plugin",
+      "setAsActivePlugin": "Set as Active Plugin",
+      "configure": "Configure",
+      "confirmSetActive": "Do you want to set '%s' as the active plugin?",
+      "activePluginSet": "Plugin '%s' has been set as active.",
+      "activePluginSetTitle": "Plugin Activated",
+      "pluginPaths": "Plugin Search Paths",
+      "pathColumn": "Path",
+      "addPath": "Add Path",
+      "removePath": "Remove Path",
+      "selectPluginPath": "Select Plugin Directory",
+      "pathAlreadyExists": "This path is already in the list.",
+      "confirmRemovePath": "Are you sure you want to remove the path:\n%s"
+    },
+    "languageTab": {
+      "interfaceLanguage": "Interface Language",
+      "language": "Language:",
+      "languagePaths": "Language Search Paths",
+      "pathColumn": "Path",
+      "addPath": "Add Path",
+      "removePath": "Remove Path",
+      "selectLanguagePath": "Select Language Directory",
+      "pathAlreadyExists": "This path is already in the list.",
+      "confirmRemovePath": "Are you sure you want to remove the path:\n%s"
+    }
+  },
+  "aboutWindow": {
+    "title": "About Vertex",
+    "version": "Version",
+    "license": "License",
+    "description": "A powerful memory scanner and debugger for Windows applications.",
+    "credits": {
+      "developers": "Developers",
+      "contributors": "Contributors",
+      "testers": "Testers",
+      "specialThanks": "Special Thanks"
+    },
+    "roles": {
+      "leadDeveloper": "Lead Developer",
+      "developer": "Developer",
+      "contributor": "Contributor",
+      "tester": "Tester"
+    },
+    "thanks": {
+      "uiFramework": "UI Framework",
+      "community": "Support and Inspiration"
+    }
+  },
+  "analyticsWindow": {
+    "title": "Log Viewer",
+    "clearButton": "Clear",
+    "saveButton": "Save...",
+    "logLevels": {
+      "info": "INFO",
+      "warn": "WARN",
+      "error": "ERROR"
+    },
+    "saveDialog": {
+      "title": "Save Logs",
+      "defaultFilename": "vertex_logs.txt",
+      "fileTypes": "Text files (*.txt)|*.txt|Log files (*.log)|*.log|All files (*.*)|*.*",
+      "successMessage": "Logs saved successfully.",
+      "failureMessage": "Failed to save logs."
+    }
+  },
+  "debugger": {
+    "ui": {
+      "go": "Go",
+      "address": "Address:",
+      "unknown": "<unknown>",
+      "loading": "Loading..."
+    },
+    "errors": {
+      "disassemblyError": "Disassembly Error",
+      "registerError": "Register Error",
+      "debuggerError": "Debugger Error",
+      "failedExtendDisassemblyUpward": "Failed to extend disassembly upward from 0x{:X}",
+      "failedExtendDisassemblyDownward": "Failed to extend disassembly downward from 0x{:X}",
+      "failedDisassembleAddress": "Failed to disassemble at address 0x{:X}",
+      "failedReadRegisters": "Failed to read registers",
+      "failedReadRegistersPause": "Failed to read registers on pause",
+      "failedLoadModulesDisassemble": "Failed to load modules and disassemble"
+    },
+    "contextMenu": {
+      "toggleBreakpoint": "Toggle Breakpoint\tF9",
+      "runToCursor": "Run to Cursor\tF4",
+      "followJump": "Follow Jump to {:X}",
+      "copyAddress": "Copy Address",
+      "copyLine": "Copy Line"
+    },
+    "disassembly": {
+      "columnAddress": "Address",
+      "columnBytes": "Bytes",
+      "columnMnemonic": "Mnemonic",
+      "columnOperands": "Operands",
+      "columnComment": "Comment"
+    },
+    "registers": {
+      "columnRegister": "Register",
+      "columnValue": "Value",
+      "refresh": "Refresh",
+      "refreshTooltip": "Refresh register values",
+      "enterNewValue": "Enter new value:",
+      "setRegisterValue": "Set Register Value"
+    },
+    "threads": {
+      "columnId": "ID",
+      "columnName": "Name",
+      "columnState": "State",
+      "columnPriority": "Priority",
+      "columnInstructionPointer": "Instruction Pointer",
+      "switchToThread": "Switch To Thread",
+      "suspendThread": "Suspend Thread",
+      "resumeThread": "Resume Thread",
+      "copyThreadId": "Copy Thread ID",
+      "running": "Running",
+      "suspended": "Suspended",
+      "waiting": "Waiting",
+      "terminated": "Terminated",
+      "unknown": "Unknown",
+      "unnamed": "(unnamed)"
+    },
+    "breakpoints": {
+      "columnId": "ID",
+      "columnAddress": "Address",
+      "columnType": "Type",
+      "columnState": "State",
+      "columnHits": "Hits",
+      "typeSoftware": "Software",
+      "typeHardware": "Hardware",
+      "typeMemory": "Memory",
+      "typeConditional": "Conditional",
+      "stateEnabled": "Enabled",
+      "stateDisabled": "Disabled",
+      "statePending": "Pending",
+      "stateError": "Error",
+      "goto": "Go to Address",
+      "goToAddress": "Go to Address",
+      "enable": "Enable",
+      "disable": "Disable",
+      "remove": "Remove",
+      "removeAll": "Remove All"
+    },
+    "watchpoints": {
+      "columnId": "ID",
+      "columnAddress": "Address",
+      "columnSize": "Size",
+      "columnType": "Type",
+      "columnState": "State",
+      "columnHits": "Hits",
+      "typeRead": "Read",
+      "typeWrite": "Write",
+      "typeReadWrite": "Read/Write",
+      "typeExecute": "Execute",
+      "stateEnabled": "Enabled",
+      "stateDisabled": "Disabled",
+      "goto": "Go to Address",
+      "gotoAccessor": "Go to Accessor Address",
+      "inspectAccessor": "Inspect Accessor Address",
+      "enable": "Enable",
+      "disable": "Disable",
+      "remove": "Remove",
+      "removeAll": "Remove All",
+      "addWatchpoint": "Add Watchpoint",
+      "addWatchpointTitle": "Add Memory Watchpoint",
+      "watchpointAddress": "Address:",
+      "watchpointSize": "Size (bytes):",
+      "watchpointType": "Type:"
+    },
+    "stack": {
+      "columnFrame": "#",
+      "columnAddress": "Address",
+      "columnReturnAddress": "Return Address",
+      "columnFunction": "Function",
+      "columnModule": "Module"
+    },
+    "memory": {
+      "columnAddress": "Address",
+      "columnHex": "Hex",
+      "columnAscii": "ASCII"
+    },
+    "console": {
+      "filterDebug": "Debug",
+      "filterInfo": "Info",
+      "filterWarning": "Warning",
+      "filterError": "Error",
+      "clear": "Clear",
+      "enterCommand": "Enter command..."
+    },
+    "watch": {
+      "enterExpression": "Enter expression to watch...",
+      "watchTitle": "Watch",
+      "localsTitle": "Locals",
+      "watches": "Watches",
+      "locals": "Locals",
+      "editValue": "Edit Value...",
+      "copyValue": "Copy Value",
+      "copyExpression": "Copy Expression",
+      "removeWatch": "Remove Watch",
+      "enterNewValue": "Enter new value:",
+      "editWatchValueTitle": "Edit Watch Value"
+    },
+    "importsExports": {
+      "columnFunction": "Function",
+      "columnAddress": "Address",
+      "columnModule": "Module",
+      "columnOrdinal": "Ordinal",
+      "tabImports": "Imports",
+      "tabExports": "Exports",
+      "module": "Module:"
+    },
+    "menu": {
+      "debug": "&Debug",
+      "view": "&View",
+      "attach": "&Attach",
+      "attachTooltip": "Attach debugger",
+      "detach": "&Detach",
+      "detachTooltip": "Detach debugger",
+      "continue": "&Continue",
+      "continueTooltip": "Continue execution",
+      "pause": "&Pause",
+      "pauseTooltip": "Pause execution",
+      "stepInto": "Step &Into",
+      "stepIntoTooltip": "Step into",
+      "stepOver": "Step &Over",
+      "stepOverTooltip": "Step over",
+      "stepOut": "Step O&ut",
+      "stepOutTooltip": "Step out",
+      "toggleBreakpoint": "Toggle &Breakpoint",
+      "toggleBreakpointTooltip": "Toggle breakpoint",
+      "runToCursor": "&Run to Cursor",
+      "runToCursorTooltip": "Run to cursor",
+      "gotoAddress": "&Go to Address",
+      "gotoAddressTooltip": "Go to address",
+      "viewDisassembly": "&Disassembly",
+      "viewDisassemblyTooltip": "Show disassembly pane",
+      "viewBreakpoints": "&Breakpoints",
+      "viewBreakpointsTooltip": "Show breakpoints pane",
+      "viewWatchpoints": "&Watchpoints",
+      "viewWatchpointsTooltip": "Show watchpoints pane",
+      "viewRegisters": "&Registers",
+      "viewRegistersTooltip": "Show registers pane",
+      "viewStack": "&Stack",
+      "viewStackTooltip": "Show stack pane",
+      "viewThreads": "&Threads",
+      "viewThreadsTooltip": "Show threads pane",
+      "viewWatch": "&Watch/Locals",
+      "viewWatchTooltip": "Show watch and locals pane",
+      "viewMemory": "&Memory",
+      "viewMemoryTooltip": "Show memory pane",
+      "viewHexEditor": "&Hex Editor",
+      "viewHexEditorTooltip": "Show hex editor pane",
+      "viewImportsExports": "&Imports/Exports",
+      "viewImportsExportsTooltip": "Show imports/exports pane",
+      "viewConsole": "&Console",
+      "viewConsoleTooltip": "Show console/output pane"
+    },
+    "toolbar": {
+      "attach": "Attach",
+      "attachTooltip": "Attach debugger",
+      "detach": "Detach",
+      "detachTooltip": "Detach debugger",
+      "continue": "Continue",
+      "continueTooltip": "Continue execution (F5)",
+      "pause": "Pause",
+      "pauseTooltip": "Pause execution",
+      "stepInto": "Step Into",
+      "stepIntoTooltip": "Step into (F11)",
+      "stepOver": "Step Over",
+      "stepOverTooltip": "Step over (F10)",
+      "stepOut": "Step Out",
+      "stepOutTooltip": "Step out (Shift+F11)",
+      "breakpoint": "Breakpoint",
+      "breakpointTooltip": "Toggle breakpoint (F9)"
+    },
+    "status": {
+      "detached": "Detached",
+      "attached": "Attached",
+      "running": "Running",
+      "paused": "Paused",
+      "stepping": "Stepping",
+      "breakpoint": "Breakpoint",
+      "exception": "Exception",
+      "ready": "Ready",
+      "thread": "Thread",
+      "readySelectProcess": "Ready - Select a process to debug",
+      "processRunning": "Process running...",
+      "processPausedStep": "Process paused - Use F10/F11 to step"
+    },
+    "pane": {
+      "disassembly": "Disassembly",
+      "registers": "Registers",
+      "callStack": "Call Stack",
+      "breakpoints": "Breakpoints",
+      "watchpoints": "Watchpoints",
+      "importsExports": "Imports/Exports",
+      "memory": "Memory",
+      "hexEditor": "Hex Editor",
+      "threads": "Threads",
+      "watchLocals": "Watch / Locals",
+      "console": "Console"
+    },
+    "dialog": {
+      "enterAddressHex": "Enter address (hex):",
+      "gotoAddressTitle": "Go to Address"
+    }
+  }
+}

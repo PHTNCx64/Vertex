@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#E0E0E0" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+  <!-- Arrow pointing up -->
+  <path d="M12 20 L12 8"/>
+  <path d="M8 12 L12 8 L16 12"/>
+  <!-- Horizontal line at top -->
+  <path d="M6 4 L18 4"/>
+</svg>

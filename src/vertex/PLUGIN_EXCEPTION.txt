@@ -1,0 +1,121 @@
+ADDITIONAL PERMISSION UNDER GNU GPL VERSION 3 SECTION 7
+========================================================
+
+Plugin Linking Exception for Vertex
+
+Copyright (C) 2026 Vertex Project Contributors
+
+This file is an additional permission under section 7 of the GNU General
+Public License, version 3 ("GPLv3").
+
+Exception Intent
+----------------
+
+This exception allows developers to create plugins for Vertex and
+distribute those plugins under licenses of their choosing, provided
+the plugins interact with Vertex solely through the defined public
+API headers located in the include/sdk/ directory.
+
+Grant of Additional Permission
+-------------------------------
+
+As a special exception to the terms and conditions of version 3 of the
+GNU General Public License (GPL), the copyright holders of Vertex grant
+you permission to combine or link Vertex (or a modified version of Vertex)
+with independent plugins, and to distribute the resulting combination,
+provided that:
+
+1. The independent plugin interacts with Vertex exclusively through the
+   public API defined in the header files located in the include/sdk/
+   directory of the Vertex source distribution, specifically:
+
+   - api.h
+   - debugger.h
+   - disassembler.h
+   - event.h
+   - log.h
+   - macro.h
+   - memory.h
+   - process.h
+   - registry.h
+   - statuscode.h
+
+2. The independent plugin does not include, link to, or depend upon any
+   internal implementation details of Vertex beyond the SDK API headers.
+
+3. The independent plugin is distributed as a separate work and clearly
+   identified as an independent plugin for Vertex.
+
+Under this exception, you may distribute such independent plugins under
+terms of your choice, so long as:
+
+a) The independent plugin, when distributed separately, does not include
+   any code from Vertex except what is necessary to interface with the
+   SDK API headers.
+
+b) If you distribute Vertex together with such independent plugins, you
+   must still comply with the terms of the GNU GPL version 3 for all
+   Vertex code.
+
+c) You provide clear notice to recipients that:
+   - Vertex itself is licensed under GNU GPL version 3
+   - The independent plugin is under separate licensing terms
+   - The combination is provided in accordance with this exception
+
+Clarifications
+--------------
+
+This exception does NOT apply to:
+
+- Modifications to Vertex itself (which remain under GPL version 3)
+- Plugins that link to or use internal Vertex APIs not in include/sdk/
+- Plugins that include copied Vertex implementation code
+- Static linking of plugins into the Vertex executable
+- Forked or derived versions of Vertex itself
+
+This exception DOES apply to:
+
+- Dynamic library plugins loaded at runtime via the SDK API
+- Proprietary or open source plugins using only the SDK API
+- Commercial plugins that interact exclusively through include/sdk/
+- Closed-source plugins that respect the SDK boundary
+
+Scope of SDK API
+----------------
+
+The "SDK API" refers exclusively to the C/C++ interface definitions,
+type declarations, constants, and inline functions declared in the
+header files located in include/sdk/ of the Vertex source distribution.
+
+Implementation code in Vertex's src/ directories remains under strict
+GPL version 3 with no exceptions.
+
+Termination
+-----------
+
+If you fail to comply with the conditions of this exception, your rights
+under this exception terminate automatically, though your rights under
+the base GPL version 3 license (for creating GPL-compatible plugins)
+remain intact.
+
+How to Apply This Exception to Your Plugin
+-------------------------------------------
+
+To make it clear that your plugin uses this exception, you can include
+a notice like this in your plugin's source files:
+
+    This plugin for Vertex is distributed under [YOUR LICENSE].
+    It uses only the Vertex SDK API (include/sdk/) and is provided
+    under the Additional Permission of the Vertex Plugin Exception.
+    Vertex itself remains under GNU GPL version 3.
+
+Questions
+---------
+
+If you have questions about this exception or whether your plugin
+qualifies, please contact the Vertex project maintainers.
+
+Note: This exception is granted under section 7 of the GNU GPL version 3.
+For the full text of the GNU GPL version 3, see the LICENSE file in this
+distribution or visit <https://www.gnu.org/licenses/gpl-3.0.html>.
+

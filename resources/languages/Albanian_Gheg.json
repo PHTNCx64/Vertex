@@ -1,0 +1,552 @@
+{
+  "metadata": {
+    "name": "Shqip (Gegë)",
+    "author": "PHTNC"
+  },
+  "general": {
+    "error": "Gabim",
+    "criticalError": "Gabim i Randë!",
+    "warning": "Paralajmërim",
+    "information": "Të dhana",
+    "question": "Pyetje",
+    "ok": "Mirë",
+    "cancel": "Anulo",
+    "apply": "Apliko",
+    "resetToDefaults": "Kthe n'të Parazgjedhunat",
+    "close": "Mbyll"
+  },
+  "threads": {
+    "id": "ID",
+    "name": "Emni",
+    "status": "Statusi",
+    "state": "Gjendja",
+    "instructionPointer": "Tregues i Instruksionit",
+    "priority": "Prioriteti",
+    "switchToThread": "Kalo në Thread",
+    "suspendThread": "Pezullo Thread-in",
+    "resumeThread": "Vazhdo Thread-in",
+    "terminateThread": "Përfundo Thread-in",
+    "copyThreadId": "Kopjo ID-në e Thread-it",
+    "running": "Duke u ekzekutue",
+    "suspended": "I pezullue",
+    "waiting": "Duke pritë",
+    "terminated": "I përfundume",
+    "unknown": "I panjoftun"
+  },
+  "memoryAttributeWindow": {
+    "title": "Atributet e Memories",
+    "protectionGroup": "Mbrojtja",
+    "stateGroup": "Gjendja",
+    "typeGroup": "Lloji",
+    "noOptionsAvailable": "S'ka opsione të atributeve të memories. Sigurohu që plugini asht i ngarkuem.",
+    "failedToLoadOptions": "Deshtoi me i ngarku opsionet e atributeve të memories.",
+    "invalidAttributeType": "Lloj i pavlefshëm i atributit"
+  },
+  "plugin": {
+    "noLoadedPlugin": "S’ka plugin aktiv. Ngarko nji plugin n’parametra për me vazhdu.",
+    "loadingFailed": "Deshtoi me u ngarku plugini."
+  },
+  "processListView": {
+    "ui": {
+      "title": "Lista e Proceseve",
+      "informationText": "Zgjedh nji proces prej listës së proceseve",
+      "filterOptionsGroup": "Opsionet e Filtërimit",
+      "filterLabel": "Filtro:",
+      "filterByProcessName": "Filtro simbas emnit të procesit",
+      "filterByProcessId": "Filtro simbas ID-së së procesit",
+      "filterByProcessOwner": "Filtro simbas pronarit të procesit",
+      "openProcessButton": "Hap Procesin",
+      "cancelButton": "Anulo"
+    },
+    "columns": {
+      "processName": "Emni i Procesit",
+      "processId": "ID e Procesit",
+      "processOwner": "Pronari i Procesit"
+    },
+    "accessibility": {
+      "selectProcessInstruction": "Zgjedh nji proces prej listës për me aktivizu butonin Hap Procesin",
+      "filterInstructions": "Përdor opsionet e filtërimit për me kërku procese të caktueme",
+      "sortInstructions": "Kliko mbi titujt e kolonave për me renditë listën e proceseve"
+    }
+  },
+  "mainWindow": {
+    "ui": {
+      "scannedColumnAddress": "Adresa",
+      "scannedColumnCurrentValue": "Vlera Aktuale",
+      "scannedColumnPreviousValue": "Vlera e Mparshme",
+      "scannedColumnFirstValue": "Vlera e Parë",
+      "scannedColumnType": "Lloji",
+      "savedColumnFreeze": "Ngrij",
+      "savedColumnAddress": "Adresa",
+      "savedColumnType": "Lloji",
+      "savedColumnValue": "Vlera",
+      "noProcessSelected": "Asnji proces i zgjedhun.",
+      "noProcessOpenedMessage": "Tash s'ka proces t'hapur.",
+      "valuesFound": "%lld Vlera t'gjetuna.",
+      "scanOptions": "Opsionet e skanimit",
+      "value": "Vlera:",
+      "betweenValue": "Ndërmjet Vlerës:",
+      "andValue": "edhe Vlerës:",
+      "hexadecimal": "Heksadecimal",
+      "valueType": "Lloji i Vlerës:",
+      "scanType": "Lloji i Skanimit:",
+      "endianness": "Endianness:",
+      "alignment": "Rreshtim:",
+      "alignedScan": "Skanim i Rreshtuem",
+      "memoryRegionSettings": "Parametrat e Rajonit të Memories",
+      "memoryView": "Pamja e Memories",
+      "addAddressManually": "Shto Adresën me Dorë",
+      "newProject": "Projekt i Ri",
+      "newProjectDescription": "Krijo nji projekt t'ri",
+      "openProject": "Hap Projektin",
+      "openProjectDescription": "Hap nji skedare projekti ekzistuese",
+      "exitApplication": "Dil",
+      "exitApplicationDescription": "Dil prej aplikacionit",
+      "settings": "Parametrat",
+      "settingsDescription": "Hap parametrat e aplikacionit",
+      "about": "Rreth",
+      "aboutDescription": "Shfaq të dhana rreth aplikacionit",
+      "file": "Skedare",
+      "tools": "Vegla",
+      "help": "Ndihmë",
+      "processAndProgress": "Procesi & Progresi",
+      "scannedValues": "Vlerat e Skanueme",
+      "scanControls": "Kontrollet e Skanimit",
+      "memoryControls": "Kontrollet e Memories",
+      "editValues": "Edito Vlerat"
+    },
+    "toolbar": {
+      "processList": "Lista e Proceseve",
+      "processListDescription": "Hap Listën e Proceseve",
+      "killProcess": "Vraj Procesin",
+      "killProcessDescription": "Vret procesin e hapur",
+      "closeProcess": "Mbyll Procesin",
+      "closeProcessDescription": "Mbyll procesin e hapur",
+      "newProcess": "Proces i Ri",
+      "newProcessDescription": "Hap nji proces t'ri simbas shtegës së tij",
+      "terminal": "Terminali",
+      "terminalDescription": "Hap terminalin e konsolës",
+      "debugger": "Debuguesi",
+      "debuggerDescription": "Hap dritaren e debuguesit",
+      "settings": "Parametrat",
+      "settingsDescription": "Hap dritaren e parametrave",
+      "analytics": "Analitika",
+      "analyticsDescription": "Hap dritaren e analitikës"
+    },
+    "buttons": {
+      "initialScan": "Skanimi Fillestar",
+      "newScan": "Skanim i Ri",
+      "nextScan": "Skanimi Pasues",
+      "undoScan": "Zhbë Skanimin"
+    },
+    "context": {
+      "addToTable": "Shto në Tabelë",
+      "copyAddress": "Kopjo Adresën",
+      "copyValue": "Kopjo Vlerën",
+      "copyAll": "Kopjo Krejt",
+      "freeze": "Ngrij",
+      "unfreeze": "Shkrij",
+      "pointerScan": "Skanim i Pointerave...",
+      "viewInDisassembly": "Shiko adresën në Disassembly",
+      "findAccess": "Zbulo çka e aksesuon këtë adresë",
+      "delete": "Fshij"
+    },
+    "dialog": {
+      "editAddress": "Ndrysho Adresën",
+      "editValue": "Ndrysho Vlerën",
+      "addressLabel": "Adresa (heksadecimal):",
+      "valueLabel": "Vlera:"
+    },
+    "errors": {
+      "addressAlreadyAdded": "Address 0x{:X} is already added."
+    },
+    "valueTypes": {
+      "byte": "Byte",
+      "word": "Word",
+      "dword": "DWord",
+      "qword": "QWord",
+      "single": "Njëfishtë (Float)",
+      "double": "Dyfishtë (Double)",
+      "string": "Tekst",
+      "byteArray": "Varg Bajtash"
+    },
+    "scanTypes": {
+      "exact": "Saktë",
+      "greaterThan": "Ma i madh se",
+      "lessThan": "Ma i vogël se",
+      "inBetweenOf": "Ndërmjet",
+      "changed": "Vlera e Ndryshume",
+      "unchanged": "Vlera e Pandryshume",
+      "increased": "Vlera e Shtume",
+      "decreased": "Vlera e Pakësume",
+      "unknownInitialValue": "Vlera Fillestare e Panjoftun"
+    },
+    "endianness": {
+      "littleEndian": "Little Endian",
+      "bigEndian": "Big Endian",
+      "hostCpu": "CPU e Pritësit",
+      "targetCpu": "CPU e Objektivit"
+    }
+  },
+  "settingsWindow": {
+    "title": "Parametrat",
+    "general": "Të përgjithshme",
+    "plugins": "Pluginat",
+    "language": "Gjuha",
+    "memoryScanner": "Skaneri i Memories",
+    "closeDlgMsg": "A don me i rue ndryshimet para se me u mbyllë?",
+    "closeDlgCaption": "Parametrat",
+    "unsavedChangesMsg": "Ke ndryshime t'paruana. A don me i ruejt?",
+    "unsavedChangesCaption": "Ndryshime t'Paruana",
+    "discardChangesMsg": "A je i sigurtë që don me i hedh ndryshimet?",
+    "discardChangesCaption": "Hedh Ndryshimet",
+    "buttons": {
+      "resetToDefaults": "Kthe n’të Parazgjedhunat",
+      "apply": "Apliko",
+      "cancel": "Anulo",
+      "ok": "Mirë"
+    },
+    "generalTab": {
+      "application": "Aplikacioni",
+      "enableAutoSave": "Aktivizo Ruajtjen Automatike",
+      "autoSaveInterval": "Koha e Ruajtjes Automatike (në minuta):",
+      "rememberWindowPos": "Mbaj n’men vendin e dritares",
+      "theme": "Tema:",
+      "themes": {
+        "light": "E çelët",
+        "dark": "E errët",
+        "auto": "Sistemi"
+      },
+      "logging": "Shënimi",
+      "enableLogging": "Aktivizo Shënimin"
+    },
+    "memoryScannerTab": {
+      "readerThreads": "Thread-at e Lexuesit",
+      "threadBufferSize": "Madhësia e Buffer-it të Thread-it (MB)",
+      "threadBufferSizeDescription": "Madhësia fillestare e buffer-it për thread të lexuesit (1-512 MB). Vlera ma t'mdhana pakësuon alokimet po përdorin ma shumë memorie."
+    },
+    "pluginsTab": {
+      "unloadedMsgInfo": "Plugini s’asht i ngarkuem në sistem. Ngarko fillimisht për me marrë ma shumë hollësi rreth tij.",
+      "loadedMsgInfo": "Plugini jep këto të dhana:",
+      "availablePlugins": "Pluginat e Disponueshëm:",
+      "columnName": "Emni",
+      "columnStatus": "Statusi",
+      "loaded": "I ngarkuem",
+      "notLoaded": "Jo i ngarkuem",
+      "currentlyActive": "Tash Aktiv",
+      "refreshList": "Rifresko Listën",
+      "pluginInformation": "Të dhana mbi Pluginin",
+      "info": {
+        "name": "Emni:",
+        "version": "Versioni:",
+        "author": "Autori:",
+        "description": "Përshkrimi:"
+      },
+      "loadPlugin": "Ngarko Pluginin",
+      "setAsActivePlugin": "Cakto si Plugin Aktiv",
+      "configure": "Konfiguro",
+      "confirmSetActive": "A don me e caktu '%s' si plugin aktiv?",
+      "activePluginSet": "Plugini '%s' u caktue si aktiv.",
+      "activePluginSetTitle": "Plugini u Aktivizue",
+      "pluginPaths": "Shtigjet e Kërkimit të Pluginave",
+      "pathColumn": "Shtegu",
+      "addPath": "Shto Shteg",
+      "removePath": "Hek Shtegun",
+      "selectPluginPath": "Zgjedh Direktorinë e Pluginave",
+      "pathAlreadyExists": "Ky shteg asht tashmë në listë.",
+      "confirmRemovePath": "A je i sigurtë që don me e hek shtegun:\n%s"
+    },
+    "languageTab": {
+      "interfaceLanguage": "Gjuha e Ndërfaqes",
+      "language": "Gjuha:",
+      "languagePaths": "Shtigjet e Kërkimit të Gjuhëve",
+      "pathColumn": "Shtegu",
+      "addPath": "Shto Shteg",
+      "removePath": "Hek Shtegun",
+      "selectLanguagePath": "Zgjedh Direktorinë e Gjuhëve",
+      "pathAlreadyExists": "Ky shteg asht tashmë në listë.",
+      "confirmRemovePath": "A je i sigurtë që don me e hek shtegun:\n%s"
+    }
+  },
+  "aboutWindow": {
+    "title": "Rreth Vertex-it",
+    "version": "Versioni",
+    "license": "Licensa",
+    "description": "Nji skaner i fuqishëm i memories dhe debugues për aplikacione Windows.",
+    "credits": {
+      "developers": "Zhvilluesit",
+      "contributors": "Kontribuesit",
+      "testers": "Testuesit",
+      "specialThanks": "Falenderime t'Veçanta"
+    },
+    "roles": {
+      "leadDeveloper": "Zhvilluesi Kryesor",
+      "developer": "Zhvilluesi",
+      "contributor": "Kontribuesi",
+      "tester": "Testuesi"
+    },
+    "thanks": {
+      "uiFramework": "Framework-u i Ndërfaqes",
+      "community": "Mbështetje dhe Frymëzim"
+    }
+  },
+  "analyticsWindow": {
+    "title": "Shikuesi i Regjistrimit",
+    "clearButton": "Pastro",
+    "saveButton": "Ruaj...",
+    "logLevels": {
+      "info": "INFO",
+      "warn": "PARALAJMËRIM",
+      "error": "GABIM"
+    },
+    "saveDialog": {
+      "title": "Ruaj Regjistrat",
+      "defaultFilename": "vertex_logs.txt",
+      "fileTypes": "Skedarë tekst (*.txt)|*.txt|Skedarë regjistri (*.log)|*.log|Gjith skedarët (*.*)|*.*",
+      "successMessage": "Regjistrat u ruajtën me sukses.",
+      "failureMessage": "Deshtoi me ruajt regjistrat."
+    }
+  },
+  "debugger": {
+    "ui": {
+      "go": "Shko",
+      "address": "Adresa:",
+      "unknown": "<i panjoftun>",
+      "loading": "Duke u ngarkue..."
+    },
+    "errors": {
+      "disassemblyError": "Gabim në Disassembly",
+      "registerError": "Gabim në Regjistër",
+      "debuggerError": "Gabim në Debugues",
+      "failedExtendDisassemblyUpward": "Deshtoi me zgjerue disassembly-në në krye prej 0x{:X}",
+      "failedExtendDisassemblyDownward": "Deshtoi me zgjerue disassembly-në n'fund prej 0x{:X}",
+      "failedDisassembleAddress": "Deshtoi me e bë disassembly në adresën 0x{:X}",
+      "failedReadRegisters": "Deshtoi me i lexue regjistrat",
+      "failedReadRegistersPause": "Deshtoi me i lexue regjistrat gjatë pezullimit",
+      "failedLoadModulesDisassemble": "Deshtoi me i ngarku modulet dhe me bë disassembly"
+    },
+    "contextMenu": {
+      "toggleBreakpoint": "Ndërro Breakpoint-in\tF9",
+      "runToCursor": "Ekzekuto deri te Kursori\tF4",
+      "followJump": "Ndiq kërcimin te {:X}",
+      "copyAddress": "Kopjo Adresën",
+      "copyLine": "Kopjo Linjën"
+    },
+    "disassembly": {
+      "columnAddress": "Adresa",
+      "columnBytes": "Bajtat",
+      "columnMnemonic": "Mnemonikë",
+      "columnOperands": "Operandët",
+      "columnComment": "Komenti"
+    },
+    "registers": {
+      "columnRegister": "Regjistri",
+      "columnValue": "Vlera",
+      "refresh": "Rifresko",
+      "refreshTooltip": "Rifresko vlerat e regjistrave",
+      "enterNewValue": "Fut vlerën e re:",
+      "setRegisterValue": "Cakto Vlerën e Regjistrit"
+    },
+    "threads": {
+      "columnId": "ID",
+      "columnName": "Emni",
+      "columnState": "Gjendja",
+      "columnPriority": "Prioriteti",
+      "columnInstructionPointer": "Tregues i Instruksionit",
+      "switchToThread": "Kalo në Thread",
+      "suspendThread": "Pezullo Thread-in",
+      "resumeThread": "Vazhdo Thread-in",
+      "copyThreadId": "Kopjo ID-në e Thread-it",
+      "running": "Duke u ekzekutue",
+      "suspended": "I pezullue",
+      "waiting": "Duke pritë",
+      "terminated": "I përfundume",
+      "unknown": "I panjoftun",
+      "unnamed": "(pa emën)"
+    },
+    "breakpoints": {
+      "columnId": "ID",
+      "columnAddress": "Adresa",
+      "columnType": "Lloji",
+      "columnState": "Gjendja",
+      "columnHits": "Goditje",
+      "typeSoftware": "Software",
+      "typeHardware": "Hardware",
+      "typeMemory": "Memorie",
+      "typeConditional": "Me kushte",
+      "stateEnabled": "I aktivizue",
+      "stateDisabled": "I çaktivizue",
+      "statePending": "Në pritje",
+      "stateError": "Gabim",
+      "goto": "Shko te Adresa",
+      "goToAddress": "Shko te Adresa",
+      "enable": "Aktivizo",
+      "disable": "Çaktivizo",
+      "remove": "Hek",
+      "removeAll": "Hek të Gjitha"
+    },
+    "watchpoints": {
+      "columnId": "ID",
+      "columnAddress": "Adresa",
+      "columnSize": "Madhësia",
+      "columnType": "Lloji",
+      "columnState": "Gjendja",
+      "columnHits": "Goditje",
+      "typeRead": "Lexim",
+      "typeWrite": "Shkrim",
+      "typeReadWrite": "Lexim/Shkrim",
+      "typeExecute": "Ekzekutim",
+      "stateEnabled": "I aktivizue",
+      "stateDisabled": "I çaktivizue",
+      "goto": "Shko te Adresa",
+      "gotoAccessor": "Shko te Adresa Qasëse",
+      "inspectAccessor": "Inspekto Adresën Qasëse",
+      "enable": "Aktivizo",
+      "disable": "Çaktivizo",
+      "remove": "Hek",
+      "removeAll": "Hek të Gjitha",
+      "addWatchpoint": "Shto Watchpoint",
+      "addWatchpointTitle": "Shto Watchpoint të Memories",
+      "watchpointAddress": "Adresa:",
+      "watchpointSize": "Madhësia (bajta):",
+      "watchpointType": "Lloji:"
+    },
+    "stack": {
+      "columnFrame": "#",
+      "columnAddress": "Adresa",
+      "columnReturnAddress": "Adresa e Kthimit",
+      "columnFunction": "Funksioni",
+      "columnModule": "Moduli"
+    },
+    "memory": {
+      "columnAddress": "Adresa",
+      "columnHex": "Hex",
+      "columnAscii": "ASCII"
+    },
+    "console": {
+      "filterDebug": "Debug",
+      "filterInfo": "Info",
+      "filterWarning": "Paralajmërim",
+      "filterError": "Gabim",
+      "clear": "Pastro",
+      "enterCommand": "Fut komandën..."
+    },
+    "watch": {
+      "enterExpression": "Fut shprehjen për me vrojtu...",
+      "watchTitle": "Vrojto",
+      "localsTitle": "Lokalet",
+      "watches": "Vrojtues",
+      "locals": "Lokale",
+      "editValue": "Edito Vlerën...",
+      "copyValue": "Kopjo Vlerën",
+      "copyExpression": "Kopjo Shprehjen",
+      "removeWatch": "Hek Vrojtuesin",
+      "enterNewValue": "Fut vlerën e re:",
+      "editWatchValueTitle": "Edito Vlerën e Vrojtuesit"
+    },
+    "importsExports": {
+      "columnFunction": "Funksioni",
+      "columnAddress": "Adresa",
+      "columnModule": "Moduli",
+      "columnOrdinal": "Ordinali",
+      "tabImports": "Importet",
+      "tabExports": "Eksportet",
+      "module": "Moduli:"
+    },
+    "menu": {
+      "debug": "&Debug",
+      "view": "&Shiko",
+      "attach": "&Bashkëngjit",
+      "attachTooltip": "Bashkëngjit debuguesin",
+      "detach": "&Shkëput",
+      "detachTooltip": "Shkëput debuguesin",
+      "continue": "&Vazhdo",
+      "continueTooltip": "Vazhdo ekzekutimin",
+      "pause": "&Pezullo",
+      "pauseTooltip": "Pezullo ekzekutimin",
+      "stepInto": "Hap &Brenda",
+      "stepIntoTooltip": "Hap brenda",
+      "stepOver": "Hap &Përpara",
+      "stepOverTooltip": "Hap përpara",
+      "stepOut": "Hap &Jashtë",
+      "stepOutTooltip": "Hap jashtë",
+      "toggleBreakpoint": "Ndërro &Breakpoint-in",
+      "toggleBreakpointTooltip": "Ndërro breakpoint-in",
+      "runToCursor": "&Ekzekuto deri te Kursori",
+      "runToCursorTooltip": "Ekzekuto deri te kursori",
+      "gotoAddress": "&Shko te Adresa",
+      "gotoAddressTooltip": "Shko te adresa",
+      "viewDisassembly": "&Disassembly",
+      "viewDisassemblyTooltip": "Shfaq panelin e disassembly-së",
+      "viewBreakpoints": "&Breakpoints",
+      "viewBreakpointsTooltip": "Shfaq panelin e breakpoint-eve",
+      "viewWatchpoints": "&Watchpoints",
+      "viewWatchpointsTooltip": "Shfaq panelin e watchpoint-eve",
+      "viewRegisters": "&Regjistrat",
+      "viewRegistersTooltip": "Shfaq panelin e regjistrave",
+      "viewStack": "&Stack",
+      "viewStackTooltip": "Shfaq panelin e stack-ut",
+      "viewThreads": "&Threads",
+      "viewThreadsTooltip": "Shfaq panelin e thread-ave",
+      "viewWatch": "&Vrojto/Lokale",
+      "viewWatchTooltip": "Shfaq panelin e vrojtuesve dhe lokaleve",
+      "viewMemory": "&Memoria",
+      "viewMemoryTooltip": "Shfaq panelin e memories",
+      "viewHexEditor": "&Editori Hex",
+      "viewHexEditorTooltip": "Shfaq panelin e editorit hex",
+      "viewImportsExports": "&Importet/Eksportet",
+      "viewImportsExportsTooltip": "Shfaq panelin e importeve/eksporteve",
+      "viewConsole": "&Konsola",
+      "viewConsoleTooltip": "Shfaq panelin e konsolës/output-it"
+    },
+    "toolbar": {
+      "attach": "Bashkëngjit",
+      "attachTooltip": "Bashkëngjit debuguesin",
+      "detach": "Shkëput",
+      "detachTooltip": "Shkëput debuguesin",
+      "continue": "Vazhdo",
+      "continueTooltip": "Vazhdo ekzekutimin (F5)",
+      "pause": "Pezullo",
+      "pauseTooltip": "Pezullo ekzekutimin",
+      "stepInto": "Hap Brenda",
+      "stepIntoTooltip": "Hap brenda (F11)",
+      "stepOver": "Hap Përpara",
+      "stepOverTooltip": "Hap përpara (F10)",
+      "stepOut": "Hap Jashtë",
+      "stepOutTooltip": "Hap jashtë (Shift+F11)",
+      "breakpoint": "Breakpoint",
+      "breakpointTooltip": "Ndërro breakpoint-in (F9)"
+    },
+    "status": {
+      "detached": "I shkëputun",
+      "attached": "I bashkëngjitun",
+      "running": "Duke u ekzekutue",
+      "paused": "I pezullue",
+      "stepping": "Duke u hape",
+      "breakpoint": "Breakpoint",
+      "exception": "Përjashtim",
+      "ready": "Gati",
+      "thread": "Thread",
+      "readySelectProcess": "Gati - Zgjedh nji proces për me e debugu",
+      "processRunning": "Procesi duke u ekzekutue...",
+      "processPausedStep": "Procesi i pezullue - Përdor F10/F11 për me hape"
+    },
+    "pane": {
+      "disassembly": "Disassembly",
+      "registers": "Regjistrat",
+      "callStack": "Call Stack",
+      "breakpoints": "Breakpoints",
+      "watchpoints": "Watchpoints",
+      "importsExports": "Importet/Eksportet",
+      "memory": "Memoria",
+      "hexEditor": "Editori Hex",
+      "threads": "Threads",
+      "watchLocals": "Vrojto / Lokale",
+      "console": "Konsola"
+    },
+    "dialog": {
+      "enterAddressHex": "Fut adresën (hex):",
+      "gotoAddressTitle": "Shko te Adresa"
+    }
+  }
+}

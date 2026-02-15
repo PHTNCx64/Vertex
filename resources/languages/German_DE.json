@@ -1,0 +1,542 @@
+{
+  "metadata": {
+    "name": "Deutsch (DE)",
+    "author": "PHTNC"
+  },
+  "general": {
+    "error": "Fehler",
+    "criticalError": "Kritischer Fehler!",
+    "warning": "Warnung",
+    "information": "Information",
+    "question": "Frage",
+    "ok": "OK",
+    "cancel": "Abbrechen",
+    "apply": "Übernehmen",
+    "resetToDefaults": "Auf Standardwerte zurücksetzen",
+    "close": "Schließen"
+  },
+  "threads": {
+    "id": "ID",
+    "name": "Name",
+    "status": "Status",
+    "state": "Zustand",
+    "instructionPointer": "Befehlszeiger",
+    "priority": "Priorität",
+    "switchToThread": "Zu Thread wechseln",
+    "suspendThread": "Thread anhalten",
+    "resumeThread": "Thread fortsetzen",
+    "terminateThread": "Thread beenden",
+    "copyThreadId": "Thread-ID kopieren",
+    "running": "Laufend",
+    "suspended": "Angehalten",
+    "waiting": "Wartend",
+    "terminated": "Beendet",
+    "unknown": "Unbekannt"
+  },
+  "memoryAttributeWindow": {
+    "title": "Speicherattribute",
+    "protectionGroup": "Schutz",
+    "stateGroup": "Zustand",
+    "typeGroup": "Typ",
+    "noOptionsAvailable": "Keine Speicherattribut-Optionen verfügbar. Bitte stellen Sie sicher, dass ein Plugin geladen ist.",
+    "failedToLoadOptions": "Speicherattribut-Optionen konnten nicht geladen werden.",
+    "invalidAttributeType": "Ungültiger Attributtyp"
+  },
+  "plugin": {
+    "noLoadedPlugin": "Es ist kein Plugin aktiv. Laden Sie ein Plugin in den Einstellungen, um fortzufahren.",
+    "loadingFailed": "Plugin konnte nicht geladen werden."
+  },
+  "processListView": {
+    "ui": {
+      "title": "Prozessliste",
+      "informationText": "Wählen Sie einen Prozess aus der Prozessliste aus",
+      "filterOptionsGroup": "Filteroptionen",
+      "filterLabel": "Filter:",
+      "filterByProcessName": "Nach Prozessname filtern",
+      "filterByProcessId": "Nach Prozess-ID filtern",
+      "filterByProcessOwner": "Nach Prozessbesitzer filtern",
+      "openProcessButton": "Prozess öffnen",
+      "cancelButton": "Abbrechen"
+    },
+    "columns": {
+      "processName": "Prozessname",
+      "processId": "Prozess-ID",
+      "processOwner": "Prozessbesitzer"
+    },
+    "accessibility": {
+      "selectProcessInstruction": "Wählen Sie einen Prozess aus der Liste, um die Schaltfläche 'Prozess öffnen' zu aktivieren",
+      "filterInstructions": "Verwenden Sie die Filteroptionen, um nach bestimmten Prozessen zu suchen",
+      "sortInstructions": "Klicken Sie auf Spaltenüberschriften, um die Prozessliste zu sortieren"
+    }
+  },
+  "mainWindow": {
+    "ui": {
+      "scannedColumnAddress": "Adresse",
+      "scannedColumnCurrentValue": "Aktueller Wert",
+      "scannedColumnPreviousValue": "Vorheriger Wert",
+      "scannedColumnFirstValue": "Erster Wert",
+      "scannedColumnType": "Typ",
+      "savedColumnFreeze": "Einfrieren",
+      "savedColumnAddress": "Adresse",
+      "savedColumnType": "Typ",
+      "savedColumnValue": "Wert",
+      "noProcessSelected": "Kein Prozess ausgewählt.",
+      "noProcessOpenedMessage": "Es ist derzeit kein Prozess geöffnet.",
+      "valuesFound": "%lld Werte gefunden.",
+      "scanOptions": "Scan-Optionen",
+      "value": "Wert:",
+      "betweenValue": "Zwischen Wert:",
+      "andValue": "und Wert:",
+      "hexadecimal": "Hexadezimal",
+      "valueType": "Werttyp:",
+      "scanType": "Scan-Typ:",
+      "endianness": "Byte-Reihenfolge:",
+      "alignment": "Ausrichtung:",
+      "alignedScan": "Ausgerichteter Scan",
+      "memoryRegionSettings": "Speicherbereich-Scan-Einstellungen",
+      "memoryView": "Speicheransicht",
+      "addAddressManually": "Adresse manuell hinzufügen",
+      "newProject": "Neues Projekt",
+      "newProjectDescription": "Ein neues Projekt erstellen",
+      "openProject": "Projekt öffnen",
+      "openProjectDescription": "Eine vorhandene Projektdatei öffnen",
+      "exitApplication": "Beenden",
+      "exitApplicationDescription": "Anwendung beenden",
+      "settings": "Einstellungen",
+      "settingsDescription": "Anwendungseinstellungen öffnen",
+      "about": "Über",
+      "aboutDescription": "Informationen über die Anwendung anzeigen",
+      "file": "Datei",
+      "tools": "Werkzeuge",
+      "help": "Hilfe",
+      "processAndProgress": "Prozess & Fortschritt",
+      "scannedValues": "Gescannte Werte",
+      "scanControls": "Scan-Steuerung",
+      "memoryControls": "Speicher-Steuerung",
+      "editValues": "Werte bearbeiten"
+    },
+    "toolbar": {
+      "processList": "Prozessliste",
+      "processListDescription": "Prozessliste öffnen",
+      "killProcess": "Prozess beenden",
+      "killProcessDescription": "Beendet den aktuell geöffneten Prozess",
+      "closeProcess": "Prozess schließen",
+      "closeProcessDescription": "Schließt den aktuell geöffneten Prozess",
+      "newProcess": "Neuer Prozess",
+      "newProcessDescription": "Öffnet einen neuen Prozess über seinen Pfad",
+      "terminal": "Terminal",
+      "terminalDescription": "Öffnet das Konsolenterminal",
+      "debugger": "Debugger",
+      "debuggerDescription": "Öffnet das Debugger-Fenster",
+      "settings": "Einstellungen",
+      "settingsDescription": "Öffnet das Einstellungsfenster",
+      "analytics": "Analyse",
+      "analyticsDescription": "Öffnet das Analysefenster"
+    },
+    "buttons": {
+      "initialScan": "Erster Scan",
+      "newScan": "Neuer Scan",
+      "nextScan": "Nächster Scan",
+      "undoScan": "Scan rückgängig"
+    },
+    "context": {
+      "addToTable": "Zur Tabelle hinzufügen",
+      "copyAddress": "Adresse kopieren",
+      "copyValue": "Wert kopieren",
+      "copyAll": "Alles kopieren",
+      "freeze": "Einfrieren",
+      "unfreeze": "Freigeben",
+      "pointerScan": "Pointer-Scan...",
+      "viewInDisassembly": "Adresse in Disassembly anzeigen",
+      "findAccess": "Herausfinden, was auf diese Adresse zugreift",
+      "delete": "Löschen"
+    },
+    "dialog": {
+      "editAddress": "Adresse bearbeiten",
+      "editValue": "Wert bearbeiten",
+      "addressLabel": "Adresse (hexadezimal):",
+      "valueLabel": "Wert:"
+    },
+    "errors": {
+      "addressAlreadyAdded": "Adresse 0x{:X} ist bereits hinzugefügt."
+    },
+    "scanTypes": {
+      "exact": "Genau",
+      "greaterThan": "Größer als",
+      "lessThan": "Kleiner als",
+      "inBetweenOf": "Zwischen",
+      "changed": "Geänderter Wert",
+      "unchanged": "Unveränderter Wert",
+      "increased": "Erhöhter Wert",
+      "decreased": "Verringerter Wert",
+      "unknownInitialValue": "Unbekannter Anfangswert"
+    },
+    "endianness": {
+      "littleEndian": "Little Endian",
+      "bigEndian": "Big Endian",
+      "hostCpu": "Host-CPU",
+      "targetCpu": "Ziel-CPU"
+    }
+  },
+  "settingsWindow": {
+    "title": "Einstellungen",
+    "general": "Allgemein",
+    "plugins": "Plugins",
+    "language": "Sprache",
+    "memoryScanner": "Speicherscanner",
+    "closeDlgMsg": "Möchten Sie Ihre Änderungen vor dem Schließen speichern?",
+    "closeDlgCaption": "Einstellungen",
+    "unsavedChangesMsg": "Sie haben ungespeicherte Änderungen. Möchten Sie diese speichern?",
+    "unsavedChangesCaption": "Ungespeicherte Änderungen",
+    "discardChangesMsg": "Sind Sie sicher, dass Sie Ihre Änderungen verwerfen möchten?",
+    "discardChangesCaption": "Änderungen verwerfen",
+    "buttons": {
+      "resetToDefaults": "Auf Standardwerte zurücksetzen",
+      "apply": "Übernehmen",
+      "cancel": "Abbrechen",
+      "ok": "OK"
+    },
+    "generalTab": {
+      "application": "Anwendung",
+      "enableAutoSave": "Automatisches Speichern aktivieren",
+      "autoSaveInterval": "Automatisches Speicherintervall (Minuten):",
+      "rememberWindowPos": "Fensterposition merken",
+      "theme": "Design:",
+      "themes": {
+        "light": "Hell",
+        "dark": "Dunkel",
+        "auto": "System"
+      },
+      "logging": "Protokollierung",
+      "enableLogging": "Protokollierung aktivieren"
+    },
+    "memoryScannerTab": {
+      "readerThreads": "Lese-Threads",
+      "threadBufferSize": "Thread-Puffergröße (MB)",
+      "threadBufferSizeDescription": "Anfängliche Puffergröße pro Lese-Thread (1–512 MB). Größere Werte reduzieren Zuweisungen, verbrauchen aber mehr Speicher."
+    },
+    "pluginsTab": {
+      "unloadedMsgInfo": "Das Plugin ist derzeit nicht im System geladen. Laden Sie es zuerst, um weitere Details über das Plugin zu erhalten.",
+      "loadedMsgInfo": "Das Plugin stellt die folgenden Informationen bereit:",
+      "availablePlugins": "Verfügbare Plugins:",
+      "columnName": "Name",
+      "columnStatus": "Status",
+      "loaded": "Geladen",
+      "notLoaded": "Nicht geladen",
+      "currentlyActive": "Derzeit aktiv",
+      "refreshList": "Liste aktualisieren",
+      "pluginInformation": "Plugin-Informationen",
+      "info": {
+        "name": "Name:",
+        "version": "Version:",
+        "author": "Autor:",
+        "description": "Beschreibung:"
+      },
+      "loadPlugin": "Plugin laden",
+      "setAsActivePlugin": "Als aktives Plugin festlegen",
+      "configure": "Konfigurieren",
+      "confirmSetActive": "Möchten Sie '%s' als aktives Plugin festlegen?",
+      "activePluginSet": "Plugin '%s' wurde als aktiv festgelegt.",
+      "activePluginSetTitle": "Plugin aktiviert",
+      "pluginPaths": "Plugin-Suchpfade",
+      "pathColumn": "Pfad",
+      "addPath": "Pfad hinzufügen",
+      "removePath": "Pfad entfernen",
+      "selectPluginPath": "Plugin-Verzeichnis auswählen",
+      "pathAlreadyExists": "Dieser Pfad ist bereits in der Liste.",
+      "confirmRemovePath": "Sind Sie sicher, dass Sie den Pfad entfernen möchten:\n%s"
+    },
+    "languageTab": {
+      "interfaceLanguage": "Oberflächensprache",
+      "language": "Sprache:",
+      "languagePaths": "Sprach-Suchpfade",
+      "pathColumn": "Pfad",
+      "addPath": "Pfad hinzufügen",
+      "removePath": "Pfad entfernen",
+      "selectLanguagePath": "Sprachverzeichnis auswählen",
+      "pathAlreadyExists": "Dieser Pfad ist bereits in der Liste.",
+      "confirmRemovePath": "Sind Sie sicher, dass Sie den Pfad entfernen möchten:\n%s"
+    }
+  },
+  "aboutWindow": {
+    "title": "Über Vertex",
+    "version": "Version",
+    "license": "Lizenz",
+    "description": "Ein leistungsstarker Speicherscanner und Debugger für Windows-Anwendungen.",
+    "credits": {
+      "developers": "Entwickler",
+      "contributors": "Mitwirkende",
+      "testers": "Tester",
+      "specialThanks": "Besonderer Dank"
+    },
+    "roles": {
+      "leadDeveloper": "Leitender Entwickler",
+      "developer": "Entwickler",
+      "contributor": "Mitwirkender",
+      "tester": "Tester"
+    },
+    "thanks": {
+      "uiFramework": "UI-Framework",
+      "community": "Unterstützung und Inspiration"
+    }
+  },
+  "analyticsWindow": {
+    "title": "Protokollansicht",
+    "clearButton": "Leeren",
+    "saveButton": "Speichern...",
+    "logLevels": {
+      "info": "INFO",
+      "warn": "WARNUNG",
+      "error": "FEHLER"
+    },
+    "saveDialog": {
+      "title": "Protokolle speichern",
+      "defaultFilename": "vertex_logs.txt",
+      "fileTypes": "Textdateien (*.txt)|*.txt|Protokolldateien (*.log)|*.log|Alle Dateien (*.*)|*.*",
+      "successMessage": "Protokolle erfolgreich gespeichert.",
+      "failureMessage": "Protokolle konnten nicht gespeichert werden."
+    }
+  },
+  "debugger": {
+    "ui": {
+      "go": "Los",
+      "address": "Adresse:",
+      "unknown": "<unbekannt>",
+      "loading": "Wird geladen..."
+    },
+    "errors": {
+      "disassemblyError": "Disassembly-Fehler",
+      "registerError": "Register-Fehler",
+      "debuggerError": "Debugger-Fehler",
+      "failedExtendDisassemblyUpward": "Disassembly konnte nicht nach oben erweitert werden ab 0x{:X}",
+      "failedExtendDisassemblyDownward": "Disassembly konnte nicht nach unten erweitert werden ab 0x{:X}",
+      "failedDisassembleAddress": "Disassembly an Adresse 0x{:X} fehlgeschlagen",
+      "failedReadRegisters": "Register konnten nicht gelesen werden",
+      "failedReadRegistersPause": "Register konnten beim Anhalten nicht gelesen werden",
+      "failedLoadModulesDisassemble": "Module konnten nicht geladen und disassembliert werden"
+    },
+    "contextMenu": {
+      "toggleBreakpoint": "Haltepunkt umschalten\tF9",
+      "runToCursor": "Bis zum Cursor ausführen\tF4",
+      "followJump": "Sprung zu {:X} folgen",
+      "copyAddress": "Adresse kopieren",
+      "copyLine": "Zeile kopieren"
+    },
+    "disassembly": {
+      "columnAddress": "Adresse",
+      "columnBytes": "Bytes",
+      "columnMnemonic": "Mnemonic",
+      "columnOperands": "Operanden",
+      "columnComment": "Kommentar"
+    },
+    "registers": {
+      "columnRegister": "Register",
+      "columnValue": "Wert",
+      "refresh": "Aktualisieren",
+      "refreshTooltip": "Registerwerte aktualisieren",
+      "enterNewValue": "Neuen Wert eingeben:",
+      "setRegisterValue": "Registerwert setzen"
+    },
+    "threads": {
+      "columnId": "ID",
+      "columnName": "Name",
+      "columnState": "Zustand",
+      "columnPriority": "Priorität",
+      "columnInstructionPointer": "Befehlszeiger",
+      "switchToThread": "Zu Thread wechseln",
+      "suspendThread": "Thread anhalten",
+      "resumeThread": "Thread fortsetzen",
+      "copyThreadId": "Thread-ID kopieren",
+      "running": "Laufend",
+      "suspended": "Angehalten",
+      "waiting": "Wartend",
+      "terminated": "Beendet",
+      "unknown": "Unbekannt",
+      "unnamed": "(unbenannt)"
+    },
+    "breakpoints": {
+      "columnId": "ID",
+      "columnAddress": "Adresse",
+      "columnType": "Typ",
+      "columnState": "Zustand",
+      "columnHits": "Treffer",
+      "typeSoftware": "Software",
+      "typeHardware": "Hardware",
+      "typeMemory": "Speicher",
+      "typeConditional": "Bedingt",
+      "stateEnabled": "Aktiviert",
+      "stateDisabled": "Deaktiviert",
+      "statePending": "Ausstehend",
+      "stateError": "Fehler",
+      "goto": "Zu Adresse gehen",
+      "goToAddress": "Zu Adresse gehen",
+      "enable": "Aktivieren",
+      "disable": "Deaktivieren",
+      "remove": "Entfernen",
+      "removeAll": "Alle entfernen"
+    },
+    "watchpoints": {
+      "columnId": "ID",
+      "columnAddress": "Adresse",
+      "columnSize": "Größe",
+      "columnType": "Typ",
+      "columnState": "Zustand",
+      "columnHits": "Treffer",
+      "typeRead": "Lesen",
+      "typeWrite": "Schreiben",
+      "typeReadWrite": "Lesen/Schreiben",
+      "typeExecute": "Ausführen",
+      "stateEnabled": "Aktiviert",
+      "stateDisabled": "Deaktiviert",
+      "goto": "Zu Adresse gehen",
+      "gotoAccessor": "Zur Zugriffs-Adresse gehen",
+      "inspectAccessor": "Zugriffs-Adresse untersuchen",
+      "enable": "Aktivieren",
+      "disable": "Deaktivieren",
+      "remove": "Entfernen",
+      "removeAll": "Alle entfernen",
+      "addWatchpoint": "Watchpoint hinzufügen",
+      "addWatchpointTitle": "Speicher-Watchpoint hinzufügen",
+      "watchpointAddress": "Adresse:",
+      "watchpointSize": "Größe (Bytes):",
+      "watchpointType": "Typ:"
+    },
+    "stack": {
+      "columnFrame": "#",
+      "columnAddress": "Adresse",
+      "columnReturnAddress": "Rücksprungadresse",
+      "columnFunction": "Funktion",
+      "columnModule": "Modul"
+    },
+    "memory": {
+      "columnAddress": "Adresse",
+      "columnHex": "Hex",
+      "columnAscii": "ASCII"
+    },
+    "console": {
+      "filterDebug": "Debug",
+      "filterInfo": "Info",
+      "filterWarning": "Warnung",
+      "filterError": "Fehler",
+      "clear": "Leeren",
+      "enterCommand": "Befehl eingeben..."
+    },
+    "watch": {
+      "enterExpression": "Ausdruck zum Überwachen eingeben...",
+      "watchTitle": "Überwachung",
+      "localsTitle": "Lokale Variablen",
+      "watches": "Überwachungen",
+      "locals": "Lokale Variablen",
+      "editValue": "Wert bearbeiten...",
+      "copyValue": "Wert kopieren",
+      "copyExpression": "Ausdruck kopieren",
+      "removeWatch": "Überwachung entfernen",
+      "enterNewValue": "Neuen Wert eingeben:",
+      "editWatchValueTitle": "Überwachungswert bearbeiten"
+    },
+    "importsExports": {
+      "columnFunction": "Funktion",
+      "columnAddress": "Adresse",
+      "columnModule": "Modul",
+      "columnOrdinal": "Ordinal",
+      "tabImports": "Importe",
+      "tabExports": "Exporte",
+      "module": "Modul:"
+    },
+    "menu": {
+      "debug": "&Debuggen",
+      "view": "&Ansicht",
+      "attach": "&Anhängen",
+      "attachTooltip": "Debugger anhängen",
+      "detach": "&Trennen",
+      "detachTooltip": "Debugger trennen",
+      "continue": "&Fortsetzen",
+      "continueTooltip": "Ausführung fortsetzen",
+      "pause": "&Anhalten",
+      "pauseTooltip": "Ausführung anhalten",
+      "stepInto": "&Hineinspringen",
+      "stepIntoTooltip": "Hineinspringen",
+      "stepOver": "&Überspringen",
+      "stepOverTooltip": "Überspringen",
+      "stepOut": "Hera&usspringen",
+      "stepOutTooltip": "Herausspringen",
+      "toggleBreakpoint": "Haltepunkt &umschalten",
+      "toggleBreakpointTooltip": "Haltepunkt umschalten",
+      "runToCursor": "Bis zum &Cursor ausführen",
+      "runToCursorTooltip": "Bis zum Cursor ausführen",
+      "gotoAddress": "&Gehe zu Adresse",
+      "gotoAddressTooltip": "Gehe zu Adresse",
+      "viewDisassembly": "&Disassembly",
+      "viewDisassemblyTooltip": "Disassembly-Bereich anzeigen",
+      "viewBreakpoints": "&Haltepunkte",
+      "viewBreakpointsTooltip": "Haltepunkte-Bereich anzeigen",
+      "viewWatchpoints": "&Watchpoints",
+      "viewWatchpointsTooltip": "Watchpoints-Bereich anzeigen",
+      "viewRegisters": "&Register",
+      "viewRegistersTooltip": "Register-Bereich anzeigen",
+      "viewStack": "&Stapel",
+      "viewStackTooltip": "Stapel-Bereich anzeigen",
+      "viewThreads": "&Threads",
+      "viewThreadsTooltip": "Thread-Bereich anzeigen",
+      "viewWatch": "Über&wachung/Lokale",
+      "viewWatchTooltip": "Überwachungs- und Lokale-Bereich anzeigen",
+      "viewMemory": "&Speicher",
+      "viewMemoryTooltip": "Speicher-Bereich anzeigen",
+      "viewHexEditor": "&Hex-Editor",
+      "viewHexEditorTooltip": "Hex-Editor-Bereich anzeigen",
+      "viewImportsExports": "&Importe/Exporte",
+      "viewImportsExportsTooltip": "Importe/Exporte-Bereich anzeigen",
+      "viewConsole": "&Konsole",
+      "viewConsoleTooltip": "Konsolen-/Ausgabebereich anzeigen"
+    },
+    "toolbar": {
+      "attach": "Anhängen",
+      "attachTooltip": "Debugger anhängen",
+      "detach": "Trennen",
+      "detachTooltip": "Debugger trennen",
+      "continue": "Fortsetzen",
+      "continueTooltip": "Ausführung fortsetzen (F5)",
+      "pause": "Anhalten",
+      "pauseTooltip": "Ausführung anhalten",
+      "stepInto": "Hineinspringen",
+      "stepIntoTooltip": "Hineinspringen (F11)",
+      "stepOver": "Überspringen",
+      "stepOverTooltip": "Überspringen (F10)",
+      "stepOut": "Herausspringen",
+      "stepOutTooltip": "Herausspringen (Shift+F11)",
+      "breakpoint": "Haltepunkt",
+      "breakpointTooltip": "Haltepunkt umschalten (F9)"
+    },
+    "status": {
+      "detached": "Getrennt",
+      "attached": "Angehängt",
+      "running": "Laufend",
+      "paused": "Angehalten",
+      "stepping": "Schrittweise",
+      "breakpoint": "Haltepunkt",
+      "exception": "Ausnahme",
+      "ready": "Bereit",
+      "thread": "Thread",
+      "readySelectProcess": "Bereit – Wählen Sie einen Prozess zum Debuggen",
+      "processRunning": "Prozess läuft...",
+      "processPausedStep": "Prozess angehalten – Verwenden Sie F10/F11 zum Schreiten"
+    },
+    "pane": {
+      "disassembly": "Disassembly",
+      "registers": "Register",
+      "callStack": "Aufrufstapel",
+      "breakpoints": "Haltepunkte",
+      "watchpoints": "Watchpoints",
+      "importsExports": "Importe/Exporte",
+      "memory": "Speicher",
+      "hexEditor": "Hex-Editor",
+      "threads": "Threads",
+      "watchLocals": "Überwachung / Lokale Variablen",
+      "console": "Konsole"
+    },
+    "dialog": {
+      "enterAddressHex": "Adresse eingeben (hex):",
+      "gotoAddressTitle": "Gehe zu Adresse"
+    }
+  }
+}
