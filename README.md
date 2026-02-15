@@ -186,7 +186,9 @@ Unsurprisingly enough, Vertex has a discord server where you can join and ask qu
 
 ## License
 
-Vertex is licensed under the GNU General Public License version 3 (GPLv3).
+Vertex (src/vertex and include/vertex) is licensed under the GNU General Public License version 3 (GPLv3).
+Vertex User Mode Runtime is licensed Lesser GNU General Public License version 3 LGPLv3
+Vertex SDK is licensed under Apache 2.0 License
 
 ### Plugin Exception
 
