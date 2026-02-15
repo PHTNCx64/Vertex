@@ -57,9 +57,6 @@ This can ultimately slow down development and make it more complex, but I believ
 ## Building Vertex
 
 Vertex uses CMake and VCPKG for its build system and dependency management.
-When first cloning the repository, you'll encounter some errors in headers such as "include/runtime/plugin.hh" that certain headers are not found. This is normal.
-
-Vertex automatically generates parts of the source code and other data and compiles them into the main project.
 
 As of right now, the easiest way to build Vertex is by using CLion.
 
