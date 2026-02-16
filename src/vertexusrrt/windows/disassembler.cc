@@ -732,7 +732,7 @@ namespace PluginRuntime
             return 0;
         }
 
-        cs_arch arch = (g_current_mode == DisasmMode::ARM64) ? CS_ARCH_ARM64 : CS_ARCH_X86;
+        const cs_arch arch = (g_current_mode == DisasmMode::ARM64) ? CS_ARCH_ARM64 : CS_ARCH_X86;
         const cs_insn& ins = *insn;
 
         result->address = ins.address;
@@ -808,24 +808,3 @@ namespace PluginRuntime
 
 }
 
-extern "C" VERTEX_EXPORT StatusCode VERTEX_API vertex_process_disassemble_range(std::uint64_t address, std::uint32_t size, DisassemblerResults* results)
-{
-    if (!results || size == 0)
-    {
-        return StatusCode::STATUS_ERROR_INVALID_PARAMETER;
-    }
-
-    if (!PluginRuntime::is_disassembler_initialized())
-    {
-        return StatusCode::STATUS_ERROR_INVALID_PARAMETER;
-    }
-
-    std::vector<std::uint8_t> buffer(size);
-    StatusCode status = vertex_memory_read_process(address, size, reinterpret_cast<char*>(buffer.data()));
-    if (status != StatusCode::STATUS_OK)
-    {
-        return status;
-    }
-
-    return PluginRuntime::disassemble(address, std::span<const std::uint8_t>(buffer.data(), buffer.size()), results);
-}
