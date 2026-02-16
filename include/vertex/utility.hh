@@ -38,6 +38,8 @@ namespace Vertex
         constexpr int COLUMN_WIDTH_ADDRESS = 100;
         constexpr int COLUMN_WIDTH_MODULE = 100;
         constexpr int COLUMN_WIDTH_ORDINAL = 60;
+        constexpr int INJECTOR_X_DIP = 450;
+        constexpr int INJECTOR_Y_DIP = 300;
     }
 
     namespace ApplicationAppearance
@@ -57,6 +59,7 @@ namespace Vertex
         constexpr auto* DEBUGGER = "DebuggerViewModel";
         constexpr auto* POINTERSCAN = "PointerScanViewModel";
         constexpr auto* POINTERSCAN_MEMORYATTRIBUTES = "PointerScanMemoryAttributesViewModel";
+        constexpr auto* INJECTOR = "InjectorViewModel";
     }
 
     enum class ViewUpdateFlags : unsigned int
@@ -115,6 +118,7 @@ namespace Vertex
             ID_DEBUGGER,
             ID_HELP_ABOUT,
             ID_ANALYTICS,
+            ID_INJECTOR,
         };
     }
 
