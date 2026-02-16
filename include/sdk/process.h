@@ -17,7 +17,6 @@ extern "C" {
 // ===============================================================================================================//
 // PROCESS CONSTANTS                                                                                              //
 // ===============================================================================================================//
-
 #if defined(_WIN32) || defined(_WIN64)
     // Windows also supports lengths up to 32767 bytes, but for compatibility reasons
     // we go down to 260 which was used prior to the new limit introduction.
@@ -37,6 +36,8 @@ extern "C" {
     #define VERTEX_MAX_NAME_LENGTH 255
     #define VERTEX_MAX_OWNER_LENGTH 32
 #endif
+
+#define VERTEX_MAX_DESCRIPTION_LENGTH 1024
 
 // ===============================================================================================================//
 // PROCESS STRUCTURES                                                                                             //
@@ -60,6 +61,7 @@ typedef struct VertexModuleInformation
 typedef struct VertexInjectionMethod
 {
     char methodName[VERTEX_MAX_NAME_LENGTH];
+    char description[VERTEX_MAX_DESCRIPTION_LENGTH];
     StatusCode(VERTEX_API* injectableFunction)(const char* path);
 } InjectionMethod;
 
