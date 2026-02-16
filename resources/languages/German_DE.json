@@ -131,7 +131,9 @@
       "settings": "Einstellungen",
       "settingsDescription": "Öffnet das Einstellungsfenster",
       "analytics": "Analyse",
-      "analyticsDescription": "Öffnet das Analysefenster"
+      "analyticsDescription": "Öffnet das Analysefenster",
+      "injector": "Injektor",
+      "injectorDescription": "Öffnet das Injektorfenster"
     },
     "buttons": {
       "initialScan": "Erster Scan",
@@ -537,6 +539,19 @@
     "dialog": {
       "enterAddressHex": "Adresse eingeben (hex):",
       "gotoAddressTitle": "Gehe zu Adresse"
+    }
+  },
+  "injectorView": {
+    "ui": {
+      "title": "Injektor",
+      "methodLabel": "Injektionsmethode:",
+      "descriptionLabel": "Beschreibung:",
+      "inject": "Injizieren",
+      "selectLibrary": "Bibliothek zum Injizieren auswählen",
+      "libraryFiles": "Bibliotheksdateien",
+      "allFiles": "Alle Dateien",
+      "injectionSuccess": "Bibliothek erfolgreich injiziert.",
+      "injectionFailed": "Injektion der Bibliothek fehlgeschlagen."
     }
   }
 }

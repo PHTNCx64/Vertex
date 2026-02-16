@@ -131,7 +131,9 @@
       "settings": "Parametrat",
       "settingsDescription": "Hap dritaren e parametrave",
       "analytics": "Analitika",
-      "analyticsDescription": "Hap dritaren e analitikës"
+      "analyticsDescription": "Hap dritaren e analitikës",
+      "injector": "Injektori",
+      "injectorDescription": "Hap dritaren e injektorit"
     },
     "buttons": {
       "initialScan": "Skanimi Fillestar",
@@ -547,6 +549,19 @@
     "dialog": {
       "enterAddressHex": "Fut adresën (hex):",
       "gotoAddressTitle": "Shko te Adresa"
+    }
+  },
+  "injectorView": {
+    "ui": {
+      "title": "Injektori",
+      "methodLabel": "Metoda e Injektimit:",
+      "descriptionLabel": "Përshkrimi:",
+      "inject": "Injekto",
+      "selectLibrary": "Zgjedh Bibliotekën për Injektim",
+      "libraryFiles": "Skedarë Biblioteke",
+      "allFiles": "Gjith Skedarët",
+      "injectionSuccess": "Biblioteka u injektue me sukses.",
+      "injectionFailed": "Injektimi i bibliotekës deshtoi."
     }
   }
 }
