@@ -92,11 +92,12 @@ extern "C" {
     VERTEX_EXPORT StatusCode VERTEX_API vertex_process_open(uint32_t process_id);
     VERTEX_EXPORT StatusCode VERTEX_API vertex_process_close();
     VERTEX_EXPORT StatusCode VERTEX_API vertex_process_kill();
-    VERTEX_EXPORT StatusCode VERTEX_API vertex_process_get_extensions(char** extensions, uint32_t* count);
+    VERTEX_EXPORT StatusCode VERTEX_API vertex_process_get_executable_extensions(char** extensions, uint32_t* count);
+    VERTEX_EXPORT StatusCode VERTEX_API vertex_process_get_library_extensions(char** extensions, uint32_t* count);
     VERTEX_EXPORT StatusCode VERTEX_API vertex_process_open_new(const char* process_path, const char* argv);
     VERTEX_EXPORT StatusCode VERTEX_API vertex_process_get_list(ProcessInformation** list, uint32_t* count);
     VERTEX_EXPORT StatusCode VERTEX_API vertex_process_get_modules_list(ModuleInformation** list, uint32_t* count);
-    VERTEX_EXPORT StatusCode VERTEX_API vertex_process_get_injection_methods(InjectionMethod** methods);
+    VERTEX_EXPORT StatusCode VERTEX_API vertex_process_get_injection_methods(InjectionMethod** methods, uint32_t* count);
     VERTEX_EXPORT StatusCode VERTEX_API vertex_process_is_valid();
 
     // Module Import/Export Resolution API
@@ -158,7 +159,7 @@ extern "C" {
     VERTEX_EXPORT StatusCode VERTEX_API vertex_debugger_reset_watchpoint_hit_count(uint32_t watchpointId);
 
     VERTEX_EXPORT StatusCode VERTEX_API vertex_debugger_get_threads(ThreadList* threadList);
-    VERTEX_EXPORT StatusCode VERTEX_API vertex_debugger_get_current_thread(const uint32_t* threadId);
+    VERTEX_EXPORT StatusCode VERTEX_API vertex_debugger_get_current_thread(uint32_t* threadId);
     VERTEX_EXPORT StatusCode VERTEX_API vertex_debugger_thread_priority_value_to_string(int32_t priority, char** out, size_t* outSize);
     VERTEX_EXPORT StatusCode VERTEX_API vertex_debugger_suspend_thread(uint32_t threadId);
     VERTEX_EXPORT StatusCode VERTEX_API vertex_debugger_resume_thread(uint32_t threadId);
