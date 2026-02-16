@@ -6,7 +6,8 @@ EXPORTS
     vertex_process_open
     vertex_process_close
     vertex_process_kill
-    vertex_process_get_extensions
+    vertex_process_get_executable_extensions
+    vertex_process_get_library_extensions
     vertex_process_open_new
     vertex_process_get_list
     vertex_process_get_modules_list
