@@ -13,6 +13,8 @@ set(SOURCES
     ${CMAKE_SOURCE_DIR}/include/vertexusrrt/debugloopcontext.hh
     ${CMAKE_SOURCE_DIR}/include/vertexusrrt/disassembler.hh
     ${CMAKE_SOURCE_DIR}/include/vertexusrrt/native_handle.hh
+    ${CMAKE_SOURCE_DIR}/include/vertexusrrt/process_internal.hh
+    ${CMAKE_SOURCE_DIR}/include/vertexusrrt/memory_internal.hh
     ${CMAKE_SOURCE_DIR}/include/sdk/memory.h
     ${CMAKE_SOURCE_DIR}/include/sdk/api.h
 )
@@ -22,12 +24,46 @@ set(SOURCES
 #-----------------------------
 if(WIN32)
     list(APPEND SOURCES
-            windows/memory.cc
-            windows/events.cc
+            windows/event/event_helpers.cc
+            windows/event/process_opened.cc
+            windows/event/debugger_attached.cc
             windows/disassembler.cc
-            windows/thread.cc
-            windows/wow64.cc
-            windows/process.cc
+            windows/disassembler/disassemble_range.cc
+            windows/memory/memory_helpers.cc
+            windows/memory/read_process.cc
+            windows/memory/write_process.cc
+            windows/memory/allocate.cc
+            windows/memory/free.cc
+            windows/memory/get_pointer_size.cc
+            windows/memory/construct_attribute_filters.cc
+            windows/memory/get_min_address.cc
+            windows/memory/get_max_address.cc
+            windows/memory/change_protection.cc
+            windows/memory/query_regions.cc
+            windows/process/process_helpers.cc
+            windows/process/open.cc
+            windows/process/close.cc
+            windows/process/kill.cc
+            windows/process/is_valid.cc
+            windows/process/open_new.cc
+            windows/process/get_executable_extensions.cc
+            windows/process/get_list.cc
+            windows/process/get_modules_list.cc
+            windows/process/get_injection_methods.cc
+            windows/process/get_module_imports.cc
+            windows/process/get_module_exports.cc
+            windows/thread/thread_helpers.cc
+            windows/thread/get_threads.cc
+            windows/thread/get_current_thread.cc
+            windows/thread/suspend_thread.cc
+            windows/thread/resume_thread.cc
+            windows/thread/get_registers.cc
+            windows/thread/get_call_stack.cc
+            windows/thread/get_exception_info.cc
+            windows/thread/read_register.cc
+            windows/thread/write_register.cc
+            windows/thread/priority_value_to_string.cc
+            windows/wow64/architecture_detection.cc
             windows/debugger/debuggerstate.cc
             windows/debugger/debugloop.cc
             windows/debugger/helpers/debughelpers.cc
@@ -51,6 +87,10 @@ if(WIN32)
             windows/debugger/breakpoints/hardware_breakpoints.cc
             windows/debugger/breakpoints/watchpoints.cc
             windows/debugger/breakpoints/breakpoint_api.cc
+            windows/process/injector/detect_dll_arch.cc
+            windows/process/get_library_extensions.cc
+            windows/process/injector/remote_thread.cc
+            windows/process/injector/manual_map.cc
             vertexusrrt.def
     )
 elseif(APPLE)

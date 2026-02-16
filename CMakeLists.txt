@@ -249,7 +249,7 @@ if(BUILD_TESTING)
     # Collect all test files
     file(GLOB_RECURSE TEST_SOURCES CONFIGURE_DEPENDS "tests/**/*.cc" "tests/**/*.hh")
 
-    # Reuse production sources (exclude main.cc AND GUI files for tests)
+    # Reuse production sources (exclude main.cc AND GUI files for test)
     set(VERTEX_TEST_SOURCES ${VERTEX_SOURCES}
             include/vertexusrrt/util.hh)
     list(FILTER VERTEX_TEST_SOURCES EXCLUDE REGEX ".*/main\\.cc$")
@@ -297,6 +297,13 @@ add_subdirectory(src/vertexusrrt)
 add_dependencies(Vertex vertexusrrt)
 
 #-----------------------------
+#  Test Library (separate DLL)
+#-----------------------------
+add_subdirectory(src/libtest)
+
+add_dependencies(Vertex libtest)
+
+#-----------------------------
 #  Resource Copying (Post-Build)
 #-----------------------------
 set(RESOURCE_COPY_SCRIPT "${CMAKE_SOURCE_DIR}/cmake/res_to_out.cmake")
@@ -322,12 +329,27 @@ add_custom_command(TARGET Vertex POST_BUILD
         COMMENT "Copying vertexusrrt plugin to Plugins folder"
 )
 
+# Copy libtest DLL
+add_custom_command(TARGET Vertex POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                $<TARGET_FILE:libtest>
+                "${OUTPUT_DIR}/Plugins/"
+        COMMENT "Copying libtest DLL to Plugins folder"
+)
+
 if(WIN32 AND MSVC)
     add_custom_command(TARGET Vertex POST_BUILD
             COMMAND ${CMAKE_COMMAND} -E copy_if_different
                     $<TARGET_PDB_FILE:vertexusrrt>
                     "${OUTPUT_DIR}/Plugins/"
             COMMENT "Copying vertexusrrt debug symbols to Plugins folder"
+    )
+
+    add_custom_command(TARGET Vertex POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                    $<TARGET_PDB_FILE:libtest>
+                    "${OUTPUT_DIR}/Plugins/"
+            COMMENT "Copying libtest debug symbols to Plugins folder"
     )
 endif()
 
