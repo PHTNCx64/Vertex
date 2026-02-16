@@ -85,6 +85,9 @@ namespace Vertex::View
         m_auiToolBar->AddTool(StandardMenuIds::MainViewIds::ID_ANALYTICS, wxString::FromUTF8(m_languageService.fetch_translation("mainWindow.toolbar.analytics")),
                               m_iconManager.get_icon("analytics", FromDIP(StandardWidgetValues::ICON_SIZE), theme),
                               wxString::FromUTF8(m_languageService.fetch_translation("mainWindow.toolbar.analyticsDescription")));
+        m_auiToolBar->AddTool(StandardMenuIds::MainViewIds::ID_INJECTOR, wxString::FromUTF8(m_languageService.fetch_translation("mainWindow.toolbar.injector")),
+                              m_iconManager.get_icon("injector", FromDIP(StandardWidgetValues::ICON_SIZE), theme),
+                              wxString::FromUTF8(m_languageService.fetch_translation("mainWindow.toolbar.injectorDescription")));
         m_auiToolBar->Realize();
 
         m_scannedValuesAndScanOptionsSizer = new wxFlexGridSizer(1, 2, StandardWidgetValues::STANDARD_BORDER, StandardWidgetValues::STANDARD_BORDER);
@@ -306,6 +309,14 @@ namespace Vertex::View
           },
           StandardMenuIds::MainViewIds::ID_DEBUGGER);
 
+        m_auiToolBar->Bind(
+            wxEVT_MENU,
+            [this](wxCommandEvent&)
+            {
+                m_viewModel->open_injector_window();
+            },
+            StandardMenuIds::MainViewIds::ID_INJECTOR);
+
         m_auiToolBar->Bind(wxEVT_MENU, &MainView::on_activity_clicked, this, StandardMenuIds::MainViewIds::ID_ANALYTICS);
 
         m_auiToolBar->Bind(
@@ -318,7 +329,11 @@ namespace Vertex::View
               std::string extensionFilter{};
               if (!extensions.empty())
               {
-                  auto wildcarded = extensions | std::views::transform([](const std::string& ext) { return "*" + ext; });
+                  auto wildcarded = extensions | std::views::transform(
+                                                   [](const std::string& ext)
+                                                   {
+                                                       return "*" + ext;
+                                                   });
                   extensionFilter = fmt::format("Executable files|{}|All files|*.*", fmt::join(wildcarded, ";"));
               }
               else
@@ -332,7 +347,7 @@ namespace Vertex::View
               if (fileDialog.ShowModal() == wxID_OK)
               {
                   // TODO: Setup project file structures and do the handling here!!!
-                 [[maybe_unused]] wxString path = fileDialog.GetPath();
+                  [[maybe_unused]] wxString path = fileDialog.GetPath();
               }
           },
           StandardMenuIds::MainViewIds::ID_NEW_PROCESS);
@@ -602,25 +617,13 @@ namespace Vertex::View
         m_scanProgressTimer->Start();
     }
 
-    void MainView::on_undo_scan_clicked([[maybe_unused]] wxCommandEvent& event)
-    {
-        m_viewModel->undo_scan();
-    }
+    void MainView::on_undo_scan_clicked([[maybe_unused]] wxCommandEvent& event) { m_viewModel->undo_scan(); }
 
-    void MainView::on_value_input_changed([[maybe_unused]] wxCommandEvent& event)
-    {
-        m_viewModel->set_value_input(m_valueInputTextControl->GetValue().ToStdString());
-    }
+    void MainView::on_value_input_changed([[maybe_unused]] wxCommandEvent& event) { m_viewModel->set_value_input(m_valueInputTextControl->GetValue().ToStdString()); }
 
-    void MainView::on_value_input2_changed([[maybe_unused]] wxCommandEvent& event)
-    {
-        m_viewModel->set_value_input2(m_valueInputTextControl2->GetValue().ToStdString());
-    }
+    void MainView::on_value_input2_changed([[maybe_unused]] wxCommandEvent& event) { m_viewModel->set_value_input2(m_valueInputTextControl2->GetValue().ToStdString()); }
 
-    void MainView::on_hexadecimal_changed([[maybe_unused]] wxCommandEvent& event)
-    {
-        m_viewModel->set_hexadecimal(m_hexadecimalValueCheckBox->GetValue());
-    }
+    void MainView::on_hexadecimal_changed([[maybe_unused]] wxCommandEvent& event) { m_viewModel->set_hexadecimal(m_hexadecimalValueCheckBox->GetValue()); }
 
     void MainView::on_value_type_changed([[maybe_unused]] wxCommandEvent& event)
     {
@@ -635,45 +638,21 @@ namespace Vertex::View
         update_input_visibility_based_on_scan_type(selection);
     }
 
-    void MainView::on_endianness_type_changed([[maybe_unused]] wxCommandEvent& event)
-    {
-        m_viewModel->set_endianness_type_index(m_endiannessTypeComboBox->GetSelection());
-    }
+    void MainView::on_endianness_type_changed([[maybe_unused]] wxCommandEvent& event) { m_viewModel->set_endianness_type_index(m_endiannessTypeComboBox->GetSelection()); }
 
-    void MainView::on_alignment_enabled_changed([[maybe_unused]] wxCommandEvent& event)
-    {
-        m_viewModel->set_alignment_enabled(m_alignmentCheckBox->GetValue());
-    }
+    void MainView::on_alignment_enabled_changed([[maybe_unused]] wxCommandEvent& event) { m_viewModel->set_alignment_enabled(m_alignmentCheckBox->GetValue()); }
 
-    void MainView::on_alignment_value_changed([[maybe_unused]] wxSpinEvent& event)
-    {
-        m_viewModel->set_alignment_value(m_alignmentValue->GetValue());
-    }
+    void MainView::on_alignment_value_changed([[maybe_unused]] wxSpinEvent& event) { m_viewModel->set_alignment_value(m_alignmentValue->GetValue()); }
 
-    void MainView::on_add_address_manually_clicked([[maybe_unused]] wxCommandEvent& event)
-    {
-        m_viewModel->add_address_manually();
-    }
+    void MainView::on_add_address_manually_clicked([[maybe_unused]] wxCommandEvent& event) { m_viewModel->add_address_manually(); }
 
-    void MainView::on_memory_region_settings_clicked([[maybe_unused]] wxCommandEvent& event)
-    {
-        m_viewModel->open_memory_region_settings();
-    }
+    void MainView::on_memory_region_settings_clicked([[maybe_unused]] wxCommandEvent& event) { m_viewModel->open_memory_region_settings(); }
 
-    void MainView::on_open_project([[maybe_unused]] wxCommandEvent& event)
-    {
-        m_viewModel->open_project();
-    }
+    void MainView::on_open_project([[maybe_unused]] wxCommandEvent& event) { m_viewModel->open_project(); }
 
-    void MainView::on_exit([[maybe_unused]] wxCommandEvent& event)
-    {
-        m_viewModel->exit_application();
-    }
+    void MainView::on_exit([[maybe_unused]] wxCommandEvent& event) { m_viewModel->exit_application(); }
 
-    void MainView::on_activity_clicked([[maybe_unused]] wxCommandEvent& event)
-    {
-        m_viewModel->open_activity_window();
-    }
+    void MainView::on_activity_clicked([[maybe_unused]] wxCommandEvent& event) { m_viewModel->open_activity_window(); }
 
     void MainView::on_process_validity_check([[maybe_unused]] wxTimerEvent& event)
     {
@@ -764,4 +743,4 @@ namespace Vertex::View
             m_savedAddressesPanel->set_find_access_callback(std::move(callback));
         }
     }
-}
+} // namespace Vertex::View
