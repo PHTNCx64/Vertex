@@ -198,7 +198,7 @@ namespace Vertex::Model
     {
         if (!m_memoryService.has_memory_reader())
         {
-            auto reader = std::make_shared<Scanner::PluginMemoryReader>(m_loaderService);
+            const auto reader = std::make_shared<Scanner::PluginMemoryReader>(m_loaderService);
             m_memoryService.set_memory_reader(reader);
         }
     }
