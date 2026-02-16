@@ -49,6 +49,7 @@ bool VertexApp::OnInit()
     std::ignore = factory.create_memoryattributeview();
     std::ignore = factory.create_pointerscan_memoryattributeview();
     std::ignore = factory.create_analyticsview();
+    std::ignore = factory.create_injectorview();
 
     auto* debuggerView = factory.create_debuggerview();
 
