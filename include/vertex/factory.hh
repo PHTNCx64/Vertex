@@ -10,6 +10,7 @@
 #include <vertex/view/analyticsview.hh>
 #include <vertex/view/settingsview.hh>
 #include <vertex/view/debuggerview.hh>
+#include <vertex/view/injectorview.hh>
 #include <vertex/viewmodel/mainviewmodel.hh>
 #include <vertex/configuration/isettings.hh>
 #include <vertex/configuration/ipluginconfig.hh>
@@ -53,6 +54,7 @@ namespace Vertex
         [[nodiscard]] View::AnalyticsView* create_analyticsview(std::string_view name = ViewModelName::ANALYTICS) const;
         [[nodiscard]] View::DebuggerView* create_debuggerview(std::string_view name = ViewModelName::DEBUGGER) const;
         [[nodiscard]] View::MemoryAttributeView* create_pointerscan_memoryattributeview(std::string_view name = ViewModelName::POINTERSCAN_MEMORYATTRIBUTES) const;
+        [[nodiscard]] View::InjectorView* create_injectorview(std::string_view name = ViewModelName::INJECTOR) const;
 
     private:
         Event::EventBus& m_eventBus;

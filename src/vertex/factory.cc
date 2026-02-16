@@ -54,4 +54,11 @@ namespace Vertex
         auto viewModel = std::make_unique<ViewModel::MemoryAttributeViewModel>(std::move(model), m_eventBus, std::string{name}, false);
         return new View::MemoryAttributeView(std::move(viewModel), m_languageService);
     }
+
+    View::InjectorView* ViewFactory::create_injectorview(const std::string_view name) const
+    {
+        auto model = std::make_unique<Model::InjectorModel>(m_loaderService, m_loggerService);
+        auto viewModel = std::make_unique<ViewModel::InjectorViewModel>(std::move(model), m_eventBus, m_loggerService, std::string{name});
+        return new View::InjectorView(m_languageService, std::move(viewModel));
+    }
 }
