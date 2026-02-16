@@ -345,6 +345,12 @@ namespace Vertex::ViewModel
         m_eventBus.broadcast_to(ViewModelName::DEBUGGER, event);
     }
 
+    void MainViewModel::open_injector_window() const
+    {
+        const Event::ViewEvent event{Event::VIEW_EVENT};
+        m_eventBus.broadcast_to(ViewModelName::INJECTOR, event);
+    }
+
     void MainViewModel::close_process_state()
     {
         m_isInitialScanAvailable = false;

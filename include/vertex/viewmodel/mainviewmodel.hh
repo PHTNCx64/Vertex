@@ -83,6 +83,7 @@ namespace Vertex::ViewModel
         void close_process_state();
         void open_activity_window() const;
         void open_debugger_window() const;
+        void open_injector_window() const;
         void get_file_executable_extensions(std::vector<std::string>& extensions) const;
 
         void set_process_information(std::string_view informationText);
