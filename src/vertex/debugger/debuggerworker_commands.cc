@@ -105,7 +105,7 @@ namespace Vertex::Debugger
               }
               else if constexpr (std::is_same_v<T, CmdShutdown>)
               {
-                  stop();
+                  std::ignore = stop();
               }
           },
           cmd);
