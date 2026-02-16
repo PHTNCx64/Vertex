@@ -327,7 +327,7 @@ namespace Vertex::Model
 
         const auto& plugin = m_loaderService.get_active_plugin().value().get();
         std::uint32_t count = 0;
-        const auto countResult = Runtime::safe_call(plugin.internal_vertex_process_get_extensions, nullptr, &count);
+        const auto countResult = Runtime::safe_call(plugin.internal_vertex_process_get_executable_extensions, nullptr, &count);
         const auto status = Runtime::get_status(countResult);
         if (status == StatusCode::STATUS_ERROR_FUNCTION_NOT_FOUND)
         {
@@ -341,7 +341,7 @@ namespace Vertex::Model
         }
 
         std::vector<char*> ext_ptrs(count, nullptr);
-        const auto extResult = Runtime::safe_call(plugin.internal_vertex_process_get_extensions, ext_ptrs.data(), &count);
+        const auto extResult = Runtime::safe_call(plugin.internal_vertex_process_get_executable_extensions, ext_ptrs.data(), &count);
         const auto extStatus = Runtime::get_status(extResult);
         if (extStatus == StatusCode::STATUS_ERROR_FUNCTION_NOT_FOUND)
         {
