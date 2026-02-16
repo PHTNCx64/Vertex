@@ -29,7 +29,7 @@ namespace Vertex::View
         std::string copyright{"Copyright (c) 2025-2026"};
         std::string description{"Open Source Dynamic Software Reverse Engineering Suite."};
         std::string website{"https://github.com/PHTNCx64/Vertex"};
-        std::string license{"AGPLv3 License"};
+        std::string license{"GPLv3 License"};
 
         struct CreditEntry final
         {
