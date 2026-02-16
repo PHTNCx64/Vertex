@@ -8,12 +8,10 @@
 #include <vertexusrrt/native_handle.hh>
 #include <vertexusrrt/disassembler.hh>
 
-#include <algorithm>
 #include <string>
-#include <vector>
 
 native_handle& get_native_handle();
-void clear_module_cache();
+extern "C" void clear_module_cache();
 Runtime* g_pluginRuntime = nullptr;
 
 extern StatusCode handle_process_opened(const ProcessEventData* eventData);
@@ -41,11 +39,11 @@ extern "C" VERTEX_EXPORT StatusCode VERTEX_API vertex_init(PluginInformation* pl
     *pluginInfo = g_pluginInformation;
     g_pluginRuntime = runtime;
 
-    const StatusCode disasm_status = PluginRuntime::init_disassembler(PluginRuntime::DisasmMode::X86_64);
-    if (disasm_status != StatusCode::STATUS_OK)
+    const StatusCode disasmStatus = PluginRuntime::init_disassembler(PluginRuntime::DisasmMode::X86_64);
+    if (disasmStatus != StatusCode::STATUS_OK)
     {
         const char* errMsg = PluginRuntime::get_last_disassembler_error();
-        g_pluginRuntime->vertex_log_error(("Failed to initialize disassembler (Capstone): " + std::string(errMsg ? errMsg : "unknown error")).c_str());
+        g_pluginRuntime->vertex_log_error("Failed to initialize disassembler (Capstone): %s", errMsg ? errMsg : "unknown error");
     }
     else
     {
