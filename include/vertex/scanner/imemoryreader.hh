@@ -15,7 +15,5 @@ namespace Vertex::Scanner
         virtual ~IMemoryReader() = default;
 
         virtual StatusCode read_memory(std::uint64_t address, std::uint64_t size, void* buffer) = 0;
-
-        [[nodiscard]] virtual bool is_valid() const = 0;
     };
 } // namespace Vertex::Scanner
