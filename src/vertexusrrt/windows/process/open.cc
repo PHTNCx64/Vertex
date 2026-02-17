@@ -9,10 +9,10 @@ extern StatusCode vertex_process_close();
 
 extern "C"
 {
-    VERTEX_EXPORT StatusCode VERTEX_API vertex_process_open(const uint32_t process_id)
+    VERTEX_EXPORT StatusCode VERTEX_API vertex_process_open(const uint32_t processId)
     {
         native_handle& handle = get_native_handle();
-        handle = OpenProcess(PROCESS_ALL_ACCESS, FALSE, process_id);
+        handle = OpenProcess(PROCESS_ALL_ACCESS, FALSE, processId);
         if (handle == INVALID_HANDLE_VALUE)
         {
             return StatusCode::STATUS_ERROR_PROCESS_INVALID;
@@ -41,7 +41,7 @@ extern "C"
 
         ProcessInformation* info = ProcessInternal::opened_process_info();
 
-        info->processId = process_id;
+        info->processId = processId;
         const auto proc_name_cpp_str = ProcessInternal::wchar_to_utf8(proc_name);
         if (!proc_name_cpp_str)
         {
