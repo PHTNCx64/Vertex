@@ -36,12 +36,13 @@ bool VertexApp::OnInit()
     auto& pluginConfig = m_injector->create<Vertex::Configuration::IPluginConfig&>();
     auto& scanner = m_injector->create<Vertex::Scanner::IMemoryScanner&>();
     auto& eventBus = m_injector->create<Vertex::Event::EventBus&>();
+    auto& dispatcher = m_injector->create<Vertex::Thread::IThreadDispatcher&>();
 
     apply_language_settings();
     apply_plugin_settings();
     apply_appearance_settings();
 
-    const Vertex::ViewFactory factory { eventBus, loader, log, language, iconManager, settings, pluginConfig, scanner };
+    const Vertex::ViewFactory factory { eventBus, loader, log, language, iconManager, settings, pluginConfig, scanner, dispatcher };
     auto* mainView = factory.create_mainview(ApplicationName " " ApplicationVersion " by " ApplicationVendor);
 
     std::ignore = factory.create_processlistview();
