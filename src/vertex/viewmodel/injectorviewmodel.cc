@@ -43,9 +43,9 @@ namespace Vertex::ViewModel
         m_eventBus.unsubscribe(m_viewModelName, Event::VIEW_EVENT);
     }
 
-    void InjectorViewModel::set_event_callback(const std::function<void(Event::EventId, const Event::VertexEvent&)>& eventCallback)
+    void InjectorViewModel::set_event_callback(std::move_only_function<void(Event::EventId, const Event::VertexEvent&) const> eventCallback)
     {
-        m_eventCallback = eventCallback;
+        m_eventCallback = std::move(eventCallback);
     }
 
     const std::vector<InjectionMethod>& InjectorViewModel::get_injection_methods() const noexcept

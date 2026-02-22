@@ -31,7 +31,7 @@ namespace Vertex::ViewModel
 
         ~InjectorViewModel();
 
-        void set_event_callback(const std::function<void(Event::EventId, const Event::VertexEvent&)>& eventCallback);
+        void set_event_callback(std::move_only_function<void(Event::EventId, const Event::VertexEvent&) const> eventCallback);
 
         [[nodiscard]] const std::vector<InjectionMethod>& get_injection_methods() const noexcept;
         [[nodiscard]] const std::vector<std::string>& get_library_extensions() const noexcept;
@@ -51,7 +51,7 @@ namespace Vertex::ViewModel
 
         std::string m_viewModelName {};
         std::unique_ptr<Model::InjectorModel> m_model {};
-        std::function<void(Event::EventId, const Event::VertexEvent&)> m_eventCallback {};
+        std::move_only_function<void(Event::EventId, const Event::VertexEvent&) const> m_eventCallback {};
 
         Event::EventBus& m_eventBus;
         Log::ILog& m_logService;
