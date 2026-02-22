@@ -8,6 +8,7 @@
 #include <sdk/debugger.h>
 #include <vertex/runtime/iloader.hh>
 #include <vertex/debugger/debuggertypes.hh>
+#include <vertex/thread/ithreaddispatcher.hh>
 
 #include <atomic>
 #include <condition_variable>
@@ -101,7 +102,7 @@ namespace Vertex::Debugger
     class DebuggerWorker final
     {
     public:
-        explicit DebuggerWorker(Runtime::ILoader& loaderService);
+        explicit DebuggerWorker(Runtime::ILoader& loaderService, Thread::IThreadDispatcher& dispatcher);
         ~DebuggerWorker();
 
         DebuggerWorker(const DebuggerWorker&) = delete;
@@ -138,9 +139,11 @@ namespace Vertex::Debugger
         [[nodiscard]] Runtime::Plugin* get_plugin() const;
 
         [[nodiscard]] bool is_valid_command_for_state(const DebuggerCommand& cmd) const;
+        [[nodiscard]] StatusCode execute_command(Runtime::Plugin* plugin, const DebuggerCommand& cmd);
         void wait_for_callbacks_to_drain();
 
         Runtime::ILoader& m_loaderService;
+        Thread::IThreadDispatcher& m_dispatcher;
 
         std::atomic<bool> m_isRunning {};
         std::atomic<DebuggerState> m_state {DebuggerState::Detached};

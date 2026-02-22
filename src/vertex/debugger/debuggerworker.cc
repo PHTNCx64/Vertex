@@ -127,8 +127,9 @@ namespace Vertex::Debugger
         }
     }
 
-    DebuggerWorker::DebuggerWorker(Runtime::ILoader& loaderService)
-        : m_loaderService(loaderService)
+    DebuggerWorker::DebuggerWorker(Runtime::ILoader& loaderService, Thread::IThreadDispatcher& dispatcher)
+        : m_loaderService(loaderService),
+          m_dispatcher(dispatcher)
     {
     }
 
