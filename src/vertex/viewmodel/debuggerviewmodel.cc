@@ -17,10 +17,10 @@
 namespace Vertex::ViewModel
 {
     DebuggerViewModel::DebuggerViewModel(std::unique_ptr<Model::DebuggerModel> model, Event::EventBus& eventBus, Log::ILog& logService, std::string name)
-        : m_viewModelName(std::move(name)),
-          m_model(std::move(model)),
-          m_eventBus(eventBus),
-          m_logService(logService)
+        : m_viewModelName{std::move(name)},
+          m_model{std::move(model)},
+          m_eventBus{eventBus},
+          m_logService{logService}
     {
         subscribe_to_events();
 
@@ -115,7 +115,7 @@ namespace Vertex::ViewModel
 
     void DebuggerViewModel::unsubscribe_from_events() const { m_eventBus.unsubscribe_all(m_viewModelName); }
 
-    void DebuggerViewModel::set_event_callback(const std::function<void(Event::EventId, const Event::VertexEvent&)>& callback) { m_eventCallback = callback; }
+    void DebuggerViewModel::set_event_callback(std::move_only_function<void(Event::EventId, const Event::VertexEvent&) const> callback) { m_eventCallback = std::move(callback); }
 
     void DebuggerViewModel::notify_view_update(const ViewUpdateFlags flags) const
     {
