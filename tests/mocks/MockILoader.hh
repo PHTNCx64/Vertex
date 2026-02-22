@@ -8,6 +8,7 @@
 #include <vertex/runtime/iloader.hh>
 #include <sdk/event.h>
 #include "MockIRegistry.hh"
+#include "MockIUIRegistry.hh"
 
 namespace Vertex::Testing::Mocks
 {
@@ -32,13 +33,18 @@ namespace Vertex::Testing::Mocks
         Runtime::IRegistry& get_registry() override { return m_mockRegistry; }
         const Runtime::IRegistry& get_registry() const override { return m_mockRegistry; }
 
+        Runtime::IUIRegistry& get_ui_registry() override { return m_mockUIRegistry; }
+        const Runtime::IUIRegistry& get_ui_registry() const override { return m_mockUIRegistry; }
+
         // Event dispatching
         MOCK_METHOD(StatusCode, dispatch_event, (VertexEvent event, const void* data), (override));
 
-        // Expose mock registry for test setup
+        // Expose mock registries for test setup
         MockIRegistry& mock_registry() { return m_mockRegistry; }
+        MockIUIRegistry& mock_ui_registry() { return m_mockUIRegistry; }
 
     private:
         MockIRegistry m_mockRegistry;
+        MockIUIRegistry m_mockUIRegistry;
     };
 } // namespace Vertex::Testing::Mocks

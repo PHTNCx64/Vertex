@@ -4,6 +4,7 @@
 #include <vertex/scanner/imemoryreader.hh>
 #include "../../mocks/MockISettings.hh"
 #include "../../mocks/MockILog.hh"
+#include "../../mocks/MockIThreadDispatcher.hh"
 
 using ::testing::_;
 using ::testing::NiceMock;
@@ -15,7 +16,6 @@ namespace
     {
     public:
         MOCK_METHOD(StatusCode, read_memory, (std::uint64_t address, std::uint64_t size, void* buffer), (override));
-        MOCK_METHOD(bool, is_valid, (), (const, override));
     };
 }
 
@@ -26,17 +26,23 @@ class MemoryScannerTest : public ::testing::Test
     {
         mockSettings = std::make_unique<NiceMock<Vertex::Testing::Mocks::MockISettings>>();
         mockLog = std::make_unique<NiceMock<Vertex::Testing::Mocks::MockILog>>();
+        mockDispatcher = std::make_unique<NiceMock<Vertex::Testing::Mocks::MockIThreadDispatcher>>();
 
         ON_CALL(*mockSettings, get_int(::testing::HasSubstr("readerThreads"), _)).WillByDefault(Return(2));
         ON_CALL(*mockSettings, get_int(::testing::HasSubstr("threadBufferSizeMB"), _)).WillByDefault(Return(32));
+        ON_CALL(*mockDispatcher, is_single_threaded()).WillByDefault(Return(false));
+        ON_CALL(*mockDispatcher, create_worker_pool(_, _)).WillByDefault(Return(StatusCode::STATUS_OK));
+        ON_CALL(*mockDispatcher, destroy_worker_pool(_)).WillByDefault(Return(StatusCode::STATUS_OK));
+        ON_CALL(*mockDispatcher, enqueue_on_worker(_, _, _)).WillByDefault(Return(StatusCode::STATUS_OK));
 
-        scanner = std::make_unique<Vertex::Scanner::MemoryScanner>(*mockSettings, *mockLog);
+        scanner = std::make_unique<Vertex::Scanner::MemoryScanner>(*mockSettings, *mockLog, *mockDispatcher);
     }
 
     void TearDown() override { scanner->stop_scan(); }
 
     std::unique_ptr<NiceMock<Vertex::Testing::Mocks::MockISettings>> mockSettings;
     std::unique_ptr<NiceMock<Vertex::Testing::Mocks::MockILog>> mockLog;
+    std::unique_ptr<NiceMock<Vertex::Testing::Mocks::MockIThreadDispatcher>> mockDispatcher;
     std::unique_ptr<Vertex::Scanner::MemoryScanner> scanner;
 };
 
@@ -49,10 +55,9 @@ TEST_F(MemoryScannerTest, HasMemoryReader_NoReaderSet_ReturnsFalse)
     EXPECT_FALSE(result);
 }
 
-TEST_F(MemoryScannerTest, HasMemoryReader_ValidReaderSet_ReturnsTrue)
+TEST_F(MemoryScannerTest, HasMemoryReader_ReaderSet_ReturnsTrue)
 {
     auto mockReader = std::make_shared<NiceMock<MockMemoryReader>>();
-    ON_CALL(*mockReader, is_valid()).WillByDefault(Return(true));
 
     scanner->set_memory_reader(mockReader);
     bool result = scanner->has_memory_reader();
@@ -60,23 +65,11 @@ TEST_F(MemoryScannerTest, HasMemoryReader_ValidReaderSet_ReturnsTrue)
     EXPECT_TRUE(result);
 }
 
-TEST_F(MemoryScannerTest, HasMemoryReader_InvalidReaderSet_ReturnsFalse)
-{
-    auto mockReader = std::make_shared<NiceMock<MockMemoryReader>>();
-    ON_CALL(*mockReader, is_valid()).WillByDefault(Return(false));
-
-    scanner->set_memory_reader(mockReader);
-    bool result = scanner->has_memory_reader();
-
-    EXPECT_FALSE(result);
-}
-
 // ==================== Scan Initialization Tests ====================
 
 TEST_F(MemoryScannerTest, InitializeScan_EmptyMemoryRegions_ReturnsError)
 {
     auto mockReader = std::make_shared<NiceMock<MockMemoryReader>>();
-    ON_CALL(*mockReader, is_valid()).WillByDefault(Return(true));
     scanner->set_memory_reader(mockReader);
 
     Vertex::Scanner::ScanConfiguration config{};

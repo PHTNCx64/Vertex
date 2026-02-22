@@ -19,6 +19,7 @@ namespace Vertex::Testing::Mocks
         MOCK_METHOD(StatusCode, initialize_next_scan, (const Scanner::ScanConfiguration& configuration), (override));
         MOCK_METHOD(StatusCode, undo_scan, (), (override));
         MOCK_METHOD(StatusCode, stop_scan, (), (override));
+        MOCK_METHOD(void, finalize_scan, (), (override));
 
         // Progress and state
         MOCK_METHOD(std::uint64_t, get_regions_scanned, (), (const, noexcept, override));

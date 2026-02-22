@@ -9,6 +9,7 @@
 #include "../../mocks/MockIMemoryScanner.hh"
 #include "../../mocks/MockILoader.hh"
 #include "../../mocks/MockILog.hh"
+#include "../../mocks/MockIThreadDispatcher.hh"
 
 using ::testing::Return;
 using ::testing::_;
@@ -24,12 +25,14 @@ protected:
         mockScanner = std::make_unique<NiceMock<Vertex::Testing::Mocks::MockIMemoryScanner>>();
         mockLoader = std::make_unique<NiceMock<Vertex::Testing::Mocks::MockILoader>>();
         mockLogger = std::make_unique<NiceMock<Vertex::Testing::Mocks::MockILog>>();
+        mockDispatcher = std::make_unique<NiceMock<Vertex::Testing::Mocks::MockIThreadDispatcher>>();
 
         model = std::make_unique<Vertex::Model::MainModel>(
             *mockSettings,
             *mockScanner,
             *mockLoader,
-            *mockLogger
+            *mockLogger,
+            *mockDispatcher
         );
     }
 
@@ -41,6 +44,7 @@ protected:
     std::unique_ptr<NiceMock<Vertex::Testing::Mocks::MockIMemoryScanner>> mockScanner;
     std::unique_ptr<NiceMock<Vertex::Testing::Mocks::MockILoader>> mockLoader;
     std::unique_ptr<NiceMock<Vertex::Testing::Mocks::MockILog>> mockLogger;
+    std::unique_ptr<NiceMock<Vertex::Testing::Mocks::MockIThreadDispatcher>> mockDispatcher;
     std::unique_ptr<Vertex::Model::MainModel> model;
 };
 
