@@ -8,6 +8,7 @@
 
 #include <vertex/runtime/plugin.hh>
 #include <vertex/runtime/iregistry.hh>
+#include <vertex/runtime/iuiregistry.hh>
 
 #include <sdk/statuscode.h>
 #include <sdk/event.h>
@@ -32,6 +33,9 @@ namespace Vertex::Runtime
 
         [[nodiscard]] virtual IRegistry& get_registry() = 0;
         [[nodiscard]] virtual const IRegistry& get_registry() const = 0;
+
+        [[nodiscard]] virtual IUIRegistry& get_ui_registry() = 0;
+        [[nodiscard]] virtual const IUIRegistry& get_ui_registry() const = 0;
 
         virtual StatusCode dispatch_event(VertexEvent event, const void* data = nullptr) = 0;
     };

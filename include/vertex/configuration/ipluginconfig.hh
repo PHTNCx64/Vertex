@@ -5,9 +5,11 @@
 #pragma once
 
 #include <filesystem>
+#include <optional>
 #include <string>
 #include <vector>
 #include <sdk/statuscode.h>
+#include <sdk/ui.h>
 
 namespace Vertex::Configuration
 {
@@ -35,5 +37,9 @@ namespace Vertex::Configuration
         [[nodiscard]] virtual std::string get_current_plugin() const = 0;
 
         [[nodiscard]] virtual bool is_modified() const = 0;
+
+        virtual void set_ui_value(const std::string& panelId, const std::string& fieldId, const UIValue& value, UIFieldType type) = 0;
+        [[nodiscard]] virtual std::optional<UIValue> get_ui_value(const std::string& panelId, const std::string& fieldId, UIFieldType type) const = 0;
+        virtual void clear_ui_values(const std::string& panelId) = 0;
     };
 }
