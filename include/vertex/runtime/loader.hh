@@ -7,15 +7,17 @@
 #include <vertex/log/log.hh>
 #include <vertex/runtime/iloader.hh>
 #include <vertex/runtime/registry.hh>
+#include <vertex/runtime/uiregistry.hh>
 #include <vertex/runtime/plugin.hh>
 #include <vertex/configuration/isettings.hh>
+#include <vertex/thread/ithreaddispatcher.hh>
 
 namespace Vertex::Runtime
 {
     class Loader final : public ILoader
     {
     public:
-        Loader(Configuration::ISettings& settingsService, Log::ILog& loggerService); // NOLINT
+        Loader(Configuration::ISettings& settingsService, Log::ILog& loggerService, Thread::IThreadDispatcher& threadDispatcher); // NOLINT
         ~Loader() override;
 
         StatusCode load_plugins(std::filesystem::path& path) override;
@@ -33,15 +35,23 @@ namespace Vertex::Runtime
         [[nodiscard]] IRegistry& get_registry() override;
         [[nodiscard]] const IRegistry& get_registry() const override;
 
+        [[nodiscard]] IUIRegistry& get_ui_registry() override;
+        [[nodiscard]] const IUIRegistry& get_ui_registry() const override;
+
         StatusCode dispatch_event(VertexEvent event, const void* data = nullptr) override;
 
     private:
         [[nodiscard]] std::string status_code_to_string(StatusCode code) const;
 
+        StatusCode initialize_plugin(Plugin& plugin) const;
+
         std::vector<Plugin> m_plugins{};
         std::optional<std::reference_wrapper<Plugin>> m_activePlugin;
         Configuration::ISettings& m_settingsService;
         Log::ILog& m_loggerService;
+        Thread::IThreadDispatcher& m_threadDispatcher;
         Registry m_registry;
+        UIRegistry m_uiRegistry;
+        bool m_activePluginInitialized{};
     };
 }

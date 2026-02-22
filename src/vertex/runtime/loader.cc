@@ -4,6 +4,7 @@
 //
 #include <sdk/log.h>
 #include <sdk/registry.h>
+#include <sdk/ui.h>
 #include <vertex/runtime/loader.hh>
 
 #include "vertex/runtime/caller.hh"
@@ -20,8 +21,8 @@
 namespace Vertex::Runtime
 {
 
-    Loader::Loader(Configuration::ISettings& settingsService, Log::ILog& loggerService)
-        : m_settingsService(settingsService), m_loggerService(loggerService)
+    Loader::Loader(Configuration::ISettings& settingsService, Log::ILog& loggerService, Thread::IThreadDispatcher& threadDispatcher)
+        : m_settingsService(settingsService), m_loggerService(loggerService), m_threadDispatcher(threadDispatcher)
     {
         m_loggerService.log_info("Initializing plugin loader...");
 
@@ -248,6 +249,10 @@ namespace Vertex::Runtime
         plugin.m_runtime.vertex_register_snapshot = vertex_register_snapshot;
         plugin.m_runtime.vertex_clear_registry = vertex_clear_registry;
 
+        vertex_ui_registry_set_instance(&m_uiRegistry);
+        plugin.m_runtime.vertex_register_ui_panel = vertex_register_ui_panel;
+        plugin.m_runtime.vertex_get_ui_value = vertex_get_ui_value;
+
         m_loggerService.log_info("[Plugin Load] Resolving plugin functions...");
         const StatusCode status = resolve_functions(plugin);
 
@@ -270,8 +275,16 @@ namespace Vertex::Runtime
             return StatusCode::STATUS_ERROR_INVALID_PARAMETER;
         }
 
-        m_loggerService.log_info(fmt::format("Unloading plugin at index: {}", pluginIndex));
-        m_plugins.erase(m_plugins.begin() + pluginIndex); // NOLINT
+        auto& plugin = m_plugins[pluginIndex];
+
+        if (!plugin.is_loaded())
+        {
+            m_loggerService.log_warn(fmt::format("Plugin at index {} is not loaded", pluginIndex));
+            return StatusCode::STATUS_ERROR_PLUGIN_NOT_LOADED;
+        }
+
+        m_loggerService.log_info(fmt::format("Unloading plugin: {}", plugin.get_filename()));
+        plugin.unload();
         return StatusCode::STATUS_OK;
     }
 
@@ -311,25 +324,7 @@ namespace Vertex::Runtime
             m_loggerService.log_info(fmt::format("[Function Resolution] Successfully resolved functions. "
                 "Registry size: {}, Warnings: {}", registry.size(), resolveResult.value().size()));
 
-            m_loggerService.log_info("[Function Resolution] Calling vertex_init...");
-            const auto initResult = Runtime::safe_call(plugin.internal_vertex_init, &plugin.get_plugin_info(), &plugin.m_runtime);
-            const auto initStatus = Runtime::get_status(initResult);
-
-            if (!initResult.has_value())
-            {
-                m_loggerService.log_error("[Function Resolution] vertex_init function pointer is null");
-            }
-            else if (initStatus != StatusCode::STATUS_OK)
-            {
-                m_loggerService.log_error(fmt::format("[Function Resolution] vertex_init failed with code: {} ({})",
-                    static_cast<int>(initStatus), status_code_to_string(initStatus)));
-            }
-            else
-            {
-                m_loggerService.log_info("[Function Resolution] vertex_init completed successfully");
-            }
-
-            return initStatus;
+            return StatusCode::STATUS_OK;
         }
         catch (const LibraryError& e)
         {
@@ -450,14 +445,125 @@ namespace Vertex::Runtime
         }
 
         m_loggerService.log_info(fmt::format("Setting active plugin by index: {}", index));
-        m_activePlugin = m_plugins[index];
-        return StatusCode::STATUS_OK;
+        return set_active_plugin(m_plugins[index]);
     }
 
     StatusCode Loader::set_active_plugin(Plugin& plugin)
     {
-        m_loggerService.log_info(fmt::format("Active plugin set: {}", plugin.get_path().filename().string()));
+        const bool isSamePlugin = m_activePlugin.has_value() && &m_activePlugin->get() == &plugin;
+
+        if (isSamePlugin && m_activePluginInitialized)
+        {
+            m_loggerService.log_info(fmt::format("Plugin already active and initialized: {}", plugin.get_path().filename().string()));
+            return StatusCode::STATUS_OK;
+        }
+
+        if (m_activePlugin.has_value())
+        {
+            m_loggerService.log_info("Stopping thread dispatcher before plugin switch...");
+            const auto stopStatus = m_threadDispatcher.stop();
+            if (stopStatus != StatusCode::STATUS_OK) [[unlikely]]
+            {
+                m_loggerService.log_error(fmt::format("Failed to stop thread dispatcher (status={})", static_cast<int>(stopStatus)));
+                return stopStatus;
+            }
+        }
+
+        m_uiRegistry.clear();
         m_activePlugin = plugin;
+        m_activePluginInitialized = false;
+
+        const StatusCode initStatus = initialize_plugin(plugin);
+        if (initStatus != StatusCode::STATUS_OK)
+        {
+            m_loggerService.log_error(fmt::format("Failed to initialize plugin: {} (status={})",
+                plugin.get_path().filename().string(), static_cast<int>(initStatus)));
+            m_activePlugin.reset();
+            return initStatus;
+        }
+
+        const auto configureStatus = m_threadDispatcher.configure(plugin.get_plugin_info().featureCapability);
+        if (configureStatus != StatusCode::STATUS_OK) [[unlikely]]
+        {
+            m_loggerService.log_error(fmt::format("Failed to configure thread dispatcher for plugin: {} (status={})",
+                plugin.get_path().filename().string(), static_cast<int>(configureStatus)));
+            m_activePlugin.reset();
+            return configureStatus;
+        }
+
+        const auto startStatus = m_threadDispatcher.start();
+        if (startStatus != StatusCode::STATUS_OK) [[unlikely]]
+        {
+            m_loggerService.log_error(fmt::format("Failed to start thread dispatcher for plugin: {} (status={})",
+                plugin.get_path().filename().string(), static_cast<int>(startStatus)));
+            m_activePlugin.reset();
+            return startStatus;
+        }
+
+        if (plugin.has_feature(VERTEX_FEATURE_RUN_MODE_SINGLE_THREADED))
+        {
+            m_loggerService.log_info("[Plugin Init] Single-threaded mode detected, dispatching vertex_init to single thread...");
+
+            auto& pluginRef = plugin;
+            std::packaged_task<StatusCode()> singleThreadInit{
+                [&pluginRef]() -> StatusCode
+                {
+                    const auto result = Runtime::safe_call(
+                        pluginRef.internal_vertex_init,
+                        &pluginRef.get_plugin_info(),
+                        &pluginRef.m_runtime,
+                        true);
+                    return Runtime::get_status(result);
+                }};
+
+            auto dispatchResult = m_threadDispatcher.dispatch(Thread::ThreadChannel::Freeze, std::move(singleThreadInit));
+            if (!dispatchResult.has_value()) [[unlikely]]
+            {
+                m_loggerService.log_error(fmt::format("[Plugin Init] Failed to dispatch single-thread vertex_init (status={})",
+                    static_cast<int>(dispatchResult.error())));
+                m_activePlugin.reset();
+                return dispatchResult.error();
+            }
+
+            const auto singleThreadStatus = dispatchResult.value().get();
+            if (singleThreadStatus != StatusCode::STATUS_OK) [[unlikely]]
+            {
+                m_loggerService.log_error(fmt::format("[Plugin Init] Single-thread vertex_init failed (status={})",
+                    static_cast<int>(singleThreadStatus)));
+                m_activePlugin.reset();
+                return singleThreadStatus;
+            }
+
+            m_loggerService.log_info("[Plugin Init] Single-thread vertex_init completed successfully");
+        }
+
+        m_activePluginInitialized = true;
+        m_loggerService.log_info(fmt::format("Active plugin set: {}", plugin.get_path().filename().string()));
+        return StatusCode::STATUS_OK;
+    }
+
+    StatusCode Loader::initialize_plugin(Plugin& plugin) const
+    {
+        m_loggerService.log_info(fmt::format("[Plugin Init] Calling vertex_init for: {}", plugin.get_path().filename().string()));
+
+        const auto initResult = Runtime::safe_call(plugin.internal_vertex_init, &plugin.get_plugin_info(), &plugin.m_runtime, false);
+
+        const auto initStatus = Runtime::get_status(initResult);
+
+        if (!initResult.has_value())
+        {
+            m_loggerService.log_error("[Plugin Init] vertex_init function pointer is null");
+            return StatusCode::STATUS_ERROR_PLUGIN_RESOLVE_FAILURE;
+        }
+
+        if (initStatus != StatusCode::STATUS_OK)
+        {
+            m_loggerService.log_error(fmt::format("[Plugin Init] vertex_init failed with code: {} ({})",
+                static_cast<int>(initStatus), status_code_to_string(initStatus)));
+            return initStatus;
+        }
+
+        m_loggerService.log_info("[Plugin Init] vertex_init completed successfully");
         return StatusCode::STATUS_OK;
     }
 
@@ -501,6 +607,16 @@ namespace Vertex::Runtime
     const IRegistry& Loader::get_registry() const
     {
         return m_registry;
+    }
+
+    IUIRegistry& Loader::get_ui_registry()
+    {
+        return m_uiRegistry;
+    }
+
+    const IUIRegistry& Loader::get_ui_registry() const
+    {
+        return m_uiRegistry;
     }
 
     StatusCode Loader::dispatch_event(const VertexEvent event, const void* data)
