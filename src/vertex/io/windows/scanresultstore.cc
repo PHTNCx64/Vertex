@@ -174,6 +174,7 @@ namespace Vertex::IO
 
         if (m_dataSize == 0)
         {
+            m_writeBuffer.reset();
             m_finalized = true;
             return StatusCode::STATUS_OK;
         }
@@ -205,6 +206,7 @@ namespace Vertex::IO
             return StatusCode::STATUS_ERROR_MEMORY_ALLOCATION_FAILED;
         }
 
+        m_writeBuffer.reset();
         m_finalized = true;
         return StatusCode::STATUS_OK;
     }
