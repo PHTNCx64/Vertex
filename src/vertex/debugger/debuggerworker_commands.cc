@@ -5,6 +5,7 @@
 #include <vertex/debugger/debuggerworker.hh>
 #include <vertex/runtime/plugin.hh>
 #include <vertex/runtime/caller.hh>
+#include <vertex/thread/threadchannel.hh>
 
 namespace Vertex::Debugger
 {
@@ -34,8 +35,19 @@ namespace Vertex::Debugger
             return;
         }
 
-        std::visit(
-          [this, plugin]<class T0>(T0&& arg)
+        std::packaged_task<StatusCode()> task(
+            [this, plugin, cmd = std::move(cmd)]() -> StatusCode
+            {
+                return execute_command(plugin, cmd);
+            });
+
+        std::ignore = m_dispatcher.dispatch_fire_and_forget(Thread::ThreadChannel::Debugger, std::move(task));
+    }
+
+    StatusCode DebuggerWorker::execute_command(Runtime::Plugin* plugin, const DebuggerCommand& cmd)
+    {
+        return std::visit(
+          [this, plugin]<class T0>(T0&& arg) -> StatusCode
           {
               using T = std::decay_t<T0>;
 
@@ -45,6 +57,7 @@ namespace Vertex::Debugger
                   if (!Runtime::status_ok(result))
                   {
                       post_error(Runtime::get_status(result), "Attach failed");
+                      return Runtime::get_status(result);
                   }
               }
               else if constexpr (std::is_same_v<T, CmdDetach>)
@@ -53,6 +66,7 @@ namespace Vertex::Debugger
                   if (!Runtime::status_ok(result))
                   {
                       post_error(Runtime::get_status(result), "Detach failed");
+                      return Runtime::get_status(result);
                   }
               }
               else if constexpr (std::is_same_v<T, CmdContinue>)
@@ -61,6 +75,7 @@ namespace Vertex::Debugger
                   if (!Runtime::status_ok(result))
                   {
                       post_error(Runtime::get_status(result), "Continue failed");
+                      return Runtime::get_status(result);
                   }
               }
               else if constexpr (std::is_same_v<T, CmdPause>)
@@ -69,6 +84,7 @@ namespace Vertex::Debugger
                   if (!Runtime::status_ok(result))
                   {
                       post_error(Runtime::get_status(result), "Pause failed");
+                      return Runtime::get_status(result);
                   }
               }
               else if constexpr (std::is_same_v<T, CmdStepInto>)
@@ -77,6 +93,7 @@ namespace Vertex::Debugger
                   if (!Runtime::status_ok(result))
                   {
                       post_error(Runtime::get_status(result), "Step into failed");
+                      return Runtime::get_status(result);
                   }
               }
               else if constexpr (std::is_same_v<T, CmdStepOver>)
@@ -85,6 +102,7 @@ namespace Vertex::Debugger
                   if (!Runtime::status_ok(result))
                   {
                       post_error(Runtime::get_status(result), "Step over failed");
+                      return Runtime::get_status(result);
                   }
               }
               else if constexpr (std::is_same_v<T, CmdStepOut>)
@@ -93,6 +111,7 @@ namespace Vertex::Debugger
                   if (!Runtime::status_ok(result))
                   {
                       post_error(Runtime::get_status(result), "Step out failed");
+                      return Runtime::get_status(result);
                   }
               }
               else if constexpr (std::is_same_v<T, CmdRunToAddress>)
@@ -101,12 +120,15 @@ namespace Vertex::Debugger
                   if (!Runtime::status_ok(result))
                   {
                       post_error(Runtime::get_status(result), "Run to address failed");
+                      return Runtime::get_status(result);
                   }
               }
               else if constexpr (std::is_same_v<T, CmdShutdown>)
               {
                   std::ignore = stop();
               }
+
+              return StatusCode::STATUS_OK;
           },
           cmd);
     }
