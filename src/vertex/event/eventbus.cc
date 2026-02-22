@@ -132,7 +132,7 @@ namespace Vertex::Event
         std::array<std::function<void(const VertexEvent&)>, SMALL_BUFFER_SIZE> smallBuffer{};
         std::vector<std::function<void(const VertexEvent&)>> largeBuffer{};
 
-        std::function<void(const VertexEvent&)>* callbacks{};
+        const std::function<void(const VertexEvent&)>* callbacks{};
         std::size_t callbackCount{};
 
         {
