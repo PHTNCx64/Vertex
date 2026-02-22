@@ -8,10 +8,11 @@
 
 #include <fmt/format.h>
 #include <ranges>
+#include <string_view>
 
 namespace
 {
-    constexpr auto* MODEL_NAME = "InjectorModel";
+    constexpr std::string_view MODEL_NAME{"InjectorModel"};
 }
 
 namespace Vertex::Model
