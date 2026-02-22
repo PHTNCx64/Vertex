@@ -8,10 +8,10 @@
 namespace Vertex::ViewModel
 {
     MemoryAttributeViewModel::MemoryAttributeViewModel(std::unique_ptr<Model::MemoryAttributeModel> model, Event::EventBus& eventBus, std::string name, const bool autoApplyOnProcessOpen)
-        : m_autoApplyOnProcessOpen(autoApplyOnProcessOpen)
-        , m_viewModelName(std::move(name))
-        , m_model(std::move(model))
-        , m_eventBus(eventBus)
+        : m_autoApplyOnProcessOpen{autoApplyOnProcessOpen}
+        , m_viewModelName{std::move(name)}
+        , m_model{std::move(model)}
+        , m_eventBus{eventBus}
     {
         subscribe_to_events();
     }
@@ -56,9 +56,9 @@ namespace Vertex::ViewModel
         apply_saved_memory_attributes();
     }
 
-    void MemoryAttributeViewModel::set_event_callback(const std::function<void(Event::EventId, const Event::VertexEvent&)>& eventCallback)
+    void MemoryAttributeViewModel::set_event_callback(std::move_only_function<void(Event::EventId, const Event::VertexEvent&) const> eventCallback)
     {
-        m_eventCallback = eventCallback;
+        m_eventCallback = std::move(eventCallback);
     }
 
     bool MemoryAttributeViewModel::get_memory_attribute_options(std::vector<Model::MemoryAttributeOptionData>& options) const
@@ -78,7 +78,7 @@ namespace Vertex::ViewModel
 
     void MemoryAttributeViewModel::apply_saved_memory_attributes() const
     {
-        std::vector<Model::MemoryAttributeOptionData> options;
+        std::vector<Model::MemoryAttributeOptionData> options{};
         [[maybe_unused]] const bool success = m_model->fetch_memory_attribute_options(options) == StatusCode::STATUS_OK;
     }
 } // namespace Vertex::ViewModel

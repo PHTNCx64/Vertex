@@ -25,7 +25,7 @@ namespace Vertex::ViewModel
         [[nodiscard]] bool has_options() const;
         [[nodiscard]] bool save_memory_attribute_states(const std::vector<Model::MemoryAttributeOptionData>& options) const;
 
-        void set_event_callback(const std::function<void(Event::EventId, const Event::VertexEvent&)>& eventCallback);
+        void set_event_callback(std::move_only_function<void(Event::EventId, const Event::VertexEvent&) const> eventCallback);
 
         void apply_saved_memory_attributes() const;
 
@@ -37,7 +37,7 @@ namespace Vertex::ViewModel
         bool m_autoApplyOnProcessOpen {};
         std::string m_viewModelName {};
         std::unique_ptr<Model::MemoryAttributeModel> m_model {};
-        std::function<void(Event::EventId, const Event::VertexEvent&)> m_eventCallback {};
+        std::move_only_function<void(Event::EventId, const Event::VertexEvent&) const> m_eventCallback {};
 
         Event::EventBus& m_eventBus;
     };

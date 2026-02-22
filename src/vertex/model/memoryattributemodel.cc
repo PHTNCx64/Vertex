@@ -10,10 +10,10 @@
 namespace Vertex::Model
 {
     MemoryAttributeModel::MemoryAttributeModel(Runtime::ILoader& loader, Configuration::IPluginConfig& pluginConfig, std::string configSection, const bool fallbackToPluginState)
-        : m_loader(loader),
-          m_pluginConfig(pluginConfig),
-          m_configSection(std::move(configSection)),
-          m_fallbackToPluginState(fallbackToPluginState)
+        : m_loader{loader},
+          m_pluginConfig{pluginConfig},
+          m_configSection{std::move(configSection)},
+          m_fallbackToPluginState{fallbackToPluginState}
     {
     }
 
@@ -27,8 +27,8 @@ namespace Vertex::Model
             return StatusCode::STATUS_ERROR_PLUGIN_NO_PLUGIN_ACTIVE;
         }
 
-        MemoryAttributeOption* rawOptions = nullptr;
-        std::uint32_t count = 0;
+        MemoryAttributeOption* rawOptions{};
+        std::uint32_t count{};
 
         const auto& plugin = activePlugin.value().get();
         const auto result = Runtime::safe_call(plugin.internal_vertex_memory_construct_attribute_filters, &rawOptions, &count);
@@ -45,11 +45,9 @@ namespace Vertex::Model
             m_pluginConfig.load_config(pluginFilename);
         }
 
-        for (std::uint32_t i = 0; i < count; ++i)
+        for (const auto& option : std::span{rawOptions, count})
         {
-            const MemoryAttributeOption& option = rawOptions[i];
-
-            MemoryAttributeOptionData data;
+            MemoryAttributeOptionData data{};
             data.isValid = true;
             data.currentState = false;
 

@@ -42,6 +42,6 @@ namespace Vertex::Model
         Runtime::ILoader& m_loader;
         Configuration::IPluginConfig& m_pluginConfig;
         std::string m_configSection;
-        bool m_fallbackToPluginState;
+        bool m_fallbackToPluginState{};
     };
 }
