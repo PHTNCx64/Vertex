@@ -11,6 +11,7 @@
 #include <vertex/view/settingsview.hh>
 #include <vertex/view/debuggerview.hh>
 #include <vertex/view/injectorview.hh>
+#include <vertex/view/pluginconfigview.hh>
 #include <vertex/viewmodel/mainviewmodel.hh>
 #include <vertex/configuration/isettings.hh>
 #include <vertex/configuration/ipluginconfig.hh>
@@ -20,6 +21,7 @@
 #include <vertex/log/ilog.hh>
 #include <vertex/runtime/iloader.hh>
 #include <vertex/scanner/memoryscanner/imemoryscanner.hh>
+#include <vertex/thread/ithreaddispatcher.hh>
 #include <string_view>
 
 namespace Vertex
@@ -35,7 +37,8 @@ namespace Vertex
             Gui::IIconManager& iconService,
             Configuration::ISettings& settingsService,
             Configuration::IPluginConfig& pluginConfigService,
-            Scanner::IMemoryScanner& memoryService
+            Scanner::IMemoryScanner& memoryService,
+            Thread::IThreadDispatcher& dispatcher
         )
             : m_eventBus{eventBus}
             , m_loaderService{loaderService}
@@ -45,6 +48,7 @@ namespace Vertex
             , m_settingsService{settingsService}
             , m_pluginConfigService{pluginConfigService}
             , m_memoryService{memoryService}
+            , m_dispatcher{dispatcher}
         {}
 
         [[nodiscard]] View::MainView* create_mainview(std::string_view name = ViewModelName::MAIN) const;
@@ -55,6 +59,7 @@ namespace Vertex
         [[nodiscard]] View::DebuggerView* create_debuggerview(std::string_view name = ViewModelName::DEBUGGER) const;
         [[nodiscard]] View::MemoryAttributeView* create_pointerscan_memoryattributeview(std::string_view name = ViewModelName::POINTERSCAN_MEMORYATTRIBUTES) const;
         [[nodiscard]] View::InjectorView* create_injectorview(std::string_view name = ViewModelName::INJECTOR) const;
+        [[nodiscard]] View::PluginConfigView* create_pluginconfigview(wxWindow* parent) const;
 
     private:
         Event::EventBus& m_eventBus;
@@ -65,5 +70,6 @@ namespace Vertex
         Configuration::ISettings& m_settingsService;
         Configuration::IPluginConfig& m_pluginConfigService;
         Scanner::IMemoryScanner& m_memoryService;
+        Thread::IThreadDispatcher& m_dispatcher;
     };
 }
