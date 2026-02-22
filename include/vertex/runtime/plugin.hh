@@ -99,7 +99,7 @@ namespace Vertex::Runtime
         PluginInformation m_pluginInfo{};
         std::filesystem::path m_path{};
         void* m_pluginHandle{};
-    
+
       public:
         VertexRuntime m_runtime{};
 
