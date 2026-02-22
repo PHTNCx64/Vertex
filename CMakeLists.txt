@@ -73,16 +73,22 @@ endif()
 #  Compiler Configuration
 #-----------------------------
 function(set_output_directories target)
+    cmake_parse_arguments(ARG "" "SUBDIR" "" ${ARGN})
+    if(ARG_SUBDIR)
+        set(OUT_DIR "${CMAKE_BINARY_DIR}/${ARG_SUBDIR}")
+    else()
+        set(OUT_DIR "${CMAKE_BINARY_DIR}")
+    endif()
     set_target_properties(${target} PROPERTIES
-            RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}"
-            RUNTIME_OUTPUT_DIRECTORY_DEBUG "${CMAKE_BINARY_DIR}"
-            RUNTIME_OUTPUT_DIRECTORY_RELEASE "${CMAKE_BINARY_DIR}"
-            RUNTIME_OUTPUT_DIRECTORY_RELWITHDEBINFO "${CMAKE_BINARY_DIR}"
-            RUNTIME_OUTPUT_DIRECTORY_MINSIZEREL "${CMAKE_BINARY_DIR}"
-            LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}"
-            ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}"
-            PDB_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}"
-            COMPILE_PDB_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}"
+            RUNTIME_OUTPUT_DIRECTORY "${OUT_DIR}"
+            RUNTIME_OUTPUT_DIRECTORY_DEBUG "${OUT_DIR}"
+            RUNTIME_OUTPUT_DIRECTORY_RELEASE "${OUT_DIR}"
+            RUNTIME_OUTPUT_DIRECTORY_RELWITHDEBINFO "${OUT_DIR}"
+            RUNTIME_OUTPUT_DIRECTORY_MINSIZEREL "${OUT_DIR}"
+            LIBRARY_OUTPUT_DIRECTORY "${OUT_DIR}"
+            ARCHIVE_OUTPUT_DIRECTORY "${OUT_DIR}"
+            PDB_OUTPUT_DIRECTORY "${OUT_DIR}"
+            COMPILE_PDB_OUTPUT_DIRECTORY "${OUT_DIR}"
     )
 endfunction()
 
@@ -110,7 +116,12 @@ function(configure_target target)
     else()
     endif()
 
-    set_output_directories(${target})
+    cmake_parse_arguments(CFG "" "SUBDIR" "" ${ARGN})
+    if(CFG_SUBDIR)
+        set_output_directories(${target} SUBDIR ${CFG_SUBDIR})
+    else()
+        set_output_directories(${target})
+    endif()
     set_target_properties(${target} PROPERTIES DEBUG_POSTFIX "_dbg")
 endfunction()
 
@@ -302,6 +313,8 @@ if(BUILD_TESTING)
     list(FILTER VERTEX_TEST_SOURCES EXCLUDE REGEX ".*/main\\.cc$")
     list(FILTER VERTEX_TEST_SOURCES EXCLUDE REGEX ".*/view/.*")
     list(FILTER VERTEX_TEST_SOURCES EXCLUDE REGEX ".*/viewmodel/.*")
+    list(APPEND VERTEX_TEST_SOURCES
+            ${CMAKE_SOURCE_DIR}/src/vertex/viewmodel/settingsviewmodel.cc)
     list(FILTER VERTEX_TEST_SOURCES EXCLUDE REGEX ".*/customwidgets/.*")
     list(FILTER VERTEX_TEST_SOURCES EXCLUDE REGEX ".*/gui/.*")
     list(FILTER VERTEX_TEST_SOURCES EXCLUDE REGEX ".*/factory\\.cc$")
