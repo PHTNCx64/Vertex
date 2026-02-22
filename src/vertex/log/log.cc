@@ -177,6 +177,8 @@ namespace Vertex::Log
 
         if (dequeued > 0)
         {
+            std::ranges::sort(newEntries, {}, &LogEntry::timestamp);
+
             m_approximateQueueSize.fetch_sub(dequeued, std::memory_order_relaxed);
 
             std::scoped_lock lock(m_historyMutex);
