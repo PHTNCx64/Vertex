@@ -33,6 +33,7 @@ extern "C"
                 ProcessInformation info{};
 
                 info.processId = pe32.th32ProcessID;
+                info.parentProcessId = pe32.th32ParentProcessID;
 
                 const auto procNameOpt = ProcessInternal::wchar_to_utf8(pe32.szExeFile);
                 if (procNameOpt && !procNameOpt->empty())
@@ -53,9 +54,9 @@ extern "C"
 
         CloseHandle(snapshot);
 
+        *count = static_cast<uint32_t>(processes.size());
         if (!list)
         {
-            *count = static_cast<uint32_t>(processes.size());
             return StatusCode::STATUS_OK;
         }
 
