@@ -48,6 +48,7 @@ typedef struct VertexProcessInformation
     char processName[VERTEX_MAX_NAME_LENGTH];
     char processOwner[VERTEX_MAX_OWNER_LENGTH];
     uint32_t processId;
+    uint32_t parentProcessId;
 } ProcessInformation;
 
 typedef struct VertexModuleInformation
