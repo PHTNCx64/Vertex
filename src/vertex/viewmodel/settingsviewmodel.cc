@@ -13,10 +13,10 @@
 namespace Vertex::ViewModel
 {
     SettingsViewModel::SettingsViewModel(std::unique_ptr<Model::SettingsModel> model, Event::EventBus& eventBus, Log::ILog& logService, std::string name)
-        : m_viewModelName(std::move(name)),
-          m_model(std::move(model)),
-          m_eventBus(eventBus),
-          m_logService(logService)
+        : m_viewModelName{std::move(name)},
+          m_model{std::move(model)},
+          m_eventBus{eventBus},
+          m_logService{logService}
     {
         subscribe_to_events();
     }
@@ -43,9 +43,9 @@ namespace Vertex::ViewModel
         m_eventBus.unsubscribe(m_viewModelName, Event::VIEW_EVENT);
     }
 
-    void SettingsViewModel::set_event_callback(const std::function<void(Event::EventId, const Event::VertexEvent&)>& eventCallback)
+    void SettingsViewModel::set_event_callback(std::move_only_function<void(Event::EventId, const Event::VertexEvent&) const> eventCallback)
     {
-        m_eventCallback = eventCallback;
+        m_eventCallback = std::move(eventCallback);
     }
 
     void SettingsViewModel::save_settings() const
@@ -204,6 +204,14 @@ namespace Vertex::ViewModel
         if (const auto status = m_model->load_plugin(index); status != StatusCode::STATUS_OK) [[unlikely]]
         {
             m_logService.log_error(fmt::format("SettingsViewModel: failed to load plugin at index {} (status={})", index, static_cast<int>(status)));
+        }
+    }
+
+    void SettingsViewModel::unload_plugin(const std::size_t index) const
+    {
+        if (const auto status = m_model->unload_plugin(index); status != StatusCode::STATUS_OK) [[unlikely]]
+        {
+            m_logService.log_error(fmt::format("SettingsViewModel: failed to unload plugin at index {} (status={})", index, static_cast<int>(status)));
         }
     }
 

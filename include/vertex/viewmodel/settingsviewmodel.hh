@@ -28,7 +28,7 @@ namespace Vertex::ViewModel
 
         ~SettingsViewModel();
 
-        void set_event_callback(const std::function<void(Event::EventId, const Event::VertexEvent&)>& eventCallback);
+        void set_event_callback(std::move_only_function<void(Event::EventId, const Event::VertexEvent&) const> eventCallback);
 
         void save_settings() const;
         void reset_to_defaults();
@@ -58,6 +58,7 @@ namespace Vertex::ViewModel
         void set_thread_buffer_size(int sizeMB) const;
 
         void load_plugin(std::size_t index) const;
+        void unload_plugin(std::size_t index) const;
         void set_active_plugin(std::size_t index) const;
 
         [[nodiscard]] std::vector<std::filesystem::path> get_plugin_paths() const;
@@ -78,7 +79,7 @@ namespace Vertex::ViewModel
 
         std::string m_viewModelName {};
         std::unique_ptr<Model::SettingsModel> m_model {};
-        std::function<void(Event::EventId, const Event::VertexEvent&)> m_eventCallback {};
+        std::move_only_function<void(Event::EventId, const Event::VertexEvent&) const> m_eventCallback {};
 
         Event::EventBus& m_eventBus;
         Log::ILog& m_logService;

@@ -3,6 +3,7 @@
 // Licensed under GPLv3.0 with Plugin Interface exceptions.
 //
 #include <vertex/view/settingsview.hh>
+#include <vertex/view/pluginconfigview.hh>
 
 #include <vertex/utility.hh>
 #include <vertex/event/types/viewevent.hh>
@@ -18,7 +19,8 @@
 
 namespace Vertex::View
 {
-    SettingsView::SettingsView(Language::ILanguage& languageService, std::unique_ptr<ViewModel::SettingsViewModel> viewModel)
+    SettingsView::SettingsView(Language::ILanguage& languageService, std::unique_ptr<ViewModel::SettingsViewModel> viewModel,
+                               PluginConfigViewFactory pluginConfigFactory)
         : wxDialog(wxTheApp->GetTopWindow(),
                    wxID_ANY,
                    wxString::FromUTF8(languageService.fetch_translation("settingsWindow.title")),
@@ -26,7 +28,8 @@ namespace Vertex::View
                    wxSize(FromDIP(StandardWidgetValues::STANDARD_X_DIP), FromDIP(StandardWidgetValues::STANDARD_Y_DIP)),
                    wxDEFAULT_DIALOG_STYLE | wxRESIZE_BORDER | wxMINIMIZE_BOX | wxMAXIMIZE_BOX | wxCLOSE_BOX),
           m_viewModel(std::move(viewModel)),
-          m_languageService(languageService)
+          m_languageService(languageService),
+          m_pluginConfigFactory(std::move(pluginConfigFactory))
     {
         m_viewModel->set_event_callback(
           [this](const Event::EventId eventId, const Event::VertexEvent& event)
@@ -169,6 +172,8 @@ namespace Vertex::View
         m_setActivePluginButton->Bind(wxEVT_BUTTON, &SettingsView::on_set_active_plugin_clicked, this);
         m_refreshPluginsButton->Bind(wxEVT_BUTTON, &SettingsView::on_refresh_plugins_clicked, this);
 
+        m_unloadPluginButton->Bind(wxEVT_BUTTON, &SettingsView::on_unload_plugin_clicked, this);
+
         m_pluginPathsListCtrl->Bind(wxEVT_LIST_ITEM_SELECTED, &SettingsView::on_plugin_path_selected, this);
         m_pluginPathsListCtrl->Bind(wxEVT_LIST_ITEM_DESELECTED, &SettingsView::on_plugin_path_deselected, this);
         m_addPluginPathButton->Bind(wxEVT_BUTTON, &SettingsView::on_add_plugin_path_clicked, this);
@@ -196,6 +201,12 @@ namespace Vertex::View
         m_pluginPanel = new wxPanel(m_tabNotebook);
         m_languagePanel = new wxPanel(m_tabNotebook);
         m_memoryScannerPanel = new wxPanel(m_tabNotebook);
+
+        if (m_pluginConfigFactory)
+        {
+            m_pluginConfigPanel = new wxPanel(m_tabNotebook);
+        }
+
         m_resetButton = new wxButton(this, wxID_ANY, wxString::FromUTF8(m_languageService.fetch_translation("general.resetToDefaults")));
         m_applyButton = new wxButton(this, wxID_APPLY, wxString::FromUTF8(m_languageService.fetch_translation("general.apply")));
         m_cancelButton = new wxButton(this, wxID_CANCEL, wxString::FromUTF8(m_languageService.fetch_translation("general.cancel")));
@@ -215,6 +226,20 @@ namespace Vertex::View
         m_tabNotebook->AddPage(m_pluginPanel, wxString::FromUTF8(m_languageService.fetch_translation("settingsWindow.plugins")));
         m_tabNotebook->AddPage(m_languagePanel, wxString::FromUTF8(m_languageService.fetch_translation("settingsWindow.language")));
         m_tabNotebook->AddPage(m_memoryScannerPanel, wxString::FromUTF8(m_languageService.fetch_translation("settingsWindow.memoryScanner")));
+
+        if (m_pluginConfigPanel && m_pluginConfigFactory)
+        {
+            m_pluginConfigView = m_pluginConfigFactory(m_pluginConfigPanel);
+            auto* configSizer = new wxBoxSizer(wxVERTICAL);
+            configSizer->Add(m_pluginConfigView, StandardWidgetValues::STANDARD_PROPORTION, wxEXPAND);
+            m_pluginConfigPanel->SetSizer(configSizer);
+
+            if (m_pluginConfigView->has_panels())
+            {
+                m_tabNotebook->AddPage(m_pluginConfigPanel, wxString::FromUTF8(m_languageService.fetch_translation("settingsWindow.pluginConfig")));
+            }
+        }
+
         m_settingsButtonSizer->Add(m_resetButton, StandardWidgetValues::NO_PROPORTION, wxALL, StandardWidgetValues::STANDARD_BORDER);
         m_settingsButtonSizer->AddStretchSpacer();
         m_settingsButtonSizer->Add(m_applyButton, StandardWidgetValues::NO_PROPORTION, wxALL, StandardWidgetValues::STANDARD_BORDER);
@@ -276,7 +301,7 @@ namespace Vertex::View
         m_pluginButtonSizer = new wxBoxSizer(wxHORIZONTAL);
         m_loadPluginButton = new wxButton(m_pluginInfoGroup->GetStaticBox(), wxID_ANY, wxString::FromUTF8(m_languageService.fetch_translation("settingsWindow.pluginsTab.loadPlugin")));
         m_setActivePluginButton = new wxButton(m_pluginInfoGroup->GetStaticBox(), wxID_ANY, wxString::FromUTF8(m_languageService.fetch_translation("settingsWindow.pluginsTab.setAsActivePlugin")));
-        m_configurePluginButton = new wxButton(m_pluginInfoGroup->GetStaticBox(), wxID_ANY, wxString::FromUTF8(m_languageService.fetch_translation("settingsWindow.pluginsTab.configure")));
+        m_unloadPluginButton = new wxButton(m_pluginInfoGroup->GetStaticBox(), wxID_ANY, wxString::FromUTF8(m_languageService.fetch_translation("settingsWindow.pluginsTab.unloadPlugin")));
         m_pluginPathsStaticBox = new wxStaticBox(m_pluginPanel, wxID_ANY, wxString::FromUTF8(m_languageService.fetch_translation("settingsWindow.pluginsTab.pluginPaths")));
         m_pluginPathsGroup = new wxStaticBoxSizer(m_pluginPathsStaticBox, wxVERTICAL);
         m_pluginPathsListCtrl = new wxListCtrl(m_pluginPathsStaticBox, wxID_ANY, wxDefaultPosition, wxSize(-1, 120), wxLC_REPORT | wxLC_SINGLE_SEL);
@@ -285,7 +310,7 @@ namespace Vertex::View
         m_addPluginPathButton = new wxButton(m_pluginPathsStaticBox, wxID_ANY, wxString::FromUTF8(m_languageService.fetch_translation("settingsWindow.pluginsTab.addPath")));
         m_removePluginPathButton = new wxButton(m_pluginPathsStaticBox, wxID_ANY, wxString::FromUTF8(m_languageService.fetch_translation("settingsWindow.pluginsTab.removePath")));
         m_setActivePluginButton->Disable();
-        m_configurePluginButton->Disable();
+        m_unloadPluginButton->Disable();
         m_loadPluginButton->Disable();
         m_removePluginPathButton->Disable();
     }
@@ -346,7 +371,7 @@ namespace Vertex::View
         m_pluginInfoGroup->Add(m_pluginInfoGrid, StandardWidgetValues::STANDARD_PROPORTION, wxEXPAND | wxALL, StandardWidgetValues::STANDARD_BORDER);
         m_pluginButtonSizer->Add(m_loadPluginButton, StandardWidgetValues::NO_PROPORTION, wxALL, StandardWidgetValues::STANDARD_BORDER);
         m_pluginButtonSizer->Add(m_setActivePluginButton, StandardWidgetValues::NO_PROPORTION, wxALL, StandardWidgetValues::STANDARD_BORDER);
-        m_pluginButtonSizer->Add(m_configurePluginButton, StandardWidgetValues::NO_PROPORTION, wxALL, StandardWidgetValues::STANDARD_BORDER);
+        m_pluginButtonSizer->Add(m_unloadPluginButton, StandardWidgetValues::NO_PROPORTION, wxALL, StandardWidgetValues::STANDARD_BORDER);
         m_pluginInfoGroup->Add(m_pluginButtonSizer, StandardWidgetValues::NO_PROPORTION, wxALIGN_LEFT);
         m_pluginInfoPanel->SetSizer(m_pluginInfoGroup);
         m_pluginRightSideSizer->Add(m_pluginInfoPanel, StandardWidgetValues::STANDARD_PROPORTION, wxEXPAND | wxALL, StandardWidgetValues::STANDARD_BORDER);
@@ -440,7 +465,7 @@ namespace Vertex::View
 
         m_loadPluginButton->Enable(!isLoaded);
         m_setActivePluginButton->Enable(isLoaded && !isActive);
-        m_configurePluginButton->Enable(isActive);
+        m_unloadPluginButton->Enable(isLoaded && !isActive);
     }
 
     void SettingsView::clear_plugin_info() const
@@ -452,7 +477,7 @@ namespace Vertex::View
         m_pluginDescriptionLabel->SetLabel(EMPTY_STRING);
         m_loadPluginButton->Enable(false);
         m_setActivePluginButton->Enable(false);
-        m_configurePluginButton->Enable(false);
+        m_unloadPluginButton->Enable(false);
     }
 
     void SettingsView::on_plugin_selected(const wxListEvent& event)
@@ -486,6 +511,42 @@ namespace Vertex::View
         load_plugin_info(static_cast<int>(selectedIndex));
     }
 
+    void SettingsView::on_unload_plugin_clicked([[maybe_unused]] wxCommandEvent& event)
+    {
+        const long selectedIndex = m_pluginListCtrl->GetNextItem(-1, wxLIST_NEXT_ALL, wxLIST_STATE_SELECTED);
+        if (selectedIndex == -1)
+        {
+            return;
+        }
+
+        m_viewModel->unload_plugin(static_cast<std::size_t>(selectedIndex));
+        refresh_plugin_list();
+        clear_plugin_info();
+    }
+
+    void SettingsView::update_plugin_config_tab()
+    {
+        if (!m_pluginConfigFactory || !m_pluginConfigPanel || !m_pluginConfigView)
+        {
+            return;
+        }
+
+        m_pluginConfigView->rebuild_ui();
+
+        const auto pageIndex = m_tabNotebook->FindPage(m_pluginConfigPanel);
+        const bool hasPanels = m_pluginConfigView->has_panels();
+
+        if (hasPanels && pageIndex == wxNOT_FOUND)
+        {
+            m_tabNotebook->AddPage(m_pluginConfigPanel,
+                wxString::FromUTF8(m_languageService.fetch_translation("settingsWindow.pluginConfig")));
+        }
+        else if (!hasPanels && pageIndex != wxNOT_FOUND)
+        {
+            m_tabNotebook->RemovePage(pageIndex);
+        }
+    }
+
     void SettingsView::on_set_active_plugin_clicked([[maybe_unused]] wxCommandEvent& event)
     {
         const long selectedIndex = m_pluginListCtrl->GetNextItem(-1, wxLIST_NEXT_ALL, wxLIST_STATE_SELECTED);
@@ -497,6 +558,7 @@ namespace Vertex::View
         m_viewModel->set_active_plugin(static_cast<std::size_t>(selectedIndex));
         refresh_plugin_list();
         load_plugin_info(static_cast<int>(selectedIndex));
+        update_plugin_config_tab();
         m_applyButton->Enable(true);
     }
 

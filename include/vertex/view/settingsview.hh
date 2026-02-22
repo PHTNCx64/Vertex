@@ -14,16 +14,22 @@
 #include <wx/listctrl.h>
 
 #include <memory>
+#include <functional>
 #include <vertex/language/language.hh>
 #include <vertex/viewmodel/settingsviewmodel.hh>
 #include <vertex/event/eventbus.hh>
 
 namespace Vertex::View
 {
+    class PluginConfigView;
+
+    using PluginConfigViewFactory = std::function<PluginConfigView*(wxWindow*)>;
+
     class SettingsView final : public wxDialog
     {
       public:
-        SettingsView(Language::ILanguage& languageService, std::unique_ptr<ViewModel::SettingsViewModel> viewModel);
+        SettingsView(Language::ILanguage& languageService, std::unique_ptr<ViewModel::SettingsViewModel> viewModel,
+                     PluginConfigViewFactory pluginConfigFactory = {});
 
       private:
         void vertex_event_callback(Event::EventId eventId, const Event::VertexEvent& event);
@@ -42,12 +48,14 @@ namespace Vertex::View
         void layout_language_tab() const;
         void layout_memory_scanner_tab() const;
 
+        void update_plugin_config_tab();
         void refresh_plugin_list() const;
         void load_plugin_info(int pluginIndex) const;
         void clear_plugin_info() const;
         void on_plugin_selected(const wxListEvent& event);
         void on_plugin_deselected(wxListEvent& event);
         void on_load_plugin_clicked(wxCommandEvent& event);
+        void on_unload_plugin_clicked(wxCommandEvent& event);
         void on_set_active_plugin_clicked(wxCommandEvent& event);
         void on_refresh_plugins_clicked(wxCommandEvent& event);
 
@@ -100,7 +108,7 @@ namespace Vertex::View
         wxStaticText* m_pluginVersionLabel{};
         wxStaticText* m_pluginAuthorLabel{};
         wxStaticText* m_pluginDescriptionLabel{};
-        wxButton* m_configurePluginButton{};
+        wxButton* m_unloadPluginButton{};
         wxButton* m_refreshPluginsButton{};
         wxButton* m_setActivePluginButton{};
         wxButton* m_loadPluginButton{};
@@ -148,5 +156,9 @@ namespace Vertex::View
 
         std::unique_ptr<ViewModel::SettingsViewModel> m_viewModel{};
         Language::ILanguage& m_languageService;
+
+        wxPanel* m_pluginConfigPanel{};
+        PluginConfigView* m_pluginConfigView{};
+        PluginConfigViewFactory m_pluginConfigFactory{};
     };
 }
