@@ -20,13 +20,15 @@
 #include <vertex/model/mainmodel.hh>
 #include <vertex/scanner/memoryscanner/imemoryscanner.hh>
 #include <vertex/scanner/valueconverter.hh>
+#include <vertex/thread/threadchannel.hh>
 
 namespace Vertex::ViewModel
 {
-    MainViewModel::MainViewModel(std::unique_ptr<Model::MainModel> model, Event::EventBus& eventBus, std::string name)
-        : m_viewModelName(std::move(name)),
-          m_model(std::move(model)),
-          m_eventBus(eventBus)
+    MainViewModel::MainViewModel(std::unique_ptr<Model::MainModel> model, Event::EventBus& eventBus, Thread::IThreadDispatcher& dispatcher, std::string name)
+        : m_viewModelName{std::move(name)},
+          m_model{std::move(model)},
+          m_eventBus{eventBus},
+          m_dispatcher{dispatcher}
     {
         m_processInformation = "No process attached";
         m_scanProgress = {0, 0, "Ready"};
@@ -81,9 +83,9 @@ namespace Vertex::ViewModel
 
     void MainViewModel::unsubscribe_from_events() const { m_eventBus.unsubscribe_all(m_viewModelName); }
 
-    void MainViewModel::set_event_callback(const std::function<void(Event::EventId, const Event::VertexEvent&)>& callback)
+    void MainViewModel::set_event_callback(std::move_only_function<void(Event::EventId, const Event::VertexEvent&) const> callback)
     {
-        m_eventCallback = callback;
+        m_eventCallback = std::move(callback);
     }
 
     void MainViewModel::notify_property_changed() const
@@ -107,7 +109,7 @@ namespace Vertex::ViewModel
 
     void MainViewModel::kill_process() const
     {
-        (void)m_model->kill_process();
+        std::ignore = m_model->kill_process();
     }
 
     Scanner::ValueType MainViewModel::get_current_value_type() const
@@ -282,7 +284,7 @@ namespace Vertex::ViewModel
 
     void MainViewModel::undo_scan() const
     {
-        (void)m_model->undo_scan();
+        std::ignore = m_model->undo_scan();
         notify_property_changed();
     }
 
@@ -356,6 +358,8 @@ namespace Vertex::ViewModel
         m_isInitialScanAvailable = false;
         m_isNextScanAvailable = false;
         m_isUnknownScanMode = false;
+        m_minProcessAddress = {};
+        m_maxProcessAddress = {};
         update_available_scan_modes();
         m_scanTypeIndex = 0;
 
@@ -367,7 +371,7 @@ namespace Vertex::ViewModel
 
     void MainViewModel::get_file_executable_extensions(std::vector<std::string>& extensions) const
     {
-        m_model->get_file_executable_extensions(extensions);
+        std::ignore = m_model->get_file_executable_extensions(extensions);
     }
 
     std::string MainViewModel::get_process_information() const { return m_processInformation; }
@@ -399,7 +403,7 @@ namespace Vertex::ViewModel
             {
                 const auto& entry = m_cacheWindow.addresses[cacheIndex];
 
-                ScannedValue value;
+                ScannedValue value{};
                 value.address = fmt::format("0x{:X}", entry.address);
 
                 const auto valueType = get_scanned_value_type();
@@ -441,7 +445,7 @@ namespace Vertex::ViewModel
             return ScannedValue{};
         }
 
-        ScannedValue value;
+        ScannedValue value{};
         value.address = fmt::format("0x{:X}", scanResults[0].address);
 
         const auto valueType = get_scanned_value_type();
@@ -519,7 +523,7 @@ namespace Vertex::ViewModel
         const auto valueType = get_scanned_value_type();
         const auto scannedEndianness = static_cast<Scanner::Endianness>(m_scannedEndiannessIndex);
 
-        for (int i = startIndex; i <= endIndex; ++i)
+        for (const int i : std::views::iota(startIndex, endIndex + 1))
         {
             const int cacheIndex = i - m_cacheWindow.startIndex;
             if (cacheIndex < 0 || cacheIndex >= static_cast<int>(m_cacheWindow.addresses.size()))
@@ -532,7 +536,7 @@ namespace Vertex::ViewModel
             std::vector<char> currentValue;
             const StatusCode readStatus = m_model->read_process_memory(entry.address, entry.value.size(), currentValue);
 
-            ScannedValue value;
+            ScannedValue value{};
             value.address = fmt::format("0x{:X}", entry.address);
 
             if (readStatus == StatusCode::STATUS_OK && !currentValue.empty())
@@ -572,6 +576,8 @@ namespace Vertex::ViewModel
 
     void MainViewModel::finalize_scan_results()
     {
+        m_model->finalize_scan();
+
         m_visibleCache.clear();
         m_scannedValues.clear();
 
@@ -707,9 +713,19 @@ namespace Vertex::ViewModel
 
     Theme MainViewModel::get_theme() const { return m_model->get_theme(); }
 
+    std::uint64_t MainViewModel::get_min_process_address() const { return m_minProcessAddress; }
+
+    std::uint64_t MainViewModel::get_max_process_address() const { return m_maxProcessAddress; }
+
     void MainViewModel::on_process_opened(const Event::ProcessOpenEvent& event)
     {
         m_processInformation = fmt::format("{} [{}]", event.get_process_name(), event.get_process_id());
+
+        m_minProcessAddress = {};
+        m_maxProcessAddress = {};
+        std::ignore = m_model->get_min_process_address(m_minProcessAddress);
+        std::ignore = m_model->get_max_process_address(m_maxProcessAddress);
+
         notify_view_update(ViewUpdateFlags::PROCESS_INFO);
     }
 
@@ -745,7 +761,7 @@ namespace Vertex::ViewModel
     {
         const auto valueType = get_current_value_type();
 
-        SavedAddress saved;
+        SavedAddress saved{};
         saved.frozen = false;
         saved.address = address;
         saved.addressStr = fmt::format("{:016X}", address);
@@ -868,7 +884,7 @@ namespace Vertex::ViewModel
                 {
                     return m_model->write_process_memory(address, bytes);
                 });
-            m_freezeThread.enqueue_task(std::move(task));
+            std::ignore = m_dispatcher.dispatch_fire_and_forget(Thread::ThreadChannel::Freeze, std::move(task));
         }
 
         update_frozen_addresses_flag();
@@ -1070,7 +1086,7 @@ namespace Vertex::ViewModel
 
             monitoredAddresses.reserve(actualEnd - startIndex + 1);
 
-            for (int i = startIndex; i <= actualEnd; ++i)
+            for (const int i : std::views::iota(startIndex, actualEnd + 1))
             {
                 auto& saved = m_savedAddresses[i];
                 if (saved.monitoredAddress)
@@ -1094,7 +1110,7 @@ namespace Vertex::ViewModel
                 return;
             }
 
-            for (int i = startIndex; i <= actualEnd; ++i)
+            for (const int i : std::views::iota(startIndex, actualEnd + 1))
             {
                 auto& saved = m_savedAddresses[i];
                 if (saved.monitoredAddress)
@@ -1181,15 +1197,15 @@ namespace Vertex::ViewModel
 
     void MainViewModel::process_frozen_addresses()
     {
-        if (m_freezeThread.is_busy() != StatusCode::STATUS_OK)
+        if (m_dispatcher.is_channel_busy(Thread::ThreadChannel::Freeze))
         {
             return;
         }
 
         struct FreezeEntry final
         {
-            std::uint64_t address;
-            std::vector<std::uint8_t> bytes;
+            std::uint64_t address{};
+            std::vector<std::uint8_t> bytes{};
         };
         std::vector<FreezeEntry> entriesToWrite;
 
@@ -1214,12 +1230,12 @@ namespace Vertex::ViewModel
             {
                 for (const auto& [address, bytes] : entries)
                 {
-                    (void)m_model->write_process_memory(address, bytes);
+                    std::ignore = m_model->write_process_memory(address, bytes);
                 }
                 return StatusCode::STATUS_OK;
             });
 
-        m_freezeThread.enqueue_task(std::move(task));
+        std::ignore = m_dispatcher.dispatch_fire_and_forget(Thread::ThreadChannel::Freeze, std::move(task));
     }
 
     void MainViewModel::start_freeze_timer()

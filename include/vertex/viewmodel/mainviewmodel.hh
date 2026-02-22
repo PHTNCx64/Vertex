@@ -13,7 +13,7 @@
 #include <atomic>
 #include <mutex>
 
-#include <vertex/thread/vertexspscthread.hh>
+#include <vertex/thread/ithreaddispatcher.hh>
 #include <vertex/event/eventbus.hh>
 #include <vertex/event/types/processopenevent.hh>
 #include <vertex/language/language.hh>
@@ -61,12 +61,13 @@ namespace Vertex::ViewModel
         explicit MainViewModel(
             std::unique_ptr<Model::MainModel> model,
             Event::EventBus& eventBus,
+            Thread::IThreadDispatcher& dispatcher,
             std::string name = ViewModelName::MAIN
         );
 
         ~MainViewModel();
 
-        void set_event_callback(const std::function<void(Event::EventId, const Event::VertexEvent&)>& callback);
+        void set_event_callback(std::move_only_function<void(Event::EventId, const Event::VertexEvent&) const> callback);
 
         void initial_scan();
         void next_scan();
@@ -133,6 +134,9 @@ namespace Vertex::ViewModel
 
         [[nodiscard]] Theme get_theme() const;
 
+        [[nodiscard]] std::uint64_t get_min_process_address() const;
+        [[nodiscard]] std::uint64_t get_max_process_address() const;
+
         [[nodiscard]] bool is_process_opened() const;
         void kill_process() const;
 
@@ -182,6 +186,9 @@ namespace Vertex::ViewModel
         int m_scannedEndiannessIndex {};
         int m_alignmentValue {4};
 
+        std::uint64_t m_minProcessAddress {};
+        std::uint64_t m_maxProcessAddress {};
+
         std::string m_processInformation {};
         std::string m_valueInput {};
         std::string m_valueInput2 {};
@@ -202,15 +209,15 @@ namespace Vertex::ViewModel
 
         std::unique_ptr<Model::MainModel> m_model {};
         std::unique_ptr<std::thread> m_freezeTimerThread {};
-        std::function<void(Event::EventId, const Event::VertexEvent&)> m_eventCallback {};
+        std::move_only_function<void(Event::EventId, const Event::VertexEvent&) const> m_eventCallback {};
 
         std::atomic<bool> m_freezeTimerRunning {};
         std::atomic<bool> m_hasFrozenAddresses {};
 
         Event::EventBus& m_eventBus;
+        Thread::IThreadDispatcher& m_dispatcher;
 
         Scanner::AddressMonitor m_addressMonitor {};
-        Thread::VertexSPSCThread m_freezeThread {};
 
         mutable std::mutex m_savedAddressesMutex {};
     };
