@@ -5,6 +5,7 @@
 #include <gtest/gtest.h>
 #include <gmock/gmock.h>
 #include <vertex/configuration/settings.hh>
+#include <vertex/utility.hh>
 #include "../../mocks/MockILog.hh"
 #include <fstream>
 #include <filesystem>
@@ -221,7 +222,7 @@ TEST_F(SettingsTest, GetString_ExistingKey_ReturnsValue)
     settings->set_value("language.activeLanguage", "English.json");
 
     // Act
-    std::string result = settings->get_string("language.activeLanguage", EMPTY_STRING);
+    std::string result = settings->get_string("language.activeLanguage", Vertex::EMPTY_STRING);
 
     // Assert
     EXPECT_EQ("English.json", result);

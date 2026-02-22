@@ -28,6 +28,15 @@ protected:
         mockLogger = std::make_unique<NiceMock<Vertex::Testing::Mocks::MockILog>>();
         mockDispatcher = std::make_unique<NiceMock<Vertex::Testing::Mocks::MockIThreadDispatcher>>();
 
+        ON_CALL(*mockDispatcher, dispatch(_, _))
+            .WillByDefault([](Vertex::Thread::ThreadChannel, std::packaged_task<StatusCode()>&& task)
+                -> std::expected<std::future<StatusCode>, StatusCode>
+            {
+                auto future = task.get_future();
+                task();
+                return future;
+            });
+
         model = std::make_unique<Vertex::Model::MainModel>(
             *mockSettings,
             *mockScanner,
@@ -210,7 +219,7 @@ TEST_F(MainModelTest, IsProcessOpened_FunctionNotImplemented_ReturnsError)
     mockPlugin.internal_vertex_process_is_valid = nullptr;
 
     EXPECT_CALL(*mockLoader, get_active_plugin())
-        .WillOnce(Return(std::optional<std::reference_wrapper<Vertex::Runtime::Plugin>>(mockPlugin)));
+        .WillRepeatedly(Return(std::optional<std::reference_wrapper<Vertex::Runtime::Plugin>>(mockPlugin)));
 
     EXPECT_CALL(*mockLogger, log_error(_))
         .Times(1);
@@ -235,7 +244,7 @@ TEST_F(MainModelTest, IsProcessOpened_ValidPlugin_CallsPluginFunction)
     };
 
     EXPECT_CALL(*mockLoader, get_active_plugin())
-        .WillOnce(Return(std::optional<std::reference_wrapper<Vertex::Runtime::Plugin>>(mockPlugin)));
+        .WillRepeatedly(Return(std::optional<std::reference_wrapper<Vertex::Runtime::Plugin>>(mockPlugin)));
 
     // Act
     StatusCode result = model->is_process_opened();
@@ -257,7 +266,7 @@ TEST_F(MainModelTest, KillProcess_ValidPlugin_CallsPluginFunction)
     };
 
     EXPECT_CALL(*mockLoader, get_active_plugin())
-        .WillOnce(Return(std::optional<std::reference_wrapper<Vertex::Runtime::Plugin>>(mockPlugin)));
+        .WillRepeatedly(Return(std::optional<std::reference_wrapper<Vertex::Runtime::Plugin>>(mockPlugin)));
 
     // Act
     StatusCode result = model->kill_process();
