@@ -25,11 +25,11 @@ namespace
         .pluginDescription = "Implements functionality using the host operating system's user-mode APIs",
         .pluginAuthor = "PHTNC",
         .apiVersion = VERTEX_TARGET_API_VERSION(VERTEX_MAJOR_API_VERSION, VERTEX_MINOR_API_VERSION, VERTEX_PATCH_API_VERSION),
-        .featureCapability = 0
+        .featureCapability = VERTEX_FEATURE_RUN_MODE_STANDARD
     };
 }
 
-extern "C" VERTEX_EXPORT StatusCode VERTEX_API vertex_init(PluginInformation* pluginInfo, Runtime* runtime)
+extern "C" VERTEX_EXPORT StatusCode VERTEX_API vertex_init(PluginInformation* pluginInfo, Runtime* runtime, [[maybe_unused]] bool singleThreadModeInit)
 {
     if (!pluginInfo || !runtime)
     {
