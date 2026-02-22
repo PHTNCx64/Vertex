@@ -42,6 +42,7 @@ namespace Vertex::Scanner
         virtual StatusCode initialize_next_scan(const ScanConfiguration& configuration) = 0;
         virtual StatusCode undo_scan() = 0;
         virtual StatusCode stop_scan() = 0;
+        virtual void finalize_scan() = 0;
 
         [[nodiscard]] virtual std::uint64_t get_regions_scanned() const noexcept = 0;
         [[nodiscard]] virtual std::uint64_t get_total_regions() const noexcept = 0;
