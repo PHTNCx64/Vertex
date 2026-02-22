@@ -6,6 +6,7 @@
 #include <vertex/configuration/filesystem.hh>
 #include <fstream>
 #include <algorithm>
+#include <cstring>
 
 namespace Vertex::Configuration
 {
@@ -225,6 +226,114 @@ namespace Vertex::Configuration
         m_config["pointerScanMemoryAttributes"]["states"] = nlohmann::json::array();
         m_config["pointerScanMemoryAttributes"]["types"] = nlohmann::json::array();
         m_config["pointerScanExcludedModules"] = nlohmann::json::array();
+    }
+
+    void PluginConfig::set_ui_value(const std::string& panelId, const std::string& fieldId, const UIValue& value, const UIFieldType type)
+    {
+        try
+        {
+            if (!m_config.contains("uiValues"))
+            {
+                m_config["uiValues"] = nlohmann::json::object();
+            }
+
+            if (!m_config["uiValues"].contains(panelId))
+            {
+                m_config["uiValues"][panelId] = nlohmann::json::object();
+            }
+
+            switch (type)
+            {
+            case VERTEX_UI_FIELD_NUMBER_INT:
+            case VERTEX_UI_FIELD_SLIDER_INT:
+                m_config["uiValues"][panelId][fieldId] = value.intValue;
+                break;
+            case VERTEX_UI_FIELD_NUMBER_FLOAT:
+            case VERTEX_UI_FIELD_SLIDER_FLOAT:
+                m_config["uiValues"][panelId][fieldId] = value.floatValue;
+                break;
+            case VERTEX_UI_FIELD_CHECKBOX:
+                m_config["uiValues"][panelId][fieldId] = value.boolValue != 0;
+                break;
+            case VERTEX_UI_FIELD_TEXT:
+            case VERTEX_UI_FIELD_PATH_FILE:
+            case VERTEX_UI_FIELD_PATH_DIR:
+            case VERTEX_UI_FIELD_DROPDOWN:
+                m_config["uiValues"][panelId][fieldId] = std::string{value.stringValue};
+                break;
+            default:
+                return;
+            }
+
+            m_isModified = true;
+        }
+        catch (const nlohmann::json::exception&)
+        {
+        }
+    }
+
+    std::optional<UIValue> PluginConfig::get_ui_value(const std::string& panelId, const std::string& fieldId, const UIFieldType type) const
+    {
+        try
+        {
+            if (!m_config.contains("uiValues") ||
+                !m_config["uiValues"].contains(panelId) ||
+                !m_config["uiValues"][panelId].contains(fieldId))
+            {
+                return std::nullopt;
+            }
+
+            const auto& jsonVal = m_config["uiValues"][panelId][fieldId];
+            UIValue result{};
+
+            switch (type)
+            {
+            case VERTEX_UI_FIELD_NUMBER_INT:
+            case VERTEX_UI_FIELD_SLIDER_INT:
+                result.intValue = jsonVal.get<int64_t>();
+                break;
+            case VERTEX_UI_FIELD_NUMBER_FLOAT:
+            case VERTEX_UI_FIELD_SLIDER_FLOAT:
+                result.floatValue = jsonVal.get<double>();
+                break;
+            case VERTEX_UI_FIELD_CHECKBOX:
+                result.boolValue = jsonVal.get<bool>() ? 1 : 0;
+                break;
+            case VERTEX_UI_FIELD_TEXT:
+            case VERTEX_UI_FIELD_PATH_FILE:
+            case VERTEX_UI_FIELD_PATH_DIR:
+            case VERTEX_UI_FIELD_DROPDOWN:
+            {
+                auto str = jsonVal.get<std::string>();
+                std::strncpy(result.stringValue, str.c_str(), VERTEX_UI_MAX_STRING_VALUE_LENGTH - 1);
+                result.stringValue[VERTEX_UI_MAX_STRING_VALUE_LENGTH - 1] = '\0';
+                break;
+            }
+            default:
+                return std::nullopt;
+            }
+
+            return result;
+        }
+        catch (const nlohmann::json::exception&)
+        {
+            return std::nullopt;
+        }
+    }
+
+    void PluginConfig::clear_ui_values(const std::string& panelId)
+    {
+        try
+        {
+            if (m_config.contains("uiValues") && m_config["uiValues"].contains(panelId))
+            {
+                m_config["uiValues"].erase(panelId);
+                m_isModified = true;
+            }
+        }
+        catch (const nlohmann::json::exception&)
+        {
+        }
     }
 
     StatusCode PluginConfig::ensure_config_directory()

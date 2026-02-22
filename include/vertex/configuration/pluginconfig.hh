@@ -34,6 +34,10 @@ namespace Vertex::Configuration
         [[nodiscard]] std::string get_current_plugin() const override;
         [[nodiscard]] bool is_modified() const override;
 
+        void set_ui_value(const std::string& panelId, const std::string& fieldId, const UIValue& value, UIFieldType type) override;
+        [[nodiscard]] std::optional<UIValue> get_ui_value(const std::string& panelId, const std::string& fieldId, UIFieldType type) const override;
+        void clear_ui_values(const std::string& panelId) override;
+
     private:
         [[nodiscard]] static std::filesystem::path get_config_path(const std::string& pluginFilename);
 
