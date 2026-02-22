@@ -8,7 +8,7 @@
 
 namespace Vertex::Runtime
 {
-    Plugin::~Plugin()
+    void Plugin::unload()
     {
         const auto result = Runtime::safe_call(internal_vertex_exit);
         if (!Runtime::status_ok(result))
@@ -18,9 +18,16 @@ namespace Vertex::Runtime
 
         if (m_pluginHandle)
         {
-            // TODO: Graceful handling of plugin cleanup and unloading.
             Vertex::Runtime::LibraryLoader::unload_library(m_pluginHandle);
             m_pluginHandle = nullptr;
         }
+
+        m_pluginInfo = {};
+        m_runtime = {};
+    }
+
+    Plugin::~Plugin()
+    {
+        unload();
     }
 }
