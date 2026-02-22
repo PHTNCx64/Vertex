@@ -40,6 +40,8 @@ namespace Vertex
         constexpr int COLUMN_WIDTH_ORDINAL = 60;
         constexpr int INJECTOR_X_DIP = 450;
         constexpr int INJECTOR_Y_DIP = 300;
+        constexpr int SLIDER_SCALE_FACTOR = 100;
+        constexpr int GRID_COLUMNS = 2;
     }
 
     namespace ApplicationAppearance
@@ -60,6 +62,7 @@ namespace Vertex
         constexpr auto* POINTERSCAN = "PointerScanViewModel";
         constexpr auto* POINTERSCAN_MEMORYATTRIBUTES = "PointerScanMemoryAttributesViewModel";
         constexpr auto* INJECTOR = "InjectorViewModel";
+        constexpr auto* PLUGINCONFIG = "PluginConfigViewModel";
     }
 
     enum class ViewUpdateFlags : unsigned int
