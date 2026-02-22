@@ -4,7 +4,7 @@
 //
 #include <vertexusrrt/process_internal.hh>
 
-extern StatusCode vertex_process_open(const uint32_t process_id);
+extern StatusCode vertex_process_open(const uint32_t processId);
 
 extern "C"
 {
