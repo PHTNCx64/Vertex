@@ -19,6 +19,7 @@
 #include <vertex/scanner/memoryscanner/memoryscanner.hh>
 #include <vertex/io/io.hh>
 #include <vertex/event/eventbus.hh>
+#include <vertex/thread/threaddispatcher.hh>
 
 namespace Vertex::DI
 {
@@ -58,6 +59,10 @@ namespace Vertex::DI
 
         di::bind<Runtime::ILoader>()
             .to<Runtime::Loader>()
+            .in(di::singleton),
+
+        di::bind<Thread::IThreadDispatcher>()
+            .to<Thread::ThreadDispatcher>()
             .in(di::singleton));
     }
 }
