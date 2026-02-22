@@ -56,120 +56,105 @@ This can ultimately slow down development and make it more complex, but I believ
 
 ## Building Vertex
 
-Vertex uses CMake and VCPKG for its build system and dependency management.
+Vertex uses CMake, Ninja, and VCPKG for its build system and dependency management. A PowerShell build script (`build.ps1`) is provided to automate the entire process.
 
-As of right now, the easiest way to build Vertex is by using CLion.
-
-Under Windows, Vertex is compiled with Clang-Cl but should also work with MSVC. MingW or Clang (not the CL version!) have not been tested.
+Under Windows, Vertex is compiled with Clang-Cl when available, falling back to MSVC automatically.
 
 ### Prerequisites
 
 Before building Vertex, ensure you have the following installed:
 
-1. **CMake** (version 3.30 or higher)
+1. **Git**
+   - Download from: https://git-scm.com/download/win
+
+2. **CMake** (version 3.30 or higher)
    - Download from: https://cmake.org/download/
    - Make sure to add CMake to your system PATH during installation
 
-2. **VCPKG** (Package Manager)
+3. **Ninja** (build system)
+   - Download from: https://github.com/nicknisi/ninja/releases
+   - Add `ninja.exe` to your system PATH
+
+4. **VCPKG** (Package Manager)
    - Clone VCPKG: `git clone https://github.com/Microsoft/vcpkg.git`
    - Run the bootstrap script: `.\vcpkg\bootstrap-vcpkg.bat`
    - Set the `VCPKG_ROOT` environment variable to your vcpkg installation directory
    - Example: `$env:VCPKG_ROOT = "C:\vcpkg"` (PowerShell) or set it in System Environment Variables
 
-3. **Visual Studio 2022** (or Build Tools for Visual Studio 2022)
+5. **Visual Studio 2022** (or Build Tools for Visual Studio 2022)
    - Download from: https://visualstudio.microsoft.com/downloads/
-   - Install with "Desktop development with C++" workload
-   - Make sure to include **Clang-Cl** compiler (found under Individual Components → Compilers, build tools, and runtimes → C++ Clang Compiler for Windows)
+   - Install with the **"Desktop development with C++"** workload
+   - Optionally include **Clang-Cl** compiler for preferred compilation (found under Individual Components → Compilers, build tools, and runtimes → C++ Clang Compiler for Windows). If not installed, MSVC will be used instead.
 
-4. **Git**
-   - Download from: https://git-scm.com/download/win
-
-### Building steps
-
-#### Option 1: Building with CLion (Recommended)
+### Building with `build.ps1`
 
 1. **Clone the repository**
-   ```bash
+   ```powershell
    git clone https://github.com/PHTNCx64/Vertex.git
    cd Vertex
    ```
 
-2. **Open the project in CLion**
-   - Launch CLion and select "Open" from the welcome screen
-   - Navigate to the cloned Vertex directory and open it
+2. **Run the build script**
+   ```powershell
+   ./build.ps1
+   ```
+   This will automatically detect your MSVC environment, locate Clang-Cl (or fall back to MSVC), configure CMake with Ninja, and build the project in Debug mode.
 
-3. **Configure the toolchain**
-   - Go to `File` → `Settings` → `Build, Execution, Deployment` → `Toolchains`
-   - Ensure Visual Studio toolchain is configured
-   - Set the compiler to **Clang-Cl** (CLion should detect it automatically if installed with Visual Studio)
+#### Build script options
 
-4. **Configure CMake**
-   - Go to `File` → `Settings` → `Build, Execution, Deployment` → `CMake`
-   - Ensure the `VCPKG_ROOT` environment variable is set (CLion will use it automatically)
-   - CLion will automatically configure CMake and download dependencies via VCPKG
-   - Wait for the initial configuration to complete (this may take some time as VCPKG downloads and builds dependencies)
+| Parameter       | Description                                           | Default   |
+|-----------------|-------------------------------------------------------|-----------|
+| `-VcpkgRoot`    | Path to vcpkg (uses `VCPKG_ROOT` env var if omitted)  | auto      |
+| `-Config`       | Build configuration: `Debug`, `Release`, or `RelWithDebInfo` | `Debug`   |
+| `-BuildDir`     | Output build directory                                | `build`   |
+| `-BuildAll`     | Build all targets                                     | off       |
+| `-RuntimeOnly`  | Build only the runtime (no plugins)                   | off       |
+| `-Usrrt`        | Build the vertexusrrt plugin                          | on (via CMake) |
+| `-Deci3rt`      | Build the Deci3 runtime target                        | off       |
+| `-NoTests`      | Disable building tests                                | off       |
+| `-Clean`        | Remove the build directory before building            | off       |
+| `-Configure`    | Run CMake configuration only, without building        | off       |
 
-5. **Build the project**
-   - Select the build configuration (Debug or Release) from the dropdown in the toolbar
-   - Click the hammer icon (Build) or press `Ctrl+F9`
-   - The first build will take longer as VCPKG installs all dependencies
+#### Examples
 
-6. **Run Vertex**
-   - Once the build completes successfully, click the Run button or press `Shift+F10`
+```powershell
+# Release build
+./build.ps1 -Config Release
+
+# Clean rebuild
+./build.ps1 -Clean
+
+# Configure only (no build)
+./build.ps1 -Configure
+
+# Release build without tests
+./build.ps1 -Config Release -NoTests
+
+# Specify vcpkg path explicitly
+./build.ps1 -VcpkgRoot "C:\vcpkg"
+
+# Build all targets in release
+./build.ps1 -Config Release -BuildAll
+```
+
+### Building with CLion
+
+1. Open the cloned Vertex directory in CLion
+2. Go to `File` → `Settings` → `Build, Execution, Deployment` → `Toolchains` and ensure Visual Studio is configured
+3. Go to `File` → `Settings` → `Build, Execution, Deployment` → `CMake` and verify the `VCPKG_ROOT` environment variable is set
+4. CLion will automatically configure CMake and download dependencies via VCPKG
+5. Select the build configuration (Debug or Release) and build with `Ctrl+F9`
 
 **Note:** Initial configuration errors about missing headers (e.g., in `include/runtime/plugin.hh`) are expected and will be resolved automatically during the CMake generation phase, as Vertex generates source code as part of the build process.
 
-#### Option 2: Building from Command Line
-
-1. **Clone the repository**
-   ```powershell
-   git clone https://github.com/PHTNCx64/Vertex.git
-   cd Vertex
-   ```
-
-2. **Ensure VCPKG_ROOT is set**
-   ```powershell
-   $env:VCPKG_ROOT = "C:\path\to\vcpkg"  # Adjust to your vcpkg installation path
-   ```
-
-3. **Create a build directory**
-   ```powershell
-   mkdir build
-   cd build
-   ```
-
-4. **Configure with CMake (using Clang-Cl)**
-   ```powershell
-   cmake .. -G "Ninja" -DCMAKE_BUILD_TYPE=Release -DCMAKE_C_COMPILER=clang-cl -DCMAKE_CXX_COMPILER=clang-cl -DCMAKE_TOOLCHAIN_FILE="$env:VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake"
-   ```
-   
-   Alternatively, if using Visual Studio generator:
-   ```powershell
-   cmake .. -G "Visual Studio 17 2022" -A x64 -T ClangCL -DCMAKE_TOOLCHAIN_FILE="$env:VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake"
-   ```
-
-5. **Build the project**
-   ```powershell
-   cmake --build . --config Release
-   ```
-   
-   Or for Debug build:
-   ```powershell
-   cmake --build . --config Debug
-   ```
-
-6. **Run Vertex**
-   ```powershell
-   .\Release\Vertex.exe
-   ```
-
 #### Troubleshooting
 
-- **Missing VCPKG_ROOT**: If CMake can't find VCPKG, make sure the `VCPKG_ROOT` environment variable is set correctly and restart your IDE/terminal
+- **Missing VCPKG_ROOT**: Make sure the `VCPKG_ROOT` environment variable is set correctly and restart your terminal
 - **Missing dependencies**: VCPKG should automatically install all dependencies listed in `vcpkg.json`. If issues occur, try running `vcpkg install` manually in the project directory
-- **Clang-Cl not found**: Ensure Clang-Cl is installed via Visual Studio Installer under Individual Components
+- **Clang-Cl not found**: The build script will fall back to MSVC automatically. To use Clang-Cl, install it via Visual Studio Installer under Individual Components
 - **Generated headers not found**: This is normal before the first build. Run CMake configuration, and the build system will generate these files automatically
 - **Long build times**: The first build takes longer because VCPKG needs to download and compile all dependencies (wxWidgets, fmt, etc.). Subsequent builds will be much faster
+- **Ninja not found**: Ensure `ninja.exe` is on your system PATH
 
 
 ## Support and Contributions
