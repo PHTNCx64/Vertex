@@ -13,13 +13,13 @@ namespace Vertex::Model
 {
     void ProcessListModel::set_selected_process(const Class::SelectedProcess& process)
     {
-        std::scoped_lock<std::shared_mutex> lock(m_stateMutex);
+        std::scoped_lock lock(m_stateMutex);
         m_selectedProcess = process;
     }
 
     void ProcessListModel::set_filter_type(const Enums::FilterType filter)
     {
-        std::scoped_lock<std::shared_mutex> lock(m_stateMutex);
+        std::scoped_lock lock(m_stateMutex);
         if (m_filterType != filter)
         {
             m_filterType = filter;
@@ -29,7 +29,7 @@ namespace Vertex::Model
 
     void ProcessListModel::set_filter_text(const std::string_view text)
     {
-        std::scoped_lock<std::shared_mutex> lock(m_stateMutex);
+        std::scoped_lock lock(m_stateMutex);
         if (m_filterText != text)
         {
             m_filterText = std::string{text};
@@ -73,12 +73,6 @@ namespace Vertex::Model
         return StatusCode::STATUS_ERROR_PROCESS_INVALID;
     }
 
-    std::size_t ProcessListModel::get_processes_count() const noexcept
-    {
-        std::shared_lock<std::shared_mutex> lock(m_stateMutex);
-        return m_shouldFilter.load(std::memory_order_acquire) ? m_filteredIndices.size() : m_processes.size();
-    }
-
     void ProcessListModel::set_should_filter(const bool shouldFilter) noexcept
     {
         bool expected = !shouldFilter;
@@ -95,49 +89,9 @@ namespace Vertex::Model
 
     void ProcessListModel::clear_selected_process() noexcept
     {
-        std::shared_lock<std::shared_mutex> lock(m_stateMutex);
+        std::scoped_lock lock(m_stateMutex);
         m_selectedProcess.set_selected_process_id(0);
         m_selectedProcess.set_selected_process_name({});
-    }
-
-    std::string ProcessListModel::get_process_item(const long item, const long col) const
-    {
-        std::shared_lock<std::shared_mutex> lock(m_stateMutex);
-
-        std::size_t actualIndex = item;
-        if (m_shouldFilter.load(std::memory_order_acquire))
-        {
-            if (item < 0 || static_cast<std::size_t>(item) >= m_filteredIndices.size())
-            {
-                return EMPTY_STRING;
-            }
-            actualIndex = m_filteredIndices[item];
-        }
-        else
-        {
-            if (item < 0 || static_cast<std::size_t>(item) >= m_processes.size())
-            {
-                return EMPTY_STRING;
-            }
-            if (!m_sortIndices.empty() && static_cast<std::size_t>(item) < m_sortIndices.size())
-            {
-                actualIndex = m_sortIndices[item];
-            }
-        }
-
-        const auto& [processName, processOwner, processId] = m_processes[actualIndex];
-
-        switch (col)
-        {
-        case PROCESS_ID_COLUMN:
-            return fmt::format("{}", processId);
-        case PROCESS_NAME_COLUMN:
-            return fmt::format("{}", processName);
-        case PROCESS_OWNER_COLUMN:
-            return fmt::format("{}", processOwner);
-        [[unlikely]] default:
-            return EMPTY_STRING;
-        }
     }
 
     StatusCode ProcessListModel::get_process_list()
@@ -194,7 +148,7 @@ namespace Vertex::Model
         }
 
         {
-            std::scoped_lock<std::shared_mutex> lock(m_stateMutex);
+            std::scoped_lock lock(m_stateMutex);
             m_processes = std::move(safeProcesses);
             invalidate_cache();
             m_filterDirty.store(true, std::memory_order_release);
@@ -203,35 +157,62 @@ namespace Vertex::Model
         return StatusCode::STATUS_OK;
     }
 
-    void ProcessListModel::sort_list()
+    void ProcessListModel::build_tree()
     {
-        std::scoped_lock<std::shared_mutex> lock(m_stateMutex);
+        std::scoped_lock lock(m_stateMutex);
 
-        if (m_shouldFilter.load(std::memory_order_acquire))
-        {
-            std::ranges::sort(m_filteredIndices,
-                              [this](std::size_t a, std::size_t b)
-                              {
-                                  return compare_processes(a, b);
-                              });
-        }
-        else
-        {
-            m_sortIndices.resize(m_processes.size());
-            std::iota(m_sortIndices.begin(), m_sortIndices.end(), 0);
+        m_treeNodes.clear();
+        m_rootNodeIndices.clear();
+        m_pidToNodeIndex.clear();
 
-            std::ranges::sort(m_sortIndices,
-                              [this](std::size_t a, std::size_t b)
-                              {
-                                  return compare_processes(a, b);
-                              });
+        m_treeNodes.resize(m_processes.size());
+        for (const auto& [i, process] : m_processes | std::views::enumerate)
+        {
+            const auto idx = static_cast<std::size_t>(i);
+            m_treeNodes[idx].processIndex = idx;
+            m_pidToNodeIndex[process.processId] = idx;
         }
+
+        for (const auto& [i, process] : m_processes | std::views::enumerate)
+        {
+            const auto idx = static_cast<std::size_t>(i);
+            const auto parentPid = process.parentProcessId;
+            if (parentPid == 0)
+            {
+                m_rootNodeIndices.push_back(idx);
+                continue;
+            }
+
+            const auto it = m_pidToNodeIndex.find(parentPid);
+            if (it != m_pidToNodeIndex.end() && it->second != idx)
+            {
+                m_treeNodes[it->second].childNodeIndices.push_back(idx);
+            }
+            else
+            {
+                m_rootNodeIndices.push_back(idx);
+            }
+        }
+
+        m_treeDirty.store(true, std::memory_order_release);
+    }
+
+    bool ProcessListModel::consume_tree_dirty() noexcept
+    {
+        return m_treeDirty.exchange(false, std::memory_order_acq_rel);
     }
 
     void ProcessListModel::filter_list()
     {
         if (!m_shouldFilter.load(std::memory_order_acquire))
         {
+            std::scoped_lock lock(m_stateMutex);
+            for (auto& node : m_treeNodes)
+            {
+                node.matchesFilter = true;
+                node.visibleInFilter = true;
+            }
+            m_treeDirty.store(true, std::memory_order_release);
             return;
         }
 
@@ -243,7 +224,7 @@ namespace Vertex::Model
         std::string filterText{};
         Enums::FilterType filterType{};
         {
-            std::shared_lock<std::shared_mutex> lock(m_stateMutex);
+            std::shared_lock lock(m_stateMutex);
             filterText = m_filterText;
             filterType = m_filterType;
         }
@@ -258,14 +239,239 @@ namespace Vertex::Model
         }
 
         {
-            std::scoped_lock<std::shared_mutex> lock(m_stateMutex);
+            std::scoped_lock lock(m_stateMutex);
 
-            m_filteredIndices = std::views::iota(std::size_t{0}, m_processes.size())
-                | std::views::filter([this, &filterType, &lowercaseFilterText, &searcher](std::size_t i) {
-                    return should_keep_processes(m_processes[i], filterType, lowercaseFilterText, searcher);
-                })
-                | std::ranges::to<std::vector>();
+            for (auto& node : m_treeNodes)
+            {
+                node.matchesFilter = matches_filter(m_processes[node.processIndex], filterType, lowercaseFilterText, searcher);
+                node.visibleInFilter = false;
+            }
+
+            for (const auto rootIndex : m_rootNodeIndices)
+            {
+                propagate_visibility(rootIndex);
+            }
         }
+
+        m_treeDirty.store(true, std::memory_order_release);
+    }
+
+    bool ProcessListModel::propagate_visibility(const std::size_t nodeIndex)
+    {
+        auto& node = m_treeNodes[nodeIndex];
+        bool anyChildVisible = false;
+
+        for (const auto childIndex : node.childNodeIndices)
+        {
+            if (propagate_visibility(childIndex))
+            {
+                anyChildVisible = true;
+            }
+        }
+
+        node.visibleInFilter = node.matchesFilter || anyChildVisible;
+        return node.visibleInFilter;
+    }
+
+    void ProcessListModel::sort_list()
+    {
+        std::scoped_lock lock(m_stateMutex);
+
+        sort_children(m_rootNodeIndices);
+        for (auto& node : m_treeNodes)
+        {
+            if (!node.childNodeIndices.empty())
+            {
+                sort_children(node.childNodeIndices);
+            }
+        }
+
+        m_treeDirty.store(true, std::memory_order_release);
+    }
+
+    void ProcessListModel::sort_children(std::vector<std::size_t>& indices)
+    {
+        std::ranges::sort(indices,
+                          [this](std::size_t a, std::size_t b)
+                          {
+                              return compare_processes(m_treeNodes[a].processIndex, m_treeNodes[b].processIndex);
+                          });
+    }
+
+    std::size_t ProcessListModel::get_root_count() const noexcept
+    {
+        std::shared_lock lock(m_stateMutex);
+        if (!m_shouldFilter.load(std::memory_order_acquire))
+        {
+            return m_rootNodeIndices.size();
+        }
+
+        return static_cast<std::size_t>(std::ranges::count_if(m_rootNodeIndices, [this](const auto idx)
+        {
+            return idx < m_treeNodes.size() && m_treeNodes[idx].visibleInFilter;
+        }));
+    }
+
+    std::size_t ProcessListModel::get_child_count(const std::size_t nodeIndex) const noexcept
+    {
+        std::shared_lock lock(m_stateMutex);
+        if (nodeIndex >= m_treeNodes.size())
+        {
+            return 0;
+        }
+
+        if (!m_shouldFilter.load(std::memory_order_acquire))
+        {
+            return m_treeNodes[nodeIndex].childNodeIndices.size();
+        }
+
+        return static_cast<std::size_t>(std::ranges::count_if(m_treeNodes[nodeIndex].childNodeIndices, [this](const auto childIdx)
+        {
+            return childIdx < m_treeNodes.size() && m_treeNodes[childIdx].visibleInFilter;
+        }));
+    }
+
+    std::size_t ProcessListModel::get_root_node_index(const std::size_t pos) const noexcept
+    {
+        std::shared_lock lock(m_stateMutex);
+        if (!m_shouldFilter.load(std::memory_order_acquire))
+        {
+            return pos < m_rootNodeIndices.size() ? m_rootNodeIndices[pos] : INVALID_NODE_INDEX;
+        }
+
+        std::size_t current{};
+        for (const auto idx : m_rootNodeIndices)
+        {
+            if (idx < m_treeNodes.size() && m_treeNodes[idx].visibleInFilter)
+            {
+                if (current == pos)
+                {
+                    return idx;
+                }
+                ++current;
+            }
+        }
+        return INVALID_NODE_INDEX;
+    }
+
+    std::size_t ProcessListModel::get_child_node_index(const std::size_t parentNodeIndex, const std::size_t pos) const noexcept
+    {
+        std::shared_lock lock(m_stateMutex);
+        if (parentNodeIndex >= m_treeNodes.size())
+        {
+            return INVALID_NODE_INDEX;
+        }
+
+        const auto& children = m_treeNodes[parentNodeIndex].childNodeIndices;
+
+        if (!m_shouldFilter.load(std::memory_order_acquire))
+        {
+            return pos < children.size() ? children[pos] : INVALID_NODE_INDEX;
+        }
+
+        std::size_t current{};
+        for (const auto childIdx : children)
+        {
+            if (childIdx < m_treeNodes.size() && m_treeNodes[childIdx].visibleInFilter)
+            {
+                if (current == pos)
+                {
+                    return childIdx;
+                }
+                ++current;
+            }
+        }
+        return INVALID_NODE_INDEX;
+    }
+
+    std::string ProcessListModel::get_node_column_value(const std::size_t nodeIndex, const long col) const
+    {
+        std::shared_lock lock(m_stateMutex);
+        if (nodeIndex >= m_treeNodes.size())
+        {
+            return EMPTY_STRING;
+        }
+
+        const auto processIndex = m_treeNodes[nodeIndex].processIndex;
+        if (processIndex >= m_processes.size())
+        {
+            return EMPTY_STRING;
+        }
+
+        const auto& [processName, processOwner, processId, parentProcessId] = m_processes[processIndex];
+
+        switch (col)
+        {
+        case PROCESS_ID_COLUMN:
+            return fmt::format("{}", processId);
+        case PROCESS_NAME_COLUMN:
+            return fmt::format("{}", processName);
+        case PROCESS_OWNER_COLUMN:
+            return fmt::format("{}", processOwner);
+        [[unlikely]] default:
+            return EMPTY_STRING;
+        }
+    }
+
+    std::size_t ProcessListModel::get_parent_node_index(const std::size_t nodeIndex) const noexcept
+    {
+        std::shared_lock lock(m_stateMutex);
+        if (nodeIndex >= m_treeNodes.size())
+        {
+            return INVALID_NODE_INDEX;
+        }
+
+        const auto parentPid = m_processes[m_treeNodes[nodeIndex].processIndex].parentProcessId;
+        if (parentPid == 0)
+        {
+            return INVALID_NODE_INDEX;
+        }
+
+        const auto it = m_pidToNodeIndex.find(parentPid);
+        if (it == m_pidToNodeIndex.end() || it->second == nodeIndex)
+        {
+            return INVALID_NODE_INDEX;
+        }
+
+        return it->second;
+    }
+
+    bool ProcessListModel::node_has_parent(const std::size_t nodeIndex) const noexcept
+    {
+        return get_parent_node_index(nodeIndex) != INVALID_NODE_INDEX;
+    }
+
+    bool ProcessListModel::node_is_visible(const std::size_t nodeIndex) const noexcept
+    {
+        std::shared_lock lock(m_stateMutex);
+        if (nodeIndex >= m_treeNodes.size())
+        {
+            return false;
+        }
+
+        if (!m_shouldFilter.load(std::memory_order_acquire))
+        {
+            return true;
+        }
+
+        return m_treeNodes[nodeIndex].visibleInFilter;
+    }
+
+    Class::SelectedProcess ProcessListModel::make_selected_process_from_node(const std::size_t nodeIndex) noexcept
+    {
+        std::scoped_lock lock(m_stateMutex);
+
+        if (nodeIndex >= m_treeNodes.size())
+        {
+            m_selectedProcess.set_selected_process_id(0);
+            m_selectedProcess.set_selected_process_name({});
+            return m_selectedProcess;
+        }
+
+        const auto processIndex = m_treeNodes[nodeIndex].processIndex;
+        m_selectedProcess.set_selected_process_id(m_processes[processIndex].processId);
+        m_selectedProcess.set_selected_process_name(m_processes[processIndex].processName);
+        return m_selectedProcess;
     }
 
     bool ProcessListModel::compare_processes(std::size_t a, std::size_t b) const
@@ -289,7 +495,7 @@ namespace Vertex::Model
         }
     }
 
-    bool ProcessListModel::should_keep_processes(const ProcessInformation& process,
+    bool ProcessListModel::matches_filter(const ProcessInformation& process,
                                                  const Enums::FilterType filterType,
                                                  const std::string& lowercaseFilterText,
                                                  const std::optional<std::boyer_moore_searcher<std::string::const_iterator>>& searcher)
@@ -336,43 +542,6 @@ namespace Vertex::Model
         return searchString && searchString->find(lowercaseFilterText) != std::string::npos;
     }
 
-    Class::SelectedProcess ProcessListModel::make_selected_process_from_id(const long index) noexcept
-    {
-        std::scoped_lock<std::shared_mutex> lock(m_stateMutex);
-
-        std::size_t actualIndex = index;
-        if (m_shouldFilter.load(std::memory_order_acquire))
-        {
-            if (index >= 0 && static_cast<std::size_t>(index) < m_filteredIndices.size())
-            {
-                actualIndex = m_filteredIndices[index];
-            }
-            else
-            {
-                m_selectedProcess.set_selected_process_id(0);
-                m_selectedProcess.set_selected_process_name({});
-                return m_selectedProcess;
-            }
-        }
-        else
-        {
-            if (index < 0 || static_cast<std::size_t>(index) >= m_processes.size())
-            {
-                m_selectedProcess.set_selected_process_id(0);
-                m_selectedProcess.set_selected_process_name({});
-                return m_selectedProcess;
-            }
-            if (!m_sortIndices.empty() && static_cast<std::size_t>(index) < m_sortIndices.size())
-            {
-                actualIndex = m_sortIndices[index];
-            }
-        }
-
-        m_selectedProcess.set_selected_process_id(m_processes[actualIndex].processId);
-        m_selectedProcess.set_selected_process_name(m_processes[actualIndex].processName);
-        return m_selectedProcess;
-    }
-
     void ProcessListModel::invalidate_cache()
     {
         for (auto& cache : m_processCache | std::views::values)
@@ -395,43 +564,43 @@ namespace Vertex::Model
 
     void ProcessListModel::set_clicked_column(const long col) noexcept
     {
-        std::scoped_lock<std::shared_mutex> lock(m_stateMutex);
+        std::scoped_lock lock(m_stateMutex);
         m_selectedColumn = col;
     }
 
     long ProcessListModel::get_clicked_column() const noexcept
     {
-        std::shared_lock<std::shared_mutex> lock(m_stateMutex);
+        std::shared_lock lock(m_stateMutex);
         return m_selectedColumn;
     }
 
     void ProcessListModel::set_sort_order(const Enums::SortOrder sortOrder)
     {
-        std::scoped_lock<std::shared_mutex> lock(m_stateMutex);
+        std::scoped_lock lock(m_stateMutex);
         m_sortOrder = sortOrder;
     }
 
     Class::SelectedProcess ProcessListModel::get_selected_process() const noexcept
     {
-        std::shared_lock<std::shared_mutex> lock(m_stateMutex);
+        std::shared_lock lock(m_stateMutex);
         return m_selectedProcess;
     }
 
     Enums::FilterType ProcessListModel::get_filter_type() const noexcept
     {
-        std::shared_lock<std::shared_mutex> lock(m_stateMutex);
+        std::shared_lock lock(m_stateMutex);
         return m_filterType;
     }
 
     std::string ProcessListModel::get_filter_text() const noexcept
     {
-        std::shared_lock<std::shared_mutex> lock(m_stateMutex);
+        std::shared_lock lock(m_stateMutex);
         return m_filterText;
     }
 
     Enums::SortOrder ProcessListModel::get_sort_order() const noexcept
     {
-        std::shared_lock<std::shared_mutex> lock(m_stateMutex);
+        std::shared_lock lock(m_stateMutex);
         return m_sortOrder;
     }
 

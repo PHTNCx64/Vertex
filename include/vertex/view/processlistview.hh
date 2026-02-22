@@ -31,7 +31,7 @@ namespace Vertex::View
         [[nodiscard]] bool toggle_view();
         void bind_events();
         void on_show(wxShowEvent& event);
-        void restore_ui_state();
+        void restore_ui_state() const;
 
         mutable std::once_flag m_timerFlag{};
 

@@ -91,7 +91,7 @@ namespace Vertex::View
             m_viewModel->open_process();
         }, m_attachButton->GetId());
 
-        Bind(wxEVT_LIST_ITEM_ACTIVATED, [this]([[maybe_unused]] wxCommandEvent& event)
+        Bind(wxEVT_DATAVIEW_ITEM_ACTIVATED, [this]([[maybe_unused]] wxDataViewEvent& event)
         {
             m_viewModel->open_process();
         }, m_processList->GetId());
@@ -103,7 +103,7 @@ namespace Vertex::View
             m_processList->refresh_list();
         };
 
-        Bind(wxEVT_LIST_COL_CLICK, [this]([[maybe_unused]] const wxListEvent& event)
+        Bind(wxEVT_DATAVIEW_COLUMN_HEADER_CLICK, [this](const wxDataViewEvent& event)
         {
             m_viewModel->set_sort_order();
             m_viewModel->set_clicked_column(event.GetColumn());
@@ -111,18 +111,19 @@ namespace Vertex::View
             m_processList->refresh_list();
         }, m_processList->GetId());
 
-        Bind(wxEVT_LIST_ITEM_SELECTED, [this](const wxListEvent& event)
+        Bind(wxEVT_DATAVIEW_SELECTION_CHANGED, [this]([[maybe_unused]] wxDataViewEvent& event)
         {
-            const long itemIndex = event.GetIndex();
-            m_viewModel->set_selected_process(itemIndex);
-
-            m_attachButton->Enable();
-
-        }, m_processList->GetId());
-
-        Bind(wxEVT_LIST_ITEM_DESELECTED, [this]([[maybe_unused]] const wxListEvent& event)
-        {
-            m_attachButton->Disable();
+            const auto nodeIndex = m_processList->get_selected_node_index();
+            if (nodeIndex != ViewModel::ProcessListViewModel::INVALID_NODE_INDEX)
+            {
+                m_viewModel->set_selected_process_from_node(nodeIndex);
+                m_attachButton->Enable();
+            }
+            else
+            {
+                m_viewModel->clear_selected_process();
+                m_attachButton->Disable();
+            }
         }, m_processList->GetId());
 
         Bind(wxEVT_RADIOBUTTON, [checkboxClicked]([[maybe_unused]] const wxCommandEvent& event)
@@ -191,7 +192,12 @@ namespace Vertex::View
     {
         switch (eventId)
         {
-        case Event::VIEW_EVENT: std::ignore = toggle_view(); break;
+        case Event::VIEW_EVENT:
+            CallAfter([this]()
+            {
+                std::ignore = toggle_view();
+            });
+            break;
         default: break;
         }
     }
@@ -201,7 +207,7 @@ namespace Vertex::View
         return IsShown() ? Hide() : Show();
     }
 
-    void ProcessListView::restore_ui_state()
+    void ProcessListView::restore_ui_state() const
     {
         const int filterTypeIndex = m_viewModel->get_filter_type_index();
 

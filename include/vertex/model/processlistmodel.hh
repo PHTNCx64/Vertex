@@ -14,21 +14,29 @@
 
 #include <shared_mutex>
 #include <string_view>
+#include <unordered_map>
 
 #include <sdk/process.h>
 
 namespace Vertex::Model
 {
+    struct ProcessNode final
+    {
+        std::size_t processIndex{};
+        std::vector<std::size_t> childNodeIndices{};
+        bool matchesFilter{};
+        bool visibleInFilter{};
+    };
+
     class ProcessListModel final
     {
       public:
         explicit ProcessListModel(Runtime::ILoader& loaderService, Log::ILog& loggerService, Configuration::ISettings& settingsService)
-            : m_loaderService(loaderService),
-              m_loggerService(loggerService),
-              m_settingsService(settingsService)
+            : m_loaderService{loaderService},
+              m_loggerService{loggerService},
+              m_settingsService{settingsService}
         {
             m_processes.reserve(INITIAL_PROCESS_LIST_SIZE);
-            m_filteredIndices.reserve(INITIAL_PROCESS_LIST_SIZE);
         }
 
         [[nodiscard]] StatusCode open_process() const;
@@ -40,7 +48,6 @@ namespace Vertex::Model
         void set_clicked_column(long col) noexcept;
         void set_should_filter(bool shouldFilter) noexcept;
         void clear_selected_process() noexcept;
-        [[nodiscard]] Class::SelectedProcess make_selected_process_from_id(long index) noexcept;
 
         [[nodiscard]] Class::SelectedProcess get_selected_process() const noexcept;
         [[nodiscard]] Enums::FilterType get_filter_type() const noexcept;
@@ -49,11 +56,21 @@ namespace Vertex::Model
         [[nodiscard]] long get_clicked_column() const noexcept;
         [[nodiscard]] StatusCode get_process_list();
         [[nodiscard]] bool get_should_filter() const noexcept;
-        [[nodiscard]] std::size_t get_processes_count() const noexcept;
-        [[nodiscard]] std::string get_process_item(long item, long col) const;
 
+        void build_tree();
         void filter_list();
         void sort_list();
+        [[nodiscard]] bool consume_tree_dirty() noexcept;
+
+        [[nodiscard]] std::size_t get_root_count() const noexcept;
+        [[nodiscard]] std::size_t get_child_count(std::size_t nodeIndex) const noexcept;
+        [[nodiscard]] std::size_t get_root_node_index(std::size_t pos) const noexcept;
+        [[nodiscard]] std::size_t get_child_node_index(std::size_t parentNodeIndex, std::size_t pos) const noexcept;
+        [[nodiscard]] std::string get_node_column_value(std::size_t nodeIndex, long col) const;
+        [[nodiscard]] std::size_t get_parent_node_index(std::size_t nodeIndex) const noexcept;
+        [[nodiscard]] bool node_has_parent(std::size_t nodeIndex) const noexcept;
+        [[nodiscard]] bool node_is_visible(std::size_t nodeIndex) const noexcept;
+        [[nodiscard]] Class::SelectedProcess make_selected_process_from_node(std::size_t nodeIndex) noexcept;
 
         [[nodiscard]] int get_ui_state_int(std::string_view key, int defaultValue) const;
         void set_ui_state_int(std::string_view key, int value) const;
@@ -62,14 +79,17 @@ namespace Vertex::Model
         static constexpr long PROCESS_NAME_COLUMN = 1;
         static constexpr long PROCESS_OWNER_COLUMN = 2;
 
+        static constexpr std::size_t INVALID_NODE_INDEX = std::numeric_limits<std::size_t>::max();
+
       private:
 
         [[nodiscard]] bool compare_processes(std::size_t a, std::size_t b) const;
-
-        bool should_keep_processes(const ProcessInformation& process,
+        [[nodiscard]] bool matches_filter(const ProcessInformation& process,
                               Enums::FilterType filterType,
                               const std::string& lowercaseFilterText,
                               const std::optional<std::boyer_moore_searcher<std::string::const_iterator>>& searcher);
+        bool propagate_visibility(std::size_t nodeIndex);
+        void sort_children(std::vector<std::size_t>& indices);
         void invalidate_cache();
 
         struct ProcessCache final
@@ -77,17 +97,18 @@ namespace Vertex::Model
             std::string lowercaseName;
             std::string lowercaseOwner;
             std::string idString;
-            bool dirty = true;
+            bool dirty{true};
         };
 
         std::unordered_map<const ProcessInformation*, ProcessCache> m_processCache{};
 
-        static constexpr auto MODEL_NAME = "ProcessListModel";
+        static constexpr std::string_view MODEL_NAME{"ProcessListModel"};
         static constexpr int INITIAL_PROCESS_LIST_SIZE = 500;
 
         long m_selectedColumn{};
         std::atomic_bool m_shouldFilter{};
         std::atomic_bool m_filterDirty{true};
+        std::atomic_bool m_treeDirty{false};
 
         Class::SelectedProcess m_selectedProcess{};
         Enums::SortOrder m_sortOrder{};
@@ -99,8 +120,9 @@ namespace Vertex::Model
 
         std::vector<ProcessInformation> m_processes{};
 
-        std::vector<std::size_t> m_filteredIndices{};
-        std::vector<std::size_t> m_sortIndices{};
+        std::vector<ProcessNode> m_treeNodes{};
+        std::vector<std::size_t> m_rootNodeIndices{};
+        std::unordered_map<std::uint32_t, std::size_t> m_pidToNodeIndex{};
 
         mutable std::shared_mutex m_stateMutex{};
         std::string m_filterText{};
