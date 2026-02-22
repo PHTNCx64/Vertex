@@ -5,6 +5,7 @@
 #include <gtest/gtest.h>
 #include <gmock/gmock.h>
 #include <vertex/model/mainmodel.hh>
+#include <vertex/utility.hh>
 #include "../../mocks/MockISettings.hh"
 #include "../../mocks/MockIMemoryScanner.hh"
 #include "../../mocks/MockILoader.hh"
@@ -206,7 +207,7 @@ TEST_F(MainModelTest, IsProcessOpened_FunctionNotImplemented_ReturnsError)
 
     Vertex::Runtime::Plugin mockPlugin{};
     mockPlugin.set_plugin_handle(reinterpret_cast<void*>(0x1)); // Make is_loaded() return true
-    mockPlugin.internal_vertex_is_process_valid = nullptr; // Not implemented
+    mockPlugin.internal_vertex_process_is_valid = nullptr;
 
     EXPECT_CALL(*mockLoader, get_active_plugin())
         .WillOnce(Return(std::optional<std::reference_wrapper<Vertex::Runtime::Plugin>>(mockPlugin)));
@@ -229,7 +230,7 @@ TEST_F(MainModelTest, IsProcessOpened_ValidPlugin_CallsPluginFunction)
 
     Vertex::Runtime::Plugin mockPlugin{};
     mockPlugin.set_plugin_handle(reinterpret_cast<void*>(0x1)); // Make is_loaded() return true
-    mockPlugin.internal_vertex_is_process_valid = []() {
+    mockPlugin.internal_vertex_process_is_valid = []() {
         return StatusCode::STATUS_OK;
     };
 
@@ -251,7 +252,7 @@ TEST_F(MainModelTest, KillProcess_ValidPlugin_CallsPluginFunction)
 
     Vertex::Runtime::Plugin mockPlugin{};
     mockPlugin.set_plugin_handle(reinterpret_cast<void*>(0x1)); // Make is_loaded() return true
-    mockPlugin.internal_vertex_kill_process = []() {
+    mockPlugin.internal_vertex_process_kill = []() {
         return StatusCode::STATUS_OK;
     };
 
@@ -289,7 +290,7 @@ TEST_F(MainModelTest, ValidateInput_EmptyInput_ReturnsOK)
     std::vector<std::uint8_t> output;
 
     // Act
-    StatusCode result = model->validate_input(Vertex::Scanner::ValueType::Int32, false, EMPTY_STRING, output);
+    StatusCode result = model->validate_input(Vertex::Scanner::ValueType::Int32, false, Vertex::EMPTY_STRING, output);
 
     // Assert
     EXPECT_EQ(StatusCode::STATUS_OK, result);
