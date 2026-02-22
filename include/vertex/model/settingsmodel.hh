@@ -4,6 +4,7 @@
 //
 #pragma once
 
+#include <vertex/model/isettingsmodel.hh>
 #include <vertex/runtime/loader.hh>
 #include <vertex/log/log.hh>
 #include <vertex/language/language.hh>
@@ -13,7 +14,7 @@
 
 namespace Vertex::Model
 {
-    class SettingsModel final
+    class SettingsModel final : public ISettingsModel
     {
     public:
         explicit SettingsModel(Runtime::ILoader& loaderService,
@@ -27,46 +28,46 @@ namespace Vertex::Model
         {
         }
 
-        [[nodiscard]] StatusCode save_settings() const;
-        [[nodiscard]] bool has_pending_changes() const;
+        [[nodiscard]] StatusCode save_settings() const override;
+        [[nodiscard]] bool has_pending_changes() const override;
 
-        [[nodiscard]] StatusCode set_logging_status(bool status) const;
-        [[nodiscard]] StatusCode set_logging_interval(int minutes) const;
-        [[nodiscard]] StatusCode set_save_interval(int minutes) const;
-        [[nodiscard]] StatusCode set_theme(int theme) const;
-        [[nodiscard]] StatusCode set_gui_saving_enabled(bool status) const;
-        [[nodiscard]] StatusCode set_remember_window_position(bool status) const;
-        [[nodiscard]] StatusCode set_active_language(std::string_view choice) const;
+        [[nodiscard]] StatusCode set_logging_status(bool status) const override;
+        [[nodiscard]] StatusCode set_logging_interval(int minutes) const override;
+        [[nodiscard]] StatusCode set_save_interval(int minutes) const override;
+        [[nodiscard]] StatusCode set_theme(int theme) const override;
+        [[nodiscard]] StatusCode set_gui_saving_enabled(bool status) const override;
+        [[nodiscard]] StatusCode set_remember_window_position(bool status) const override;
+        [[nodiscard]] StatusCode set_active_language(std::string_view choice) const override;
 
-        [[nodiscard]] StatusCode get_logging_status(bool& status) const;
-        [[nodiscard]] StatusCode get_save_interval(int& minutes) const;
-        [[nodiscard]] const std::vector<Runtime::Plugin>& get_plugins() const;
-        [[nodiscard]] StatusCode get_plugin_loaded(int selectedPluginIndex) const;
-        [[nodiscard]] StatusCode get_plugin_is_active(int selectedPluginIndex) const;
-        [[nodiscard]] StatusCode get_is_active_language(std::string_view languageKey) const;
-        [[nodiscard]] StatusCode get_theme(int& theme) const;
-        [[nodiscard]] StatusCode get_gui_saving_enabled(bool& status) const;
-        [[nodiscard]] StatusCode get_remember_window_position(bool& status) const;
-        [[nodiscard]] StatusCode load_plugin(std::size_t index) const;
-        [[nodiscard]] StatusCode unload_plugin(std::size_t index) const;
-        [[nodiscard]] StatusCode set_active_plugin(std::size_t index) const;
+        [[nodiscard]] StatusCode get_logging_status(bool& status) const override;
+        [[nodiscard]] StatusCode get_save_interval(int& minutes) const override;
+        [[nodiscard]] const std::vector<Runtime::Plugin>& get_plugins() const override;
+        [[nodiscard]] StatusCode get_plugin_loaded(int selectedPluginIndex) const override;
+        [[nodiscard]] StatusCode get_plugin_is_active(int selectedPluginIndex) const override;
+        [[nodiscard]] StatusCode get_is_active_language(std::string_view languageKey) const override;
+        [[nodiscard]] StatusCode get_theme(int& theme) const override;
+        [[nodiscard]] StatusCode get_gui_saving_enabled(bool& status) const override;
+        [[nodiscard]] StatusCode get_remember_window_position(bool& status) const override;
+        [[nodiscard]] StatusCode load_plugin(std::size_t index) const override;
+        [[nodiscard]] StatusCode unload_plugin(std::size_t index) const override;
+        [[nodiscard]] StatusCode set_active_plugin(std::size_t index) const override;
 
-        [[nodiscard]] StatusCode get_reader_threads(int& count) const;
-        [[nodiscard]] StatusCode get_thread_buffer_size(int& sizeMB) const;
-        [[nodiscard]] StatusCode set_reader_threads(int count) const;
-        [[nodiscard]] StatusCode set_thread_buffer_size(int sizeMB) const;
+        [[nodiscard]] StatusCode get_reader_threads(int& count) const override;
+        [[nodiscard]] StatusCode get_thread_buffer_size(int& sizeMB) const override;
+        [[nodiscard]] StatusCode set_reader_threads(int count) const override;
+        [[nodiscard]] StatusCode set_thread_buffer_size(int sizeMB) const override;
 
-        [[nodiscard]] std::vector<std::filesystem::path> get_plugin_paths() const;
-        [[nodiscard]] StatusCode add_plugin_path(const std::filesystem::path& path) const;
-        [[nodiscard]] StatusCode remove_plugin_path(const std::filesystem::path& path) const;
+        [[nodiscard]] std::vector<std::filesystem::path> get_plugin_paths() const override;
+        [[nodiscard]] StatusCode add_plugin_path(const std::filesystem::path& path) const override;
+        [[nodiscard]] StatusCode remove_plugin_path(const std::filesystem::path& path) const override;
 
-        [[nodiscard]] std::unordered_map<std::string, std::filesystem::path> get_available_languages() const;
-        [[nodiscard]] std::vector<std::filesystem::path> get_language_paths() const;
-        [[nodiscard]] StatusCode add_language_path(const std::filesystem::path& path) const;
-        [[nodiscard]] StatusCode remove_language_path(const std::filesystem::path& path) const;
+        [[nodiscard]] std::unordered_map<std::string, std::filesystem::path> get_available_languages() const override;
+        [[nodiscard]] std::vector<std::filesystem::path> get_language_paths() const override;
+        [[nodiscard]] StatusCode add_language_path(const std::filesystem::path& path) const override;
+        [[nodiscard]] StatusCode remove_language_path(const std::filesystem::path& path) const override;
 
-        [[nodiscard]] int get_ui_state_int(std::string_view key, int defaultValue) const;
-        void set_ui_state_int(std::string_view key, int value) const;
+        [[nodiscard]] int get_ui_state_int(std::string_view key, int defaultValue) const override;
+        void set_ui_state_int(std::string_view key, int value) const override;
 
     private:
         Runtime::ILoader& m_loaderService;

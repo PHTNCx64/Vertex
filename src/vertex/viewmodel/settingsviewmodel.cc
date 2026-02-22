@@ -12,7 +12,7 @@
 
 namespace Vertex::ViewModel
 {
-    SettingsViewModel::SettingsViewModel(std::unique_ptr<Model::SettingsModel> model, Event::EventBus& eventBus, Log::ILog& logService, std::string name)
+    SettingsViewModel::SettingsViewModel(std::unique_ptr<Model::ISettingsModel> model, Event::EventBus& eventBus, Log::ILog& logService, std::string name)
         : m_viewModelName{std::move(name)},
           m_model{std::move(model)},
           m_eventBus{eventBus},

@@ -20,7 +20,7 @@ namespace Vertex::ViewModel
     {
     public:
         SettingsViewModel(
-            std::unique_ptr<Model::SettingsModel> model,
+            std::unique_ptr<Model::ISettingsModel> model,
             Event::EventBus& eventBus,
             Log::ILog& logService,
             std::string name = ViewModelName::SETTINGS
@@ -78,7 +78,7 @@ namespace Vertex::ViewModel
         void unsubscribe_from_events() const;
 
         std::string m_viewModelName {};
-        std::unique_ptr<Model::SettingsModel> m_model {};
+        std::unique_ptr<Model::ISettingsModel> m_model {};
         std::move_only_function<void(Event::EventId, const Event::VertexEvent&) const> m_eventCallback {};
 
         Event::EventBus& m_eventBus;
