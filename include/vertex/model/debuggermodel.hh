@@ -7,6 +7,7 @@
 #include <vertex/debugger/debuggertypes.hh>
 #include <vertex/debugger/debuggerworker.hh>
 #include <vertex/runtime/iloader.hh>
+#include <vertex/thread/ithreaddispatcher.hh>
 #include <vertex/runtime/iregistry.hh>
 #include <vertex/log/ilog.hh>
 #include <vertex/configuration/isettings.hh>
@@ -23,7 +24,7 @@
 
 namespace Vertex::Model
 {
-    using DebuggerEventHandler = std::function<void(const Debugger::DebuggerEvent&)>;
+    using DebuggerEventHandler = std::move_only_function<void(const Debugger::DebuggerEvent&)>;
 
     class DebuggerModel final
     {
@@ -31,7 +32,8 @@ namespace Vertex::Model
         explicit DebuggerModel(
             Configuration::ISettings& settingsService,
             Runtime::ILoader& loaderService,
-            Log::ILog& loggerService
+            Log::ILog& loggerService,
+            Thread::IThreadDispatcher& dispatcher
         );
 
         ~DebuggerModel();
@@ -109,7 +111,7 @@ namespace Vertex::Model
         void clear_cached_data();
 
     private:
-        static constexpr auto MODEL_NAME = "DebuggerModel";
+        static constexpr std::string_view MODEL_NAME{"DebuggerModel"};
         static constexpr std::size_t MAX_DISASSEMBLY_LINES = 1000;
         static constexpr std::size_t TRIM_LINES_COUNT = 200;
 

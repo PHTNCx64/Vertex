@@ -17,11 +17,12 @@ namespace Vertex::Model
 {
     DebuggerModel::DebuggerModel(Configuration::ISettings& settingsService,
                                    Runtime::ILoader& loaderService,
-                                   Log::ILog& loggerService)
-        : m_settingsService(settingsService),
-          m_loaderService(loaderService),
-          m_loggerService(loggerService),
-          m_worker(std::make_unique<Debugger::DebuggerWorker>(loaderService))
+                                   Log::ILog& loggerService,
+                                   Thread::IThreadDispatcher& dispatcher)
+        : m_settingsService{settingsService},
+          m_loaderService{loaderService},
+          m_loggerService{loggerService},
+          m_worker(std::make_unique<Debugger::DebuggerWorker>(loaderService, dispatcher))
     {
         m_worker->set_event_callback([this](const Debugger::DebuggerEvent& evt)
         {
@@ -31,7 +32,7 @@ namespace Vertex::Model
 
     DebuggerModel::~DebuggerModel()
     {
-        (void)stop_worker();
+        std::ignore = stop_worker();
     }
 
     StatusCode DebuggerModel::start_worker() const
@@ -79,13 +80,11 @@ namespace Vertex::Model
                 m_cachedSnapshot.currentThreadId = arg.threadId;
                 m_cachedSnapshot.currentAddress = arg.address;
 
-                for (auto& bp : m_cachedBreakpoints)
+                if (const auto it = std::ranges::find_if(m_cachedBreakpoints,
+                    [id = arg.breakpointId](const auto& bp) { return bp.id == id; });
+                    it != m_cachedBreakpoints.end())
                 {
-                    if (bp.id == arg.breakpointId)
-                    {
-                        ++bp.hitCount;
-                        break;
-                    }
+                    ++it->hitCount;
                 }
 
                 m_loggerService.log_info(fmt::format("{}: Breakpoint {} hit at 0x{:X}",
@@ -421,19 +420,19 @@ namespace Vertex::Model
 
     void DebuggerModel::on_watchpoint_hit(const std::uint32_t watchpointId, const std::uint64_t accessorAddress)
     {
-        for (auto& wp : m_cachedWatchpoints)
+        if (const auto it = std::ranges::find_if(m_cachedWatchpoints,
+            [watchpointId](const auto& wp) { return wp.id == watchpointId; });
+            it != m_cachedWatchpoints.end())
         {
-            if (wp.id == watchpointId)
-            {
-                ++wp.hitCount;
-                wp.lastAccessorAddress = accessorAddress;
-                m_loggerService.log_info(fmt::format("{}: Watchpoint {} hit (count: {}, accessor: 0x{:X})",
-                    MODEL_NAME, watchpointId, wp.hitCount, accessorAddress));
-                return;
-            }
+            ++it->hitCount;
+            it->lastAccessorAddress = accessorAddress;
+            m_loggerService.log_info(fmt::format("{}: Watchpoint {} hit (count: {}, accessor: 0x{:X})",
+                MODEL_NAME, watchpointId, it->hitCount, accessorAddress));
         }
-
-        m_loggerService.log_warn(fmt::format("{}: Watchpoint hit for unknown ID {}", MODEL_NAME, watchpointId));
+        else
+        {
+            m_loggerService.log_warn(fmt::format("{}: Watchpoint hit for unknown ID {}", MODEL_NAME, watchpointId));
+        }
     }
 
     const std::vector<Debugger::Watchpoint>& DebuggerModel::get_cached_watchpoints() const
@@ -648,20 +647,17 @@ namespace Vertex::Model
         m_cachedDisassembly.startAddress = address;
         m_cachedSnapshot.currentAddress = address;
 
-        for (std::uint32_t i = 0; i < results.count; ++i)
+        for (const auto& [i, instr] : std::span{results.results, results.count} | std::views::enumerate)
         {
-            const auto& instr = results.results[i];
-
-            Debugger::DisassemblyLine line;
+            Debugger::DisassemblyLine line{};
             line.address = instr.address;
             line.mnemonic = instr.mnemonic;
             line.operands = instr.operands;
             line.isCurrentInstruction = (i == 0);
 
-            for (std::uint32_t j = 0; j < instr.size && j < VERTEX_MAX_BYTES_LENGTH; ++j)
-            {
-                line.bytes.push_back(instr.rawBytes[j]);
-            }
+            std::ranges::copy(
+                std::span{instr.rawBytes, std::min<std::size_t>(instr.size, VERTEX_MAX_BYTES_LENGTH)},
+                std::back_inserter(line.bytes));
 
             switch (instr.branchType)
             {
@@ -747,24 +743,18 @@ namespace Vertex::Model
         std::vector<Debugger::DisassemblyLine> newLines;
         newLines.reserve(results.count);
 
-        for (std::uint32_t i = 0; i < results.count; ++i)
+        for (const auto& instr : std::span{results.results, results.count}
+            | std::views::take_while([fromAddress](const auto& r) { return r.address < fromAddress; }))
         {
-            const auto& instr = results.results[i];
-            if (instr.address >= fromAddress)
-            {
-                break;
-            }
-
-            Debugger::DisassemblyLine line;
+            Debugger::DisassemblyLine line{};
             line.address = instr.address;
             line.mnemonic = instr.mnemonic;
             line.operands = instr.operands;
             line.isCurrentInstruction = false;
 
-            for (std::uint32_t j = 0; j < instr.size && j < VERTEX_MAX_BYTES_LENGTH; ++j)
-            {
-                line.bytes.push_back(instr.rawBytes[j]);
-            }
+            std::ranges::copy(
+                std::span{instr.rawBytes, std::min<std::size_t>(instr.size, VERTEX_MAX_BYTES_LENGTH)},
+                std::back_inserter(line.bytes));
 
             switch (instr.branchType)
             {
@@ -867,25 +857,19 @@ namespace Vertex::Model
             return status;
         }
 
-        std::size_t addedCount = 0;
-        for (std::uint32_t i = 0; i < results.count; ++i)
+        std::size_t addedCount{};
+        for (const auto& instr : std::span{results.results, results.count}
+            | std::views::filter([fromAddress](const auto& r) { return r.address >= fromAddress; }))
         {
-            const auto& instr = results.results[i];
-            if (instr.address < fromAddress)
-            {
-                continue;
-            }
-
-            Debugger::DisassemblyLine line;
+            Debugger::DisassemblyLine line{};
             line.address = instr.address;
             line.mnemonic = instr.mnemonic;
             line.operands = instr.operands;
             line.isCurrentInstruction = false;
 
-            for (std::uint32_t j = 0; j < instr.size && j < VERTEX_MAX_BYTES_LENGTH; ++j)
-            {
-                line.bytes.push_back(instr.rawBytes[j]);
-            }
+            std::ranges::copy(
+                std::span{instr.rawBytes, std::min<std::size_t>(instr.size, VERTEX_MAX_BYTES_LENGTH)},
+                std::back_inserter(line.bytes));
 
             switch (instr.branchType)
             {
@@ -1077,10 +1061,10 @@ namespace Vertex::Model
             m_cachedSnapshot.currentAddress = sdkRegs.instructionPointer;
         }
 
-        for (std::uint32_t i = 0; i < sdkRegs.registerCount && i < VERTEX_MAX_REGISTERS; ++i)
+        for (const auto& [name, category, value, previousValue, bitWidth, modified]
+            : std::span{sdkRegs.registers, std::min<std::uint32_t>(sdkRegs.registerCount, VERTEX_MAX_REGISTERS)})
         {
-            const auto& [name, category, value, previousValue, bitWidth, modified] = sdkRegs.registers[i];
-            Debugger::Register reg;
+            Debugger::Register reg{};
             reg.name = name;
             reg.value = value;
             reg.previousValue = previousValue;
@@ -1132,21 +1116,8 @@ namespace Vertex::Model
         const auto& plugin = pluginOpt.value().get();
 
         ::ThreadList threadList{};
-        StatusCode status{};
-
-        const bool isDebuggerActive =
-            m_cachedSnapshot.state != Debugger::DebuggerState::Detached;
-
-        if (isDebuggerActive)
-        {
-            const auto result = Runtime::safe_call(plugin.internal_vertex_debugger_get_threads, &threadList);
-            status = Runtime::get_status(result);
-        }
-        else
-        {
-            const auto result = Runtime::safe_call(plugin.internal_vertex_debugger_get_threads, &threadList);
-            status = Runtime::get_status(result);
-        }
+        const auto threadResult = Runtime::safe_call(plugin.internal_vertex_debugger_get_threads, &threadList);
+        const auto status = Runtime::get_status(threadResult);
 
         if (status != StatusCode::STATUS_OK)
         {
@@ -1154,10 +1125,10 @@ namespace Vertex::Model
         }
 
         m_cachedThreads.clear();
-        for (std::uint32_t i = 0; i < threadList.threadCount && i < VERTEX_MAX_THREADS; ++i)
+        for (const auto& sdkThread
+            : std::span{threadList.threads, std::min<std::uint32_t>(threadList.threadCount, VERTEX_MAX_THREADS)})
         {
-            const ::ThreadInfo& sdkThread = threadList.threads[i];
-            Debugger::ThreadInfo thread;
+            Debugger::ThreadInfo thread{};
             thread.id = sdkThread.id;
             thread.name = sdkThread.name;
             thread.instructionPointer = sdkThread.instructionPointer;
