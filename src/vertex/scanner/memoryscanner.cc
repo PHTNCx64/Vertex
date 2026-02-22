@@ -12,9 +12,10 @@
 
 namespace Vertex::Scanner
 {
-    MemoryScanner::MemoryScanner(Configuration::ISettings& settingsService, Log::ILog& logService)
+    MemoryScanner::MemoryScanner(Configuration::ISettings& settingsService, Log::ILog& logService, Thread::IThreadDispatcher& dispatcher)
         : m_settingsService(settingsService),
-          m_logService(logService)
+          m_logService(logService),
+          m_dispatcher(dispatcher)
     {
     }
 
@@ -36,7 +37,7 @@ namespace Vertex::Scanner
             Memory::cleanup_thread_memory_context();
         }
 
-        clear_thread_pools();
+        m_dispatcher.destroy_worker_pool(Thread::ThreadChannel::Scanner);
 
         {
             std::scoped_lock lock(m_writerRegionsMutex);
@@ -62,7 +63,7 @@ namespace Vertex::Scanner
     bool MemoryScanner::has_memory_reader() const
     {
         std::scoped_lock lock(m_memoryReaderMutex);
-        return m_memoryReader && m_memoryReader->is_valid();
+        return m_memoryReader != nullptr;
     }
 
     StatusCode MemoryScanner::initialize_scan(const ScanConfiguration& configuration, const std::vector<ScanRegion>& memoryRegions)
@@ -81,20 +82,7 @@ namespace Vertex::Scanner
             return StatusCode::STATUS_ERROR_PLUGIN_NOT_ACTIVE;
         }
 
-        m_scanAbort.store(true, std::memory_order_seq_cst);
-
-        {
-            std::unique_lock lock(m_mainThreadMutex);
-            m_mainThreadWaitCondition.wait_for(lock, std::chrono::milliseconds(10000),
-                                               [this]
-                                               {
-                                                   return is_scan_complete();
-                                               });
-        }
-
-        clear_thread_pools();
-
-        std::atomic_thread_fence(std::memory_order_seq_cst);
+        m_scanAbort.store(false, std::memory_order_seq_cst);
 
         {
             std::scoped_lock undoLock(m_undoHistoryMutex);
@@ -105,7 +93,6 @@ namespace Vertex::Scanner
             m_undoHistory.clear();
         }
 
-        m_scanAbort.store(false, std::memory_order_seq_cst);
         m_scanConfig = configuration;
 
         if (is_string_type(m_scanConfig.valueType))
@@ -130,12 +117,12 @@ namespace Vertex::Scanner
         m_regionsScanned.store(0, std::memory_order_relaxed);
         m_resultsCount.store(0, std::memory_order_relaxed);
         m_activeReaders.store(0, std::memory_order_relaxed);
-        m_activeWriters.store(0, std::memory_order_relaxed);
         m_pendingWriterTasks.store(0, std::memory_order_relaxed);
 
-        const int readerThreads = m_settingsService.get_int("memoryScan.readerThreads");
+        const int configuredThreads = m_settingsService.get_int("memoryScan.readerThreads");
+        const int readerThreads = m_dispatcher.is_single_threaded() ? 1 : configuredThreads;
 
-        m_logService.log_info(fmt::format("[Scanner] Creating {} reader threads", readerThreads));
+        m_logService.log_info(fmt::format("[Scanner] Creating {} reader threads (configured: {})", readerThreads, configuredThreads));
 
         StatusCode status = create_writer_regions(static_cast<std::size_t>(readerThreads));
         if (status != StatusCode::STATUS_OK)
@@ -144,14 +131,12 @@ namespace Vertex::Scanner
             return status;
         }
 
-        status = create_threads(readerThreads);
+        status = create_worker_pool(static_cast<std::size_t>(readerThreads));
         if (status != StatusCode::STATUS_OK)
         {
-            m_logService.log_error(fmt::format("[Scanner] Failed to create threads: {}", static_cast<int>(status)));
+            m_logService.log_error(fmt::format("[Scanner] Failed to create worker pool: {}", static_cast<int>(status)));
             return status;
         }
-
-        m_activeReaders.store(static_cast<int>(memoryRegions.size()), std::memory_order_release);
 
         status = distribute_regions_to_readers(memoryRegions);
 
@@ -169,21 +154,6 @@ namespace Vertex::Scanner
             m_logService.log_error("[Scanner] No memory reader available for next scan");
             return StatusCode::STATUS_ERROR_PLUGIN_NOT_ACTIVE;
         }
-
-        m_scanAbort.store(true, std::memory_order_seq_cst);
-
-        {
-            std::unique_lock lock(m_mainThreadMutex);
-            m_mainThreadWaitCondition.wait_for(lock, std::chrono::milliseconds(10000),
-                                               [this]
-                                               {
-                                                   return is_scan_complete();
-                                               });
-        }
-
-        clear_thread_pools();
-
-        std::atomic_thread_fence(std::memory_order_seq_cst);
 
         m_scanAbort.store(false, std::memory_order_seq_cst);
 
@@ -218,7 +188,6 @@ namespace Vertex::Scanner
             m_regionsScanned.store(0, std::memory_order_relaxed);
             m_resultsCount.store(0, std::memory_order_relaxed);
             m_activeReaders.store(0, std::memory_order_relaxed);
-            m_activeWriters.store(0, std::memory_order_relaxed);
             m_pendingWriterTasks.store(0, std::memory_order_relaxed);
             return StatusCode::STATUS_OK;
         }
@@ -227,7 +196,6 @@ namespace Vertex::Scanner
         m_regionsScanned.store(0, std::memory_order_relaxed);
         m_resultsCount.store(0, std::memory_order_relaxed);
         m_activeReaders.store(0, std::memory_order_relaxed);
-        m_activeWriters.store(0, std::memory_order_relaxed);
         m_pendingWriterTasks.store(0, std::memory_order_relaxed);
 
         m_scanConfig = configuration;
@@ -259,7 +227,8 @@ namespace Vertex::Scanner
 
         m_scanIteration++;
 
-        const int readerThreads = m_settingsService.get_int("memoryScan.readerThreads");
+        const int configuredThreads = m_settingsService.get_int("memoryScan.readerThreads");
+        const int readerThreads = m_dispatcher.is_single_threaded() ? 1 : configuredThreads;
 
         StatusCode status = create_writer_regions(static_cast<std::size_t>(readerThreads));
         if (status != StatusCode::STATUS_OK)
@@ -267,7 +236,7 @@ namespace Vertex::Scanner
             return status;
         }
 
-        status = create_threads(readerThreads);
+        status = create_worker_pool(static_cast<std::size_t>(readerThreads));
         if (status != StatusCode::STATUS_OK)
         {
             return status;
@@ -275,20 +244,6 @@ namespace Vertex::Scanner
 
         const auto readerCount = static_cast<std::size_t>(readerThreads);
         const std::size_t recordsPerReader = (previousResultCount + readerCount - 1) / readerCount;
-
-        int actualReaderTasks = 0;
-        for (std::size_t i = 0; i < readerCount; ++i)
-        {
-            const std::size_t startIndex = i * recordsPerReader;
-            if (startIndex >= previousResultCount)
-                break;
-            const std::size_t count = std::min<std::size_t>(recordsPerReader, previousResultCount - startIndex);
-            if (count > 0)
-                actualReaderTasks++;
-        }
-
-        m_pendingWriterTasks.store(static_cast<int>(readerCount), std::memory_order_release);
-        m_activeReaders.store(actualReaderTasks, std::memory_order_release);
 
         for (std::size_t i = 0; i < readerCount; ++i)
         {
@@ -310,17 +265,21 @@ namespace Vertex::Scanner
                   return scan_previous_results_from_regions(*previousRegionsPtr, startIndex, count, previousDataSize, previousFirstValueSize, i);
               });
 
-            status = enqueue_task_with_fallback(std::move(task), i, fmt::format("next_scan_chunk[{}]", i));
+            status = m_dispatcher.enqueue_on_worker(Thread::ThreadChannel::Scanner, i, std::move(task));
 
             if (status != StatusCode::STATUS_OK)
             {
-                m_logService.log_error(fmt::format("[Scanner] Failed to enqueue next scan chunk {} after all recovery attempts (status: {})", i, static_cast<int>(status)));
+                m_logService.log_error(fmt::format("[Scanner] Failed to enqueue next scan chunk {} (status: {})", i, static_cast<int>(status)));
                 return status;
             }
+
+            m_activeReaders.fetch_add(1, std::memory_order_release);
         }
 
         for (std::size_t i = 0; i < readerCount; ++i)
         {
+            m_pendingWriterTasks.fetch_add(1, std::memory_order_release);
+
             std::packaged_task<StatusCode()> finalizeTask(
               [this, i]() -> StatusCode
               {
@@ -334,15 +293,21 @@ namespace Vertex::Scanner
                   return finalizeStatus;
               });
 
-            status = enqueue_task_with_fallback(std::move(finalizeTask), i, fmt::format("next_scan_finalize[{}]", i));
+            status = m_dispatcher.enqueue_on_worker(Thread::ThreadChannel::Scanner, i, std::move(finalizeTask));
 
             if (status != StatusCode::STATUS_OK)
             {
                 m_logService.log_warn(fmt::format("[Scanner] Finalize task for thread {} could not be enqueued (status: {})", i, static_cast<int>(status)));
+
+                if (m_pendingWriterTasks.fetch_sub(1, std::memory_order_acq_rel) == 1)
+                {
+                    std::scoped_lock notifyLock(m_mainThreadMutex);
+                    m_mainThreadWaitCondition.notify_one();
+                }
             }
         }
 
-        for (std::size_t i = 0; i < m_readerThreads.size(); ++i)
+        for (std::size_t i = 0; i < m_workerCount; ++i)
         {
             std::packaged_task<StatusCode()> collectTask(
               []() -> StatusCode
@@ -350,7 +315,7 @@ namespace Vertex::Scanner
                   mi_collect(true);
                   return StatusCode::STATUS_OK;
               });
-            status = enqueue_task_with_fallback(std::move(collectTask), i, fmt::format("next_scan_collect[{}]", i));
+            status = m_dispatcher.enqueue_on_worker(Thread::ThreadChannel::Scanner, i, std::move(collectTask));
 
             if (status != StatusCode::STATUS_OK)
             {
@@ -393,15 +358,20 @@ namespace Vertex::Scanner
         return StatusCode::STATUS_OK;
     }
 
+    void MemoryScanner::finalize_scan()
+    {
+        m_dispatcher.destroy_worker_pool(Thread::ThreadChannel::Scanner);
+        m_workerCount = 0;
+    }
+
     void MemoryScanner::set_scan_abort_state(bool state) { m_scanAbort.store(state, std::memory_order_release); }
 
     bool MemoryScanner::is_scan_complete()
     {
         const int activeReaders = m_activeReaders.load(std::memory_order_acquire);
         const int pendingWriters = m_pendingWriterTasks.load(std::memory_order_acquire);
-        const int activeWriters = m_activeWriters.load(std::memory_order_acquire);
 
-        return (activeReaders == 0) && (pendingWriters == 0) && (activeWriters == 0);
+        return (activeReaders == 0) && (pendingWriters == 0);
     }
 
     bool MemoryScanner::can_undo() const
@@ -414,8 +384,7 @@ namespace Vertex::Scanner
     {
         const int activeReaders = m_activeReaders.load(std::memory_order_acquire);
         const int pendingWriters = m_pendingWriterTasks.load(std::memory_order_acquire);
-        const int activeWriters = m_activeWriters.load(std::memory_order_acquire);
-        return (activeReaders > 0 || pendingWriters > 0 || activeWriters > 0) ? StatusCode::STATUS_ERROR_THREAD_IS_BUSY : StatusCode::STATUS_OK;
+        return (activeReaders > 0 || pendingWriters > 0) ? StatusCode::STATUS_ERROR_THREAD_IS_BUSY : StatusCode::STATUS_OK;
     }
 
     void MemoryScanner::wait_for_scan_completion()
@@ -455,155 +424,67 @@ namespace Vertex::Scanner
         }
     }
 
-    StatusCode MemoryScanner::create_threads(int numReaders)
+    StatusCode MemoryScanner::create_worker_pool(const std::size_t workerCount)
     {
-        m_logService.log_info(fmt::format("[Scanner] Creating {} reader threads", numReaders));
+        m_logService.log_info(fmt::format("[Scanner] Creating worker pool with {} workers", workerCount));
 
-        clear_thread_pools();
+        m_dispatcher.destroy_worker_pool(Thread::ThreadChannel::Scanner);
+        m_workerCount = workerCount;
 
-        m_readerThreads.reserve(static_cast<std::size_t>(numReaders));
-        for (int i = 0; i < numReaders; ++i)
+        const StatusCode status = m_dispatcher.create_worker_pool(Thread::ThreadChannel::Scanner, workerCount);
+        if (status != StatusCode::STATUS_OK)
         {
-            auto thread = std::make_unique<Thread::VertexSPSCThread>();
-            if (!thread->is_running())
-            {
-                m_logService.log_error(fmt::format("[Scanner] Reader thread {} failed to start", i));
-                return StatusCode::STATUS_ERROR_THREAD_IS_NOT_RUNNING;
-            }
-            m_readerThreads.push_back(std::move(thread));
+            m_logService.log_error(fmt::format("[Scanner] Failed to create worker pool: {}", static_cast<int>(status)));
+            m_workerCount = 0;
         }
 
-        return StatusCode::STATUS_OK;
-    }
-
-    void MemoryScanner::clear_thread_pools()
-    {
-        for (const auto& reader : m_readerThreads)
-        {
-            if (reader && reader->is_running())
-            {
-                const StatusCode status = reader->stop();
-                if (status != StatusCode::STATUS_OK)
-                {
-                    m_logService.log_warn(fmt::format("[Scanner] Failed to stop reader thread: {}", static_cast<int>(status)));
-                }
-            }
-        }
-
-        m_readerThreads.clear();
-        mi_collect(true);
-    }
-
-    std::optional<std::size_t> MemoryScanner::find_available_thread(std::size_t excludeIndex) const
-    {
-        for (std::size_t i = 0; i < m_readerThreads.size(); ++i)
-        {
-            if (i == excludeIndex)
-            {
-                continue;
-            }
-            if (m_readerThreads[i] && m_readerThreads[i]->is_running())
-            {
-                return i;
-            }
-        }
-        return std::nullopt;
-    }
-
-    StatusCode MemoryScanner::enqueue_task_with_fallback(std::packaged_task<StatusCode()>&& task, std::size_t preferredIndex, std::string_view taskLabel) const
-    {
-        if (preferredIndex >= m_readerThreads.size() || !m_readerThreads[preferredIndex])
-        {
-            m_logService.log_error(fmt::format("[Scanner] {} - thread index {} is out of range or null (pool size: {})", taskLabel, preferredIndex, m_readerThreads.size()));
-            return StatusCode::STATUS_ERROR_INVALID_PARAMETER;
-        }
-
-        StatusCode status = m_readerThreads[preferredIndex]->enqueue_task(std::move(task));
-        if (status == StatusCode::STATUS_OK)
-        {
-            return StatusCode::STATUS_OK;
-        }
-
-        m_logService.log_warn(fmt::format("[Scanner] {} - enqueue failed on thread {} (status: {}), attempting recovery", taskLabel, preferredIndex, static_cast<int>(status)));
-
-        if (status == StatusCode::STATUS_ERROR_THREAD_IS_NOT_RUNNING)
-        {
-            m_logService.log_warn(fmt::format("[Scanner] {} - thread {} not running, attempting restart", taskLabel, preferredIndex));
-
-            StatusCode restartStatus = m_readerThreads[preferredIndex]->start();
-            if (restartStatus == StatusCode::STATUS_OK)
-            {
-                m_logService.log_info(fmt::format("[Scanner] {} - thread {} restarted successfully, re-enqueuing", taskLabel, preferredIndex));
-
-                status = m_readerThreads[preferredIndex]->enqueue_task(std::move(task));
-                if (status == StatusCode::STATUS_OK)
-                {
-                    return StatusCode::STATUS_OK;
-                }
-
-                m_logService.log_warn(fmt::format("[Scanner] {} - re-enqueue after restart still failed on thread {} (status: {})", taskLabel, preferredIndex, static_cast<int>(status)));
-            }
-            else
-            {
-                m_logService.log_warn(fmt::format("[Scanner] {} - restart failed on thread {} (status: {})", taskLabel, preferredIndex, static_cast<int>(restartStatus)));
-            }
-        }
-
-        auto alternateIndex = find_available_thread(preferredIndex);
-        if (!alternateIndex.has_value())
-        {
-            m_logService.log_error(fmt::format("[Scanner] {} - no alternate threads available for redistribution, all threads are down", taskLabel));
-            return status;
-        }
-
-        m_logService.log_warn(fmt::format("[Scanner] {} - redistributing from thread {} to thread {}", taskLabel, preferredIndex, *alternateIndex));
-
-        status = m_readerThreads[*alternateIndex]->enqueue_task(std::move(task));
-        if (status == StatusCode::STATUS_OK)
-        {
-            m_logService.log_info(fmt::format("[Scanner] {} - successfully redistributed to thread {}", taskLabel, *alternateIndex));
-            return StatusCode::STATUS_OK;
-        }
-
-        m_logService.log_error(fmt::format("[Scanner] {} - redistribution to thread {} also failed (status: {})", taskLabel, *alternateIndex, static_cast<int>(status)));
         return status;
     }
 
     StatusCode MemoryScanner::distribute_regions_to_readers(const std::vector<ScanRegion>& memoryRegions)
     {
-        const std::size_t readerCount = m_readerThreads.size();
-        if (readerCount == 0)
+        if (m_workerCount == 0)
         {
-            m_logService.log_error("[Scanner] No reader threads available for distribution");
+            m_logService.log_error("[Scanner] No workers available for distribution");
             return StatusCode::STATUS_ERROR_INVALID_PARAMETER;
         }
 
-        m_logService.log_info(fmt::format("[Scanner] Distributing {} regions across {} reader threads", memoryRegions.size(), readerCount));
+        m_logService.log_info(fmt::format("[Scanner] Distributing {} regions across {} workers", memoryRegions.size(), m_workerCount));
 
-        m_pendingWriterTasks.store(static_cast<int>(readerCount), std::memory_order_release);
+        const std::size_t threadBufferSize = static_cast<std::size_t>(m_settingsService.get_int("memoryScan.threadBufferSizeMB", 32)) * 1024ULL * 1024;
 
         for (std::size_t i = 0; i < memoryRegions.size(); ++i)
         {
-            const std::size_t readerIndex = i % readerCount;
+            const std::size_t readerIndex = i % m_workerCount;
             const ScanRegion& region = memoryRegions[i];
 
             std::packaged_task<StatusCode()> task(
-              [this, region, readerIndex]() -> StatusCode
+              [this, region, readerIndex, threadBufferSize]() -> StatusCode
               {
-                  return scan_memory_region(region, readerIndex);
+                  thread_local Memory::AlignedByteVector regionBuffer {};
+                  if (regionBuffer.size() < threadBufferSize)
+                  {
+                      regionBuffer.resize(threadBufferSize);
+                  }
+
+                  return scan_memory_region(region, readerIndex, regionBuffer);
               });
 
-            const StatusCode status = enqueue_task_with_fallback(std::move(task), readerIndex, fmt::format("scan_region[{}]", i));
+            const StatusCode status = m_dispatcher.enqueue_on_worker(Thread::ThreadChannel::Scanner, readerIndex, std::move(task));
 
             if (status != StatusCode::STATUS_OK)
             {
-                m_logService.log_error(fmt::format("[Scanner] Failed to enqueue region {} after all recovery attempts (status: {})", i, static_cast<int>(status)));
+                m_logService.log_error(fmt::format("[Scanner] Failed to enqueue region {} (status: {})", i, static_cast<int>(status)));
                 return status;
             }
+
+            m_activeReaders.fetch_add(1, std::memory_order_release);
         }
 
-        for (std::size_t i = 0; i < readerCount; ++i)
+        for (std::size_t i = 0; i < m_workerCount; ++i)
         {
+            m_pendingWriterTasks.fetch_add(1, std::memory_order_release);
+
             std::packaged_task<StatusCode()> finalizeTask(
               [this, i]() -> StatusCode
               {
@@ -617,15 +498,21 @@ namespace Vertex::Scanner
                   return finalizeStatus;
               });
 
-            const StatusCode status = enqueue_task_with_fallback(std::move(finalizeTask), i, fmt::format("finalize_store[{}]", i));
+            const StatusCode status = m_dispatcher.enqueue_on_worker(Thread::ThreadChannel::Scanner, i, std::move(finalizeTask));
 
             if (status != StatusCode::STATUS_OK)
             {
                 m_logService.log_warn(fmt::format("[Scanner] Finalize task for thread {} could not be enqueued (status: {})", i, static_cast<int>(status)));
+
+                if (m_pendingWriterTasks.fetch_sub(1, std::memory_order_acq_rel) == 1)
+                {
+                    std::scoped_lock notifyLock(m_mainThreadMutex);
+                    m_mainThreadWaitCondition.notify_one();
+                }
             }
         }
 
-        for (std::size_t i = 0; i < m_readerThreads.size(); ++i)
+        for (std::size_t i = 0; i < m_workerCount; ++i)
         {
             std::packaged_task<StatusCode()> collectTask(
               []() -> StatusCode
@@ -633,7 +520,7 @@ namespace Vertex::Scanner
                   mi_collect(true);
                   return StatusCode::STATUS_OK;
               });
-            const StatusCode status = enqueue_task_with_fallback(std::move(collectTask), i, fmt::format("mi_collect[{}]", i));
+            const StatusCode status = m_dispatcher.enqueue_on_worker(Thread::ThreadChannel::Scanner, i, std::move(collectTask));
 
             if (status != StatusCode::STATUS_OK)
             {

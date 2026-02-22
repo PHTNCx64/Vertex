@@ -78,13 +78,19 @@ namespace Vertex::Scanner
         return m_resolvedComparator(currentData, m_resolvedInput, m_resolvedInput2, previousData);
     }
 
-    std::vector<MemoryScanner::PreviousResultRecord> MemoryScanner::read_records_from_regions(const std::vector<WriterRegionMetadata>& regions, std::size_t startIndex, std::size_t count, std::size_t valueSize, std::size_t firstValueSize) const
+    MemoryScanner::FlatRecordBuffer MemoryScanner::read_records_from_regions(const std::vector<WriterRegionMetadata>& regions, std::size_t startIndex, std::size_t count, std::size_t valueSize, std::size_t firstValueSize) const
     {
-        std::vector<PreviousResultRecord> records;
-        records.reserve(count);
-
         const std::size_t recordSize = sizeof(std::uint64_t) + valueSize + firstValueSize;
+
+        FlatRecordBuffer buffer;
+        buffer.valueSize = valueSize;
+        buffer.firstValueSize = firstValueSize;
+        buffer.recordSize = recordSize;
+        buffer.recordCount = 0;
+        buffer.data.resize(count * recordSize);
+
         std::size_t cumulativeResults = 0;
+        std::size_t written = 0;
 
         for (const auto& writerMeta : regions)
         {
@@ -97,10 +103,12 @@ namespace Vertex::Scanner
             }
 
             const std::size_t localStartIndex = (startIndex >= cumulativeResults) ? (startIndex - cumulativeResults) : 0;
-            const std::size_t resultsInThisRegion = std::min(count - records.size(), writerResultCount - localStartIndex);
+            const std::size_t resultsInThisRegion = std::min(count - written, writerResultCount - localStartIndex);
 
             if (resultsInThisRegion == 0)
+            {
                 break;
+            }
 
             if (!writerMeta.store.is_valid() || writerMeta.store.base() == nullptr)
             {
@@ -109,55 +117,35 @@ namespace Vertex::Scanner
             }
 
             const std::size_t byteOffset = localStartIndex * recordSize;
-            const char* readPtr = static_cast<const char*>(writerMeta.store.base()) + byteOffset;
+            const char* srcPtr = static_cast<const char*>(writerMeta.store.base()) + byteOffset;
+            const std::size_t bytesToCopy = resultsInThisRegion * recordSize;
 
-            for (std::size_t i = 0; i < resultsInThisRegion; ++i)
-            {
-                PreviousResultRecord record;
-
-                std::copy_n(readPtr, sizeof(std::uint64_t), reinterpret_cast<char*>(&record.address));
-                readPtr += sizeof(std::uint64_t);
-
-                record.previousValue.resize(valueSize);
-                std::copy_n(reinterpret_cast<const std::uint8_t*>(readPtr), valueSize, record.previousValue.data());
-                readPtr += valueSize;
-
-                if (firstValueSize > 0)
-                {
-                    record.firstValue.resize(firstValueSize);
-                    std::copy_n(reinterpret_cast<const std::uint8_t*>(readPtr), firstValueSize, record.firstValue.data());
-                    readPtr += firstValueSize;
-                }
-                else
-                {
-                    record.firstValue = record.previousValue;
-                }
-
-                records.push_back(std::move(record));
-            }
+            std::memcpy(buffer.data.data() + written * recordSize, srcPtr, bytesToCopy);
+            written += resultsInThisRegion;
 
             cumulativeResults += writerResultCount;
 
-            if (records.size() >= count)
+            if (written >= count)
+            {
                 break;
+            }
         }
 
-        if (records.size() > count)
+        buffer.recordCount = written;
+
+        if (written < count)
         {
-            records.resize(count);
+            buffer.data.resize(written * recordSize);
         }
 
-        return records;
+        return buffer;
     }
 
-    StatusCode MemoryScanner::scan_memory_region(const ScanRegion& region, const std::size_t writerIndex)
+    StatusCode MemoryScanner::scan_memory_region(const ScanRegion& region, const std::size_t writerIndex, Memory::AlignedByteVector& regionBuffer)
     {
         constexpr std::size_t BATCH_THRESHOLD = 50000;
         const std::size_t dataSize = m_scanConfig.dataSize;
         const std::size_t alignment = m_scanConfig.alignmentRequired ? m_scanConfig.alignment : 1;
-
-        const std::size_t threadBufferSize = static_cast<std::size_t>(m_settingsService.get_int("memoryScan.threadBufferSizeMB", 32)) * 1024ULL * 1024;
-        Memory::AlignedByteVector regionBuffer(threadBufferSize);
 
         ScanResult batchResult;
         batchResult.reserve(BATCH_THRESHOLD, dataSize);
@@ -168,14 +156,19 @@ namespace Vertex::Scanner
             reader = m_memoryReader;
         }
 
-        if (!reader || !reader->is_valid())
+        if (!reader)
         {
-            m_activeReaders.fetch_sub(1, std::memory_order_acq_rel);
+            if (m_activeReaders.fetch_sub(1, std::memory_order_acq_rel) == 1)
+            {
+                std::scoped_lock notifyLock(m_mainThreadMutex);
+                m_mainThreadWaitCondition.notify_one();
+            }
             return StatusCode::STATUS_ERROR_PLUGIN_NOT_ACTIVE;
         }
 
         if (!m_scanAbort.load(std::memory_order_acquire))
         {
+            const std::size_t threadBufferSize = regionBuffer.size();
             const std::size_t numChunks = (region.size + threadBufferSize - 1) / threadBufferSize;
 
             for (std::size_t chunkIndex = 0; chunkIndex < numChunks; ++chunkIndex)
@@ -233,168 +226,6 @@ namespace Vertex::Scanner
         return StatusCode::STATUS_OK;
     }
 
-    StatusCode MemoryScanner::scan_previous_results(const std::vector<PreviousResultRecord>& previousResults, std::size_t writerIndex)
-    {
-        constexpr std::size_t BATCH_THRESHOLD = 50000;
-        const std::size_t dataSize = m_scanConfig.dataSize;
-        const std::size_t firstValueSize = m_scanConfig.firstValueSize;
-        const bool needsPreviousValue = m_scanConfig.needs_previous_value();
-
-        ScanResult batchResult;
-        batchResult.reserve(BATCH_THRESHOLD, dataSize, firstValueSize);
-
-        std::shared_ptr<IMemoryReader> reader;
-        {
-            std::scoped_lock lock(m_memoryReaderMutex);
-            reader = m_memoryReader;
-        }
-
-        if (!reader || !reader->is_valid())
-        {
-            m_activeReaders.fetch_sub(1, std::memory_order_acq_rel);
-            return StatusCode::STATUS_ERROR_PLUGIN_NOT_ACTIVE;
-        }
-
-        if (!m_scanAbort.load(std::memory_order_acquire))
-        {
-            if (previousResults.empty())
-            {
-                if (m_activeReaders.fetch_sub(1, std::memory_order_acq_rel) == 1)
-                {
-                    std::scoped_lock notifyLock(m_mainThreadMutex);
-                    m_mainThreadWaitCondition.notify_one();
-                }
-                return StatusCode::STATUS_OK;
-            }
-
-            const std::vector<AddressBundle> bundles = bundle_adjacent_addresses(previousResults, 512);
-            Memory::AlignedByteVector readBuffer{};
-
-            for (const auto& [startAddress, endAddress, addresses, previousValues, firstValues] : bundles)
-            {
-                if (m_scanAbort.load(std::memory_order_acquire))
-                {
-                    break;
-                }
-
-                const std::size_t bundleReadSize = (endAddress - startAddress) + dataSize;
-
-                if (readBuffer.size() < bundleReadSize)
-                {
-                    readBuffer.resize(bundleReadSize);
-                }
-
-                const StatusCode readStatus = reader->read_memory(startAddress, bundleReadSize, readBuffer.data());
-
-                if (readStatus != StatusCode::STATUS_OK)
-                {
-                    for (std::size_t idx = 0; idx < addresses.size(); ++idx)
-                    {
-                        if (m_scanAbort.load(std::memory_order_acquire))
-                        {
-                            break;
-                        }
-
-                        const std::uint64_t address = addresses[idx];
-                        const auto& previousValue = previousValues[idx];
-                        const auto& firstValue = firstValues[idx];
-
-                        if (readBuffer.size() < dataSize)
-                        {
-                            readBuffer.resize(dataSize);
-                        }
-
-                        const StatusCode individualRead = reader->read_memory(address, dataSize, readBuffer.data());
-
-                        if (individualRead != StatusCode::STATUS_OK)
-                        {
-                            continue;
-                        }
-
-                        const auto* currentData = reinterpret_cast<const std::uint8_t*>(readBuffer.data());
-                        bool matches = false;
-
-                        if (needsPreviousValue && !previousValue.empty())
-                        {
-                            matches = check_value_matches_with_previous(currentData, previousValue.data());
-                        }
-                        else
-                        {
-                            matches = check_value_matches(currentData);
-                        }
-
-                        if (matches)
-                        {
-                            batchResult.add_match(address, currentData, dataSize,
-                                firstValue.empty() ? nullptr : firstValue.data(), firstValueSize);
-
-                            if (batchResult.matchesFound >= BATCH_THRESHOLD)
-                            {
-                                write_results_direct(batchResult, writerIndex);
-                                batchResult.clear();
-                            }
-                        }
-                    }
-
-                    m_regionsScanned.fetch_add(addresses.size(), std::memory_order_relaxed);
-                    continue;
-                }
-
-                for (std::size_t idx = 0; idx < addresses.size(); ++idx)
-                {
-                    if (m_scanAbort.load(std::memory_order_acquire))
-                    {
-                        break;
-                    }
-
-                    const std::uint64_t address = addresses[idx];
-                    const auto& previousValue = previousValues[idx];
-                    const auto& firstValue = firstValues[idx];
-                    const std::size_t offsetInBuffer = address - startAddress;
-
-                    const auto* currentData = reinterpret_cast<const std::uint8_t*>(readBuffer.data()) + offsetInBuffer;
-                    bool matches = false;
-
-                    if (needsPreviousValue && !previousValue.empty())
-                    {
-                        matches = check_value_matches_with_previous(currentData, previousValue.data());
-                    }
-                    else
-                    {
-                        matches = check_value_matches(currentData);
-                    }
-
-                    if (matches)
-                    {
-                        batchResult.add_match(address, currentData, dataSize,
-                            firstValue.empty() ? nullptr : firstValue.data(), firstValueSize);
-
-                        if (batchResult.matchesFound >= BATCH_THRESHOLD)
-                        {
-                            write_results_direct(batchResult, writerIndex);
-                            batchResult.clear();
-                        }
-                    }
-                }
-
-                m_regionsScanned.fetch_add(addresses.size(), std::memory_order_relaxed);
-            }
-        }
-
-        if (batchResult.matchesFound > 0)
-        {
-            write_results_direct(batchResult, writerIndex);
-        }
-
-        if (m_activeReaders.fetch_sub(1, std::memory_order_acq_rel) == 1)
-        {
-            std::scoped_lock notifyLock(m_mainThreadMutex);
-            m_mainThreadWaitCondition.notify_one();
-        }
-
-        return StatusCode::STATUS_OK;
-    }
-
     StatusCode MemoryScanner::scan_previous_results_from_regions(const std::vector<WriterRegionMetadata>& previousRegions,
                                                                   const std::size_t globalStartIndex,
                                                                   const std::size_t totalCount,
@@ -417,9 +248,13 @@ namespace Vertex::Scanner
             reader = m_memoryReader;
         }
 
-        if (!reader || !reader->is_valid())
+        if (!reader)
         {
-            m_activeReaders.fetch_sub(1, std::memory_order_acq_rel);
+            if (m_activeReaders.fetch_sub(1, std::memory_order_acq_rel) == 1)
+            {
+                std::scoped_lock notifyLock(m_mainThreadMutex);
+                m_mainThreadWaitCondition.notify_one();
+            }
             return StatusCode::STATUS_ERROR_PLUGIN_NOT_ACTIVE;
         }
 
@@ -429,10 +264,10 @@ namespace Vertex::Scanner
         while (processed < totalCount && !m_scanAbort.load(std::memory_order_acquire))
         {
             const std::size_t batchCount = std::min(RECORDS_PER_BATCH, totalCount - processed);
-            std::vector<PreviousResultRecord> records = read_records_from_regions(previousRegions, globalStartIndex + processed, batchCount, previousValueSize, previousFirstValueSize);
+            FlatRecordBuffer records = read_records_from_regions(previousRegions, globalStartIndex + processed, batchCount, previousValueSize, previousFirstValueSize);
             processed += batchCount;
 
-            if (records.empty())
+            if (records.recordCount == 0)
             {
                 m_regionsScanned.fetch_add(batchCount, std::memory_order_relaxed);
                 continue;
@@ -440,7 +275,7 @@ namespace Vertex::Scanner
 
             const std::vector<AddressBundle> bundles = bundle_adjacent_addresses(records, 512);
 
-            for (const auto& [startAddress, endAddress, addresses, previousValues, firstValues] : bundles)
+            for (const auto& [startAddress, endAddress, addresses, previousValuePtrs, firstValuePtrs] : bundles)
             {
                 if (m_scanAbort.load(std::memory_order_acquire))
                 {
@@ -460,14 +295,9 @@ namespace Vertex::Scanner
                 {
                     for (std::size_t idx = 0; idx < addresses.size(); ++idx)
                     {
-                        if (m_scanAbort.load(std::memory_order_acquire))
-                        {
-                            break;
-                        }
-
                         const std::uint64_t address = addresses[idx];
-                        const auto& previousValue = previousValues[idx];
-                        const auto& firstValue = firstValues[idx];
+                        const auto* previousValue = previousValuePtrs[idx];
+                        const auto* firstValue = firstValuePtrs[idx];
 
                         if (readBuffer.size() < dataSize)
                         {
@@ -484,9 +314,9 @@ namespace Vertex::Scanner
                         const auto* currentData = reinterpret_cast<const std::uint8_t*>(readBuffer.data());
                         bool matches = false;
 
-                        if (needsPreviousValue && !previousValue.empty())
+                        if (needsPreviousValue && previousValue != nullptr)
                         {
-                            matches = check_value_matches_with_previous(currentData, previousValue.data());
+                            matches = check_value_matches_with_previous(currentData, previousValue);
                         }
                         else
                         {
@@ -495,8 +325,7 @@ namespace Vertex::Scanner
 
                         if (matches)
                         {
-                            batchResult.add_match(address, currentData, dataSize,
-                                firstValue.empty() ? nullptr : firstValue.data(), firstValueSize);
+                            batchResult.add_match(address, currentData, dataSize, firstValue, firstValueSize);
 
                             if (batchResult.matchesFound >= WRITE_THRESHOLD)
                             {
@@ -512,22 +341,17 @@ namespace Vertex::Scanner
 
                 for (std::size_t idx = 0; idx < addresses.size(); ++idx)
                 {
-                    if (m_scanAbort.load(std::memory_order_acquire))
-                    {
-                        break;
-                    }
-
                     const std::uint64_t address = addresses[idx];
-                    const auto& previousValue = previousValues[idx];
-                    const auto& firstValue = firstValues[idx];
+                    const auto* previousValue = previousValuePtrs[idx];
+                    const auto* firstValue = firstValuePtrs[idx];
                     const std::size_t offsetInBuffer = address - startAddress;
 
                     const auto* currentData = reinterpret_cast<const std::uint8_t*>(readBuffer.data()) + offsetInBuffer;
                     bool matches = false;
 
-                    if (needsPreviousValue && !previousValue.empty())
+                    if (needsPreviousValue && previousValue != nullptr)
                     {
-                        matches = check_value_matches_with_previous(currentData, previousValue.data());
+                        matches = check_value_matches_with_previous(currentData, previousValue);
                     }
                     else
                     {
@@ -536,8 +360,7 @@ namespace Vertex::Scanner
 
                     if (matches)
                     {
-                        batchResult.add_match(address, currentData, dataSize,
-                            firstValue.empty() ? nullptr : firstValue.data(), firstValueSize);
+                        batchResult.add_match(address, currentData, dataSize, firstValue, firstValueSize);
 
                         if (batchResult.matchesFound >= WRITE_THRESHOLD)
                         {
@@ -565,54 +388,55 @@ namespace Vertex::Scanner
         return StatusCode::STATUS_OK;
     }
 
-    std::vector<MemoryScanner::AddressBundle> MemoryScanner::bundle_adjacent_addresses(const std::vector<PreviousResultRecord>& records, std::size_t maxGapBytes) const
+    std::vector<MemoryScanner::AddressBundle> MemoryScanner::bundle_adjacent_addresses(const FlatRecordBuffer& records, std::size_t maxGapBytes) const
     {
         std::vector<AddressBundle> bundles;
 
-        if (records.empty())
+        if (records.recordCount == 0)
         {
             return bundles;
         }
 
-        std::vector<std::size_t> sortedIndices(records.size());
+        std::vector<std::size_t> sortedIndices(records.recordCount);
         std::iota(sortedIndices.begin(), sortedIndices.end(), 0);
         std::ranges::sort(sortedIndices,
                           [&records](const std::size_t a, const std::size_t b)
                           {
-                              return records[a].address < records[b].address;
+                              return records.get_address(a) < records.get_address(b);
                           });
 
+        const std::size_t firstIdx = sortedIndices[0];
         AddressBundle currentBundle;
-        const auto& [address, previousValue, firstValue] = records[sortedIndices[0]];
-        currentBundle.startAddress = address;
-        currentBundle.endAddress = address;
-        currentBundle.addresses.push_back(address);
-        currentBundle.previousValues.push_back(previousValue);
-        currentBundle.firstValues.push_back(firstValue);
+        currentBundle.startAddress = records.get_address(firstIdx);
+        currentBundle.endAddress = currentBundle.startAddress;
+        currentBundle.addresses.push_back(currentBundle.startAddress);
+        currentBundle.previousValuePtrs.push_back(records.get_previous_value(firstIdx));
+        currentBundle.firstValuePtrs.push_back(records.get_first_value(firstIdx));
 
         for (std::size_t i = 1; i < sortedIndices.size(); ++i)
         {
-            const auto& currentRecord = records[sortedIndices[i]];
-            const auto& prevRecord = records[sortedIndices[i - 1]];
-            const std::uint64_t gap = currentRecord.address - prevRecord.address;
+            const std::size_t curIdx = sortedIndices[i];
+            const std::uint64_t curAddress = records.get_address(curIdx);
+            const std::uint64_t prevAddress = records.get_address(sortedIndices[i - 1]);
+            const std::uint64_t gap = curAddress - prevAddress;
 
             if (gap <= maxGapBytes && currentBundle.addresses.size() < 256)
             {
-                currentBundle.addresses.push_back(currentRecord.address);
-                currentBundle.previousValues.push_back(currentRecord.previousValue);
-                currentBundle.firstValues.push_back(currentRecord.firstValue);
-                currentBundle.endAddress = currentRecord.address;
+                currentBundle.addresses.push_back(curAddress);
+                currentBundle.previousValuePtrs.push_back(records.get_previous_value(curIdx));
+                currentBundle.firstValuePtrs.push_back(records.get_first_value(curIdx));
+                currentBundle.endAddress = curAddress;
             }
             else
             {
                 bundles.push_back(std::move(currentBundle));
 
                 currentBundle = AddressBundle{};
-                currentBundle.startAddress = currentRecord.address;
-                currentBundle.endAddress = currentRecord.address;
-                currentBundle.addresses.push_back(currentRecord.address);
-                currentBundle.previousValues.push_back(currentRecord.previousValue);
-                currentBundle.firstValues.push_back(currentRecord.firstValue);
+                currentBundle.startAddress = curAddress;
+                currentBundle.endAddress = curAddress;
+                currentBundle.addresses.push_back(curAddress);
+                currentBundle.previousValuePtrs.push_back(records.get_previous_value(curIdx));
+                currentBundle.firstValuePtrs.push_back(records.get_first_value(curIdx));
             }
         }
 

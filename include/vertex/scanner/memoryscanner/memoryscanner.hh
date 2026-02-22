@@ -6,17 +6,17 @@
 
 #include <vertex/macrohelp.hh>
 #include <vertex/configuration/isettings.hh>
-#include <vertex/thread/vertexspscthread.hh>
+#include <vertex/thread/ithreaddispatcher.hh>
 #include <vertex/scanner/scanconfig.hh>
 #include <vertex/scanner/memoryscanner/imemoryscanner.hh>
 #include <vertex/scanner/scanresult.hh>
 #include <vertex/io/scanresultstore.hh>
 #include <vertex/log/ilog.hh>
 #include <atomic>
+#include <cstring>
 #include <mutex>
 #include <shared_mutex>
 #include <deque>
-#include <optional>
 
 namespace Vertex::Scanner
 {
@@ -43,7 +43,7 @@ namespace Vertex::Scanner
     class MemoryScanner final : public IMemoryScanner
     {
       public:
-        MemoryScanner(Configuration::ISettings& settingsService, Log::ILog& logService);
+        MemoryScanner(Configuration::ISettings& settingsService, Log::ILog& logService, Thread::IThreadDispatcher& dispatcher);
         ~MemoryScanner() override;
 
         void set_memory_reader(std::shared_ptr<IMemoryReader> reader) override;
@@ -53,6 +53,7 @@ namespace Vertex::Scanner
         StatusCode initialize_next_scan(const ScanConfiguration& configuration) override;
         StatusCode undo_scan() override;
         StatusCode stop_scan() override;
+        void finalize_scan() override;
 
         StatusCode get_scan_results_range(std::vector<ScanResultEntry>& results, std::size_t startIndex, std::size_t count) const override;
         StatusCode get_scan_results(std::vector<ScanResultEntry>& results, std::size_t maxResults) const override;
@@ -68,15 +69,37 @@ namespace Vertex::Scanner
         [[nodiscard]] std::uint64_t get_results_count() const noexcept override;
 
       private:
-        struct PreviousResultRecord final
+        struct FlatRecordBuffer final
         {
-            std::uint64_t address{};
-            std::vector<std::uint8_t> previousValue{};
-            std::vector<std::uint8_t> firstValue{};
+            Memory::AlignedByteVector data{};
+            std::size_t recordCount{};
+            std::size_t valueSize{};
+            std::size_t firstValueSize{};
+            std::size_t recordSize{};
+
+            [[nodiscard]] std::uint64_t get_address(std::size_t index) const
+            {
+                std::uint64_t addr{};
+                std::memcpy(&addr, data.data() + index * recordSize, sizeof(std::uint64_t));
+                return addr;
+            }
+
+            [[nodiscard]] const std::uint8_t* get_previous_value(std::size_t index) const
+            {
+                return reinterpret_cast<const std::uint8_t*>(data.data() + index * recordSize + sizeof(std::uint64_t));
+            }
+
+            [[nodiscard]] const std::uint8_t* get_first_value(std::size_t index) const
+            {
+                if (firstValueSize == 0)
+                {
+                    return get_previous_value(index);
+                }
+                return reinterpret_cast<const std::uint8_t*>(data.data() + index * recordSize + sizeof(std::uint64_t) + valueSize);
+            }
         };
 
-        StatusCode scan_memory_region(const ScanRegion& region, std::size_t writerIndex);
-        StatusCode scan_previous_results(const std::vector<PreviousResultRecord>& previousResults, std::size_t writerIndex);
+        StatusCode scan_memory_region(const ScanRegion& region, std::size_t writerIndex, Memory::AlignedByteVector& regionBuffer);
         StatusCode scan_previous_results_from_regions(
             const std::vector<WriterRegionMetadata>& previousRegions,
             std::size_t globalStartIndex,
@@ -89,14 +112,8 @@ namespace Vertex::Scanner
         [[nodiscard]] bool check_value_matches_with_previous(const std::uint8_t* currentData, const std::uint8_t* previousData) const;
         void resolve_comparator();
 
-        StatusCode create_threads(int numReaders);
-        void clear_thread_pools();
+        StatusCode create_worker_pool(std::size_t workerCount);
         StatusCode distribute_regions_to_readers(const std::vector<ScanRegion>& memoryRegions);
-        StatusCode enqueue_task_with_fallback(
-            std::packaged_task<StatusCode()>&& task,
-            std::size_t preferredIndex,
-            std::string_view taskLabel) const;
-        [[nodiscard]] std::optional<std::size_t> find_available_thread(std::size_t excludeIndex) const;
 
         StatusCode write_results_direct(const ScanResult& results, std::size_t writerIndex);
         StatusCode get_scan_results_locked(std::vector<ScanResultEntry>& results, std::size_t startIndex, std::size_t count) const;
@@ -106,17 +123,17 @@ namespace Vertex::Scanner
             std::uint64_t startAddress{};
             std::uint64_t endAddress{};
             std::vector<std::uint64_t> addresses{};
-            std::vector<std::vector<std::uint8_t>> previousValues{};
-            std::vector<std::vector<std::uint8_t>> firstValues{};
+            std::vector<const std::uint8_t*> previousValuePtrs{};
+            std::vector<const std::uint8_t*> firstValuePtrs{};
         };
-        [[nodiscard]] std::vector<AddressBundle> bundle_adjacent_addresses(const std::vector<PreviousResultRecord>& records, std::size_t maxGapBytes = 512) const;
+        [[nodiscard]] std::vector<AddressBundle> bundle_adjacent_addresses(const FlatRecordBuffer& records, std::size_t maxGapBytes = 512) const;
 
         StatusCode create_writer_regions(std::size_t writerCount);
         void cleanup_writer_regions(std::vector<WriterRegionMetadata>& regions) const;
         void cleanup_snapshot_regions(ScanSnapshot& snapshot) const;
         void save_snapshot_for_undo();
 
-        [[nodiscard]] std::vector<PreviousResultRecord> read_records_from_regions(const std::vector<WriterRegionMetadata>& regions, std::size_t startIndex, std::size_t count, std::size_t valueSize, std::size_t firstValueSize) const;
+        [[nodiscard]] FlatRecordBuffer read_records_from_regions(const std::vector<WriterRegionMetadata>& regions, std::size_t startIndex, std::size_t count, std::size_t valueSize, std::size_t firstValueSize) const;
 
 
         // Give each atomic enough space to hold their own CPU cache line to prevent false sharing between threads
@@ -129,7 +146,6 @@ namespace Vertex::Scanner
 
         alignas(std::hardware_destructive_interference_size) std::atomic<bool> m_scanAbort{};
         alignas(std::hardware_destructive_interference_size) std::atomic<int> m_activeReaders{};
-        alignas(std::hardware_destructive_interference_size) std::atomic<int> m_activeWriters{};
         alignas(std::hardware_destructive_interference_size) std::atomic<int> m_pendingWriterTasks{};
         alignas(std::hardware_destructive_interference_size) std::atomic<std::uint64_t> m_regionsScanned{};
         alignas(std::hardware_destructive_interference_size) std::atomic<std::uint64_t> m_totalRegions{};
@@ -147,7 +163,7 @@ namespace Vertex::Scanner
         bool m_resolvedSwapNeeded{};
         bool m_resolvedIsString{};
 
-        std::vector<std::unique_ptr<Thread::VertexSPSCThread>> m_readerThreads{};
+        std::size_t m_workerCount{};
 
         mutable std::shared_mutex m_writerRegionsMutex{};
         std::vector<WriterRegionMetadata> m_writerRegions{};
@@ -164,5 +180,6 @@ namespace Vertex::Scanner
 
         Configuration::ISettings& m_settingsService;
         Log::ILog& m_logService;
+        Thread::IThreadDispatcher& m_dispatcher;
     };
 } // namespace Vertex::Scanner

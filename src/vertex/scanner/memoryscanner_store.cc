@@ -57,7 +57,7 @@ namespace Vertex::Scanner
         }
 
         writerMeta.atomics->resultCount.fetch_add(results.matchesFound, std::memory_order_release);
-        m_resultsCount.fetch_add(results.matchesFound, std::memory_order_relaxed);
+        m_resultsCount.fetch_add(results.matchesFound, std::memory_order_release);
 
         return StatusCode::STATUS_OK;
     }
@@ -130,7 +130,8 @@ namespace Vertex::Scanner
             const auto* regionBase = static_cast<const char*>(writerMeta.store.base());
             if (regionBase == nullptr)
             {
-                return StatusCode::STATUS_ERROR_MEMORY_ALLOCATION_FAILED;
+                cumulativeResults += writerResultCount;
+                continue;
             }
 
             const std::size_t byteOffset = localStartIndex * recordSize;
@@ -152,7 +153,7 @@ namespace Vertex::Scanner
                     readPtr += firstValueSize;
                 }
 
-                if (reader && reader->is_valid())
+                if (reader)
                 {
                     const StatusCode memReadStatus = reader->read_memory(entry.address, dataSize, currentValueBuffer.data());
 
