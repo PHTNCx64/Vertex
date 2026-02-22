@@ -10,6 +10,7 @@
 #include <vertex/scanner/memoryscanner/imemoryscanner.hh>
 #include <vertex/scanner/valuetypes.hh>
 #include <vertex/runtime/iloader.hh>
+#include <vertex/thread/ithreaddispatcher.hh>
 
 #include <sdk/statuscode.h>
 #include <sdk/memory.h>
@@ -25,7 +26,8 @@ namespace Vertex::Model
             Configuration::ISettings& settingsService,
             Scanner::IMemoryScanner& memoryService,
             Runtime::ILoader& loaderService,
-            Log::ILog& loggerService
+            Log::ILog& loggerService,
+            Thread::IThreadDispatcher& dispatcher
             );
 
         [[nodiscard]] StatusCode validate_input(Scanner::ValueType type, bool hexadecimal,
@@ -36,6 +38,8 @@ namespace Vertex::Model
         [[nodiscard]] StatusCode write_process_memory(std::uint64_t address, const std::vector<std::uint8_t>& data) const;
         [[nodiscard]] StatusCode query_memory_regions(std::vector<MemoryRegion>& regions) const;
         [[nodiscard]] StatusCode get_file_executable_extensions(std::vector<std::string>& extensions) const;
+        [[nodiscard]] StatusCode get_min_process_address(std::uint64_t& address) const;
+        [[nodiscard]] StatusCode get_max_process_address(std::uint64_t& address) const;
 
         [[nodiscard]] StatusCode initialize_scan(Scanner::ValueType valueType, std::uint8_t scanMode,
                                    bool hexDisplay, bool alignmentEnabled, std::size_t alignmentValue,
@@ -51,6 +55,7 @@ namespace Vertex::Model
 
         [[nodiscard]] StatusCode undo_scan() const;
         [[nodiscard]] StatusCode stop_scan() const;
+        void finalize_scan() const;
         [[nodiscard]] bool can_undo_scan() const;
         [[nodiscard]] std::uint64_t get_scan_progress_current() const;
         [[nodiscard]] std::uint64_t get_scan_progress_total() const;
@@ -72,7 +77,7 @@ namespace Vertex::Model
 
     private:
 
-        static constexpr auto MODEL_NAME = "MainModel";
+        static constexpr std::string_view MODEL_NAME{"MainModel"};
 
         void ensure_memory_reader_setup() const;
 
@@ -80,5 +85,6 @@ namespace Vertex::Model
         Scanner::IMemoryScanner& m_memoryService;
         Runtime::ILoader& m_loaderService;
         Log::ILog& m_loggerService;
+        Thread::IThreadDispatcher& m_dispatcher;
     };
 }
