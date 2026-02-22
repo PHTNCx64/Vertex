@@ -15,6 +15,8 @@
 #include "memory.h"
 #include "process.h"
 #include "registry.h"
+#include "ui.h"
+#include "feature.hh"
 
 #ifdef __cplusplus
 extern "C" {
@@ -33,7 +35,7 @@ extern "C" {
         const char* pluginDescription;
         const char* pluginAuthor;
         uint32_t apiVersion;
-        uint64_t featureCapability; // currently unused
+        uint64_t featureCapability;
     } PluginInformation;
 
     typedef StatusCode (VERTEX_API *VertexLog_t)(const char* msg, ...);
@@ -77,19 +79,22 @@ extern "C" {
 
         VertexRegisterSnapshot_t vertex_register_snapshot;
         VertexClearRegistry_t vertex_clear_registry;
+
+        VertexRegisterUIPanel_t vertex_register_ui_panel;
+        VertexGetUIValue_t vertex_get_ui_value;
     } Runtime;
 
     // ===============================================================================================================//
     // ENTRY AND EXIT POINT OF A PLUGIN                                                                               //
     // ===============================================================================================================//
-    VERTEX_EXPORT StatusCode VERTEX_API vertex_init(PluginInformation* pluginInfo, Runtime* runtime);
+    VERTEX_EXPORT StatusCode VERTEX_API vertex_init(PluginInformation* pluginInfo, Runtime* runtime, bool singleThreadModeInit);
     VERTEX_EXPORT StatusCode VERTEX_API vertex_exit();
     VERTEX_EXPORT StatusCode VERTEX_API vertex_event(Event event, const void* data);
 
     // ===============================================================================================================//
     // PROCESS RELATED API FUNCTIONS                                                                                  //
     // ===============================================================================================================//
-    VERTEX_EXPORT StatusCode VERTEX_API vertex_process_open(uint32_t process_id);
+    VERTEX_EXPORT StatusCode VERTEX_API vertex_process_open(uint32_t processId);
     VERTEX_EXPORT StatusCode VERTEX_API vertex_process_close();
     VERTEX_EXPORT StatusCode VERTEX_API vertex_process_kill();
     VERTEX_EXPORT StatusCode VERTEX_API vertex_process_get_executable_extensions(char** extensions, uint32_t* count);
