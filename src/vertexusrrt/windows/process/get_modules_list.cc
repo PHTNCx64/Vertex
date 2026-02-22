@@ -2,28 +2,12 @@
 // Copyright (C) 2026 PHTNC<>.
 // Licensed under LGPLv3.0+
 //
-#include <vertexusrrt/native_handle.hh>
+#include <vertexusrrt/process_internal.hh>
 
-#include <sdk/api.h>
-#include <sdk/process.h>
-
-#include <Windows.h>
 #include <tlhelp32.h>
 
 #include <algorithm>
-#include <optional>
-#include <string>
-#include <string_view>
 #include <vector>
-
-extern native_handle& get_native_handle();
-
-namespace ProcessInternal
-{
-    ProcessInformation* opened_process_info();
-    std::optional<std::string> wchar_to_utf8(const WCHAR* str) noexcept;
-    void vertex_cpy(char* dst, std::string_view src, std::size_t max_len);
-}
 
 extern "C"
 {
