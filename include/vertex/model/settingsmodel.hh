@@ -20,10 +20,10 @@ namespace Vertex::Model
                                Log::ILog& loggerService,
                                Language::ILanguage& languageService,
                                Configuration::ISettings& settingsService)
-            : m_loaderService(loaderService),
-              m_loggerService(loggerService),
-              m_settingsService(settingsService),
-              m_languageService(languageService)
+            : m_loaderService{loaderService},
+              m_loggerService{loggerService},
+              m_settingsService{settingsService},
+              m_languageService{languageService}
         {
         }
 
@@ -48,6 +48,7 @@ namespace Vertex::Model
         [[nodiscard]] StatusCode get_gui_saving_enabled(bool& status) const;
         [[nodiscard]] StatusCode get_remember_window_position(bool& status) const;
         [[nodiscard]] StatusCode load_plugin(std::size_t index) const;
+        [[nodiscard]] StatusCode unload_plugin(std::size_t index) const;
         [[nodiscard]] StatusCode set_active_plugin(std::size_t index) const;
 
         [[nodiscard]] StatusCode get_reader_threads(int& count) const;

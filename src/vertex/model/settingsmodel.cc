@@ -238,7 +238,7 @@ namespace Vertex::Model
 
     std::vector<std::filesystem::path> SettingsModel::get_language_paths() const
     {
-        std::vector<std::filesystem::path> paths;
+        std::vector<std::filesystem::path> paths{};
         const auto languagePathJson = m_settingsService.get_value("language.languagePath");
 
         if (languagePathJson.is_string())
@@ -284,6 +284,28 @@ namespace Vertex::Model
         return m_loaderService.load_plugin(plugins[index].get_path());
     }
 
+    StatusCode SettingsModel::unload_plugin(const std::size_t index) const
+    {
+        auto& plugins = m_loaderService.get_plugins();
+        if (index >= plugins.size())
+        {
+            return StatusCode::STATUS_ERROR_INVALID_PARAMETER;
+        }
+
+        if (!plugins[index].is_loaded())
+        {
+            return StatusCode::STATUS_ERROR_PLUGIN_NOT_LOADED;
+        }
+
+        const auto activePlugin = m_loaderService.get_active_plugin();
+        if (activePlugin.has_value() && &activePlugin->get() == &plugins[index])
+        {
+            return StatusCode::STATUS_ERROR_INVALID_PARAMETER;
+        }
+
+        return m_loaderService.unload_plugin(index);
+    }
+
     StatusCode SettingsModel::set_active_plugin(const std::size_t index) const
     {
         auto& plugins = m_loaderService.get_plugins();
@@ -312,7 +334,7 @@ namespace Vertex::Model
 
     int SettingsModel::get_ui_state_int(const std::string_view key, const int defaultValue) const
     {
-        bool guiSavingEnabled = false;
+        bool guiSavingEnabled{};
         std::ignore = get_gui_saving_enabled(guiSavingEnabled);
         if (!guiSavingEnabled)
         {
@@ -324,7 +346,7 @@ namespace Vertex::Model
 
     void SettingsModel::set_ui_state_int(const std::string_view key, const int value) const
     {
-        bool guiSavingEnabled = false;
+        bool guiSavingEnabled{};
         std::ignore = get_gui_saving_enabled(guiSavingEnabled);
         if (guiSavingEnabled)
         {
