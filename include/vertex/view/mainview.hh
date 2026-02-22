@@ -137,6 +137,13 @@ namespace Vertex::View
         wxBoxSizer* m_memoryRegionSettingsSizer{};
         wxButton* m_memoryRegionSettingsButton{};
 
+        wxBoxSizer* m_minAddressSizer{};
+        wxStaticText* m_minAddressLabel{};
+        wxTextCtrl* m_minAddressTextControl{};
+        wxBoxSizer* m_maxAddressSizer{};
+        wxStaticText* m_maxAddressLabel{};
+        wxTextCtrl* m_maxAddressTextControl{};
+
         wxButton* m_addAddressManuallyButton{};
 
         CustomWidgets::SavedAddressesPanel* m_savedAddressesPanel{};

@@ -140,6 +140,12 @@ namespace Vertex::View
         m_alignmentCheckBox = new wxCheckBox(m_scanOptionsStaticBox, wxID_ANY, wxString::FromUTF8(m_languageService.fetch_translation("mainWindow.ui.alignedScan")));
         m_memoryRegionSettingsSizer = new wxBoxSizer(wxHORIZONTAL);
         m_memoryRegionSettingsButton = new wxButton(m_scanOptionsStaticBox, wxID_ANY, wxString::FromUTF8(m_languageService.fetch_translation("mainWindow.ui.memoryRegionSettings")));
+        m_minAddressSizer = new wxBoxSizer(wxVERTICAL);
+        m_minAddressLabel = new wxStaticText(m_scanOptionsStaticBox, wxID_ANY, wxString::FromUTF8(m_languageService.fetch_translation("mainWindow.ui.minimumAddress")));
+        m_minAddressTextControl = new wxTextCtrl(m_scanOptionsStaticBox, wxID_ANY, wxEmptyString);
+        m_maxAddressSizer = new wxBoxSizer(wxVERTICAL);
+        m_maxAddressLabel = new wxStaticText(m_scanOptionsStaticBox, wxID_ANY, wxString::FromUTF8(m_languageService.fetch_translation("mainWindow.ui.maximumAddress")));
+        m_maxAddressTextControl = new wxTextCtrl(m_scanOptionsStaticBox, wxID_ANY, wxEmptyString);
         m_addAddressManuallyButton = new wxButton(m_mainPanel, wxID_ANY, wxString::FromUTF8(m_languageService.fetch_translation("mainWindow.ui.addAddressManually")));
         m_savedAddressesPanel = new CustomWidgets::SavedAddressesPanel(m_mainPanel, m_languageService,
                                                                        std::shared_ptr<ViewModel::MainViewModel>(m_viewModel.get(),
@@ -220,6 +226,12 @@ namespace Vertex::View
         m_scanOptionsSizer->Add(m_alignmentBoxSizer, StandardWidgetValues::NO_PROPORTION, wxEXPAND | wxLEFT | wxRIGHT | wxTOP, StandardWidgetValues::STANDARD_BORDER);
         m_memoryRegionSettingsSizer->Add(m_memoryRegionSettingsButton, StandardWidgetValues::NO_PROPORTION, wxEXPAND);
         m_scanOptionsSizer->Add(m_memoryRegionSettingsSizer, StandardWidgetValues::NO_PROPORTION, wxEXPAND | wxLEFT | wxRIGHT | wxTOP, StandardWidgetValues::STANDARD_BORDER);
+        m_minAddressSizer->Add(m_minAddressLabel, StandardWidgetValues::NO_PROPORTION, wxBOTTOM, StandardWidgetValues::STANDARD_BORDER);
+        m_minAddressSizer->Add(m_minAddressTextControl, StandardWidgetValues::NO_PROPORTION, wxEXPAND);
+        m_scanOptionsSizer->Add(m_minAddressSizer, StandardWidgetValues::NO_PROPORTION, wxEXPAND | wxLEFT | wxRIGHT | wxTOP, StandardWidgetValues::STANDARD_BORDER);
+        m_maxAddressSizer->Add(m_maxAddressLabel, StandardWidgetValues::NO_PROPORTION, wxBOTTOM, StandardWidgetValues::STANDARD_BORDER);
+        m_maxAddressSizer->Add(m_maxAddressTextControl, StandardWidgetValues::NO_PROPORTION, wxEXPAND);
+        m_scanOptionsSizer->Add(m_maxAddressSizer, StandardWidgetValues::NO_PROPORTION, wxEXPAND | wxLEFT | wxRIGHT | wxTOP, StandardWidgetValues::STANDARD_BORDER);
         m_buttonSizer->Add(m_initialScanButton, StandardWidgetValues::STANDARD_PROPORTION, wxEXPAND | wxRIGHT, StandardWidgetValues::STANDARD_BORDER);
         m_buttonSizer->Add(m_nextScanButton, StandardWidgetValues::STANDARD_PROPORTION, wxEXPAND | wxRIGHT, StandardWidgetValues::STANDARD_BORDER);
         m_buttonSizer->Add(m_undoScanButton, StandardWidgetValues::STANDARD_PROPORTION, wxEXPAND);
@@ -237,14 +249,27 @@ namespace Vertex::View
     {
         switch (eventId)
         {
-        case Event::PROCESS_CLOSED_EVENT: handle_process_closed(); break;
+        case Event::PROCESS_CLOSED_EVENT:
+            CallAfter([this]()
+            {
+                handle_process_closed();
+            });
+            break;
         case Event::VIEW_UPDATE_EVENT:
         {
-            const auto& viewUpdateEvent = static_cast<const Event::ViewUpdateEvent&>(event);
-            update_view(viewUpdateEvent.get_update_flags());
+            const auto flags = static_cast<const Event::ViewUpdateEvent&>(event).get_update_flags();
+            CallAfter([this, flags]()
+            {
+                update_view(flags);
+            });
         }
         break;
-        case Event::PROCESS_OPEN_EVENT: update_view(ViewUpdateFlags::PROCESS_INFO); break;
+        case Event::PROCESS_OPEN_EVENT:
+            CallAfter([this]()
+            {
+                update_view(ViewUpdateFlags::PROCESS_INFO);
+            });
+            break;
         default:;
         }
     }
@@ -387,6 +412,11 @@ namespace Vertex::View
                 set_control_status(ControlStatus::PROCESS_OPENED);
                 m_processValidityCheck->Start(StandardWidgetValues::TIMER_INTERVAL_MS);
                 m_savedAddressesPanel->start_auto_refresh();
+
+                const auto minAddr = m_viewModel->get_min_process_address();
+                const auto maxAddr = m_viewModel->get_max_process_address();
+                m_minAddressTextControl->SetValue(wxString::Format("0x%llX", minAddr));
+                m_maxAddressTextControl->SetValue(wxString::Format("0x%llX", maxAddr));
             }
         }
 
@@ -511,6 +541,8 @@ namespace Vertex::View
         m_processValidityCheck->Stop();
         m_savedAddressesPanel->stop_auto_refresh();
         m_scannedValuesPanel->stop_auto_refresh();
+        m_minAddressTextControl->Clear();
+        m_maxAddressTextControl->Clear();
         set_control_status(ControlStatus::NO_PROCESS_OPENED);
         m_viewModel->close_process_state();
     }
@@ -560,6 +592,8 @@ namespace Vertex::View
             m_alignmentCheckBox->Disable();
             m_alignmentValue->Disable();
             m_memoryRegionSettingsButton->Disable();
+            m_minAddressTextControl->Disable();
+            m_maxAddressTextControl->Disable();
             m_addAddressManuallyButton->Disable();
             break;
 
@@ -577,6 +611,8 @@ namespace Vertex::View
             m_alignmentCheckBox->Enable();
             m_alignmentValue->Enable();
             m_memoryRegionSettingsButton->Enable();
+            m_minAddressTextControl->Enable();
+            m_maxAddressTextControl->Enable();
             m_addAddressManuallyButton->Enable();
             break;
         }
