@@ -131,3 +131,26 @@ add_custom_command(TARGET vertexusrrt POST_BUILD
         "${CMAKE_BINARY_DIR}"
     COMMENT "Copying Capstone DLL to build directory"
 )
+
+#-----------------------------
+#  Post-Build: Copy to Plugins
+#-----------------------------
+set(PLUGINS_DIR "${CMAKE_BINARY_DIR}/Plugins")
+
+add_custom_command(TARGET vertexusrrt POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E make_directory "${PLUGINS_DIR}"
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            $<TARGET_FILE:vertexusrrt>
+            "${PLUGINS_DIR}/"
+    COMMENT "Copying vertexusrrt plugin to Plugins folder"
+)
+
+if(WIN32 AND MSVC)
+    add_custom_command(TARGET vertexusrrt POST_BUILD
+        COMMAND ${CMAKE_COMMAND}
+            -DSRC=$<TARGET_PDB_FILE:vertexusrrt>
+            -DDST=${PLUGINS_DIR}/
+            -P ${CMAKE_SOURCE_DIR}/cmake/copy_if_exists.cmake
+        COMMENT "Copying vertexusrrt debug symbols to Plugins folder"
+    )
+endif()

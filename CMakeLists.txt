@@ -3,14 +3,55 @@ cmake_minimum_required(VERSION 3.30)
 #-----------------------------
 #  VCPKG Integration
 #-----------------------------
-if(DEFINED ENV{VCPKG_ROOT} AND NOT DEFINED CMAKE_TOOLCHAIN_FILE)
-    set(CMAKE_TOOLCHAIN_FILE "$ENV{VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake" CACHE STRING "")
+if(NOT DEFINED CMAKE_TOOLCHAIN_FILE)
+    if(DEFINED ENV{VCPKG_ROOT})
+        set(CMAKE_TOOLCHAIN_FILE "$ENV{VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake" CACHE STRING "")
+    elseif(EXISTS "${CMAKE_SOURCE_DIR}/vcpkg/scripts/buildsystems/vcpkg.cmake")
+        set(CMAKE_TOOLCHAIN_FILE "${CMAKE_SOURCE_DIR}/vcpkg/scripts/buildsystems/vcpkg.cmake" CACHE STRING "")
+    else()
+        message(WARNING
+            "vcpkg toolchain not found. Either:\n"
+            "  1. Set the VCPKG_ROOT environment variable to your vcpkg installation, or\n"
+            "  2. Pass -DCMAKE_TOOLCHAIN_FILE=<path>/scripts/buildsystems/vcpkg.cmake, or\n"
+            "  3. Clone vcpkg into ${CMAKE_SOURCE_DIR}/vcpkg\n"
+            "  4. Use the build.ps1 script: ./build.ps1 -VcpkgRoot <path>")
+    endif()
 endif()
+
+set(VCPKG_OVERLAY_TRIPLETS "${CMAKE_CURRENT_SOURCE_DIR}/triplets")
 
 project(Vertex VERSION 1.0.0 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
+
+#-----------------------------
+#  Build Configuration Options
+#-----------------------------
+option(BUILD_ALL "Build all plugins and components" OFF)
+option(BUILD_ONLY_RUNTIME "Build only the runtime (no plugins)" OFF)
+option(BUILD_VERTEXUSRRT "Build the vertexusrrt plugin" ON)
+option(BUILD_VERTEXDECI3RT "Build the vertexdeci3rt plugin (requires Sony SDK)" OFF)
+option(BUILD_LIBTEST "Build the libtest plugin" ON)
+option(BUILD_TESTING "Build tests" ON)
+
+if(BUILD_ALL)
+    set(BUILD_VERTEXUSRRT ON CACHE BOOL "" FORCE)
+    set(BUILD_VERTEXDECI3RT ON CACHE BOOL "" FORCE)
+    set(BUILD_LIBTEST ON CACHE BOOL "" FORCE)
+    set(BUILD_TESTING ON CACHE BOOL "" FORCE)
+elseif(BUILD_ONLY_RUNTIME)
+    set(BUILD_VERTEXUSRRT OFF CACHE BOOL "" FORCE)
+    set(BUILD_VERTEXDECI3RT OFF CACHE BOOL "" FORCE)
+    set(BUILD_LIBTEST OFF CACHE BOOL "" FORCE)
+    set(BUILD_TESTING OFF CACHE BOOL "" FORCE)
+endif()
+
+message(STATUS "Build configuration:")
+message(STATUS "  vertexusrrt:   ${BUILD_VERTEXUSRRT}")
+message(STATUS "  vertexdeci3rt: ${BUILD_VERTEXDECI3RT}")
+message(STATUS "  libtest:       ${BUILD_LIBTEST}")
+message(STATUS "  tests:         ${BUILD_TESTING}")
 
 add_compile_definitions(
         ApplicationName="Vertex"
@@ -239,8 +280,6 @@ set_target_properties(Vertex PROPERTIES
 #-----------------------------
 #  Testing
 #-----------------------------
-option(BUILD_TESTING "Build tests" ON)
-
 if(BUILD_TESTING)
     enable_testing()
     find_package(GTest CONFIG REQUIRED)
@@ -251,7 +290,15 @@ if(BUILD_TESTING)
 
     # Reuse production sources (exclude main.cc AND GUI files for test)
     set(VERTEX_TEST_SOURCES ${VERTEX_SOURCES}
-            include/vertexusrrt/util.hh)
+            include/vertexusrrt/util.hh
+            include/sdk/feature.hh
+            include/vertex/thread/vertexmpscthread.hh
+            src/vertex/thread/vertexmpscthread.cc
+            include/vertex/thread/threaddispatcher.hh
+            src/vertex/thread/threaddispatcher.cc)
+    if(BUILD_VERTEXDECI3RT)
+        list(APPEND VERTEX_TEST_SOURCES include/vertexdeci3rt/init.hh)
+    endif()
     list(FILTER VERTEX_TEST_SOURCES EXCLUDE REGEX ".*/main\\.cc$")
     list(FILTER VERTEX_TEST_SOURCES EXCLUDE REGEX ".*/view/.*")
     list(FILTER VERTEX_TEST_SOURCES EXCLUDE REGEX ".*/viewmodel/.*")
@@ -291,17 +338,26 @@ endif()
 #-----------------------------
 #  Plugin Runtime (separate DLL)
 #-----------------------------
-add_subdirectory(src/vertexusrrt)
+if(BUILD_VERTEXUSRRT)
+    add_subdirectory(src/vertexusrrt)
+    add_dependencies(Vertex vertexusrrt)
+endif()
 
-# Ensure plugin runtime is built when Vertex is built
-add_dependencies(Vertex vertexusrrt)
+#-----------------------------
+#  DECI3 Runtime (separate DLL)
+#-----------------------------
+if(BUILD_VERTEXDECI3RT)
+    add_subdirectory(src/vertexdeci3rt)
+    add_dependencies(Vertex vertexdeci3rt)
+endif()
 
 #-----------------------------
 #  Test Library (separate DLL)
 #-----------------------------
-add_subdirectory(src/libtest)
-
-add_dependencies(Vertex libtest)
+if(BUILD_LIBTEST)
+    add_subdirectory(src/libtest)
+    add_dependencies(Vertex libtest)
+endif()
 
 #-----------------------------
 #  Resource Copying (Post-Build)
@@ -322,34 +378,4 @@ add_custom_command(TARGET Vertex POST_BUILD
         COMMAND ${CMAKE_COMMAND} -Dsrc="${CMAKE_SOURCE_DIR}/resources/languages" -Ddst="${OUTPUT_DIR}/Language" -P "${RESOURCE_COPY_SCRIPT}"
 )
 
-add_custom_command(TARGET Vertex POST_BUILD
-        COMMAND ${CMAKE_COMMAND} -E copy_if_different
-                $<TARGET_FILE:vertexusrrt>
-                "${OUTPUT_DIR}/Plugins/"
-        COMMENT "Copying vertexusrrt plugin to Plugins folder"
-)
-
-# Copy libtest DLL
-add_custom_command(TARGET Vertex POST_BUILD
-        COMMAND ${CMAKE_COMMAND} -E copy_if_different
-                $<TARGET_FILE:libtest>
-                "${OUTPUT_DIR}/Plugins/"
-        COMMENT "Copying libtest DLL to Plugins folder"
-)
-
-if(WIN32 AND MSVC)
-    add_custom_command(TARGET Vertex POST_BUILD
-            COMMAND ${CMAKE_COMMAND} -E copy_if_different
-                    $<TARGET_PDB_FILE:vertexusrrt>
-                    "${OUTPUT_DIR}/Plugins/"
-            COMMENT "Copying vertexusrrt debug symbols to Plugins folder"
-    )
-
-    add_custom_command(TARGET Vertex POST_BUILD
-            COMMAND ${CMAKE_COMMAND} -E copy_if_different
-                    $<TARGET_PDB_FILE:libtest>
-                    "${OUTPUT_DIR}/Plugins/"
-            COMMENT "Copying libtest debug symbols to Plugins folder"
-    )
-endif()
 
