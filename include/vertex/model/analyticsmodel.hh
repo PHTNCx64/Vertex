@@ -10,7 +10,7 @@
 
 namespace Vertex::Model
 {
-    class AnalyticsModel
+    class AnalyticsModel final
     {
       public:
         explicit AnalyticsModel(Log::ILog& logService);
