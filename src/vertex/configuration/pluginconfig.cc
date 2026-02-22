@@ -305,8 +305,8 @@ namespace Vertex::Configuration
             case VERTEX_UI_FIELD_DROPDOWN:
             {
                 auto str = jsonVal.get<std::string>();
-                std::strncpy(result.stringValue, str.c_str(), VERTEX_UI_MAX_STRING_VALUE_LENGTH - 1);
-                result.stringValue[VERTEX_UI_MAX_STRING_VALUE_LENGTH - 1] = '\0';
+                std::copy_n(str.c_str(), std::min(str.size(), static_cast<std::size_t>(VERTEX_UI_MAX_STRING_VALUE_LENGTH - 1)), result.stringValue);
+                result.stringValue[std::min(str.size(), static_cast<std::size_t>(VERTEX_UI_MAX_STRING_VALUE_LENGTH - 1))] = '\0';
                 break;
             }
             default:
