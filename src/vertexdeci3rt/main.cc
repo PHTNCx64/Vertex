@@ -3,7 +3,6 @@
 // Licensed under LGPLv3.0+
 //
 
-#include <vertexdeci3rt/config.hh>
 #include <vertexdeci3rt/init.hh>
 
 #include <sdk/api.h>
@@ -73,7 +72,7 @@ namespace
                 *out = '\0';
             }
 
-            g_discoveredTargets.push_back(std::move(entry));
+            g_discoveredTargets.push_back(entry);
         }
 
         return 0;
@@ -109,13 +108,13 @@ namespace
 
         if (field == FIELD_CONNECT)
         {
-            const SNRESULT result = SNPS3Connect(ctx->module.targetNumber, nullptr);
+            const SNRESULT result = SNPS3ConnectEx(ctx->module.targetNumber, nullptr, true);
             if (SN_FAILED(result))
             {
-                g_pluginRuntime->vertex_log_error("Failed to connect to target (handle %d).", static_cast<int>(ctx->module.targetNumber));
+                g_pluginRuntime->vertex_log_error("Failed to connect to target (target %d) (SNRESULT: %d).", static_cast<int>(ctx->module.targetNumber), result);
                 return;
             }
-            g_pluginRuntime->vertex_log_info("Connected to target (handle %d).", static_cast<int>(ctx->module.targetNumber));
+            g_pluginRuntime->vertex_log_info("Connected to target (target %d).", static_cast<int>(ctx->module.targetNumber));
             return;
         }
 
@@ -124,10 +123,10 @@ namespace
             const SNRESULT result = SNPS3Disconnect(ctx->module.targetNumber);
             if (SN_FAILED(result))
             {
-                g_pluginRuntime->vertex_log_error("Failed to disconnect from target (handle %d).", static_cast<int>(ctx->module.targetNumber));
+                g_pluginRuntime->vertex_log_error("Failed to disconnect from target (target %d).", static_cast<int>(ctx->module.targetNumber));
                 return;
             }
-            g_pluginRuntime->vertex_log_info("Disconnected from target (handle %d).", static_cast<int>(ctx->module.targetNumber));
+            g_pluginRuntime->vertex_log_info("Disconnected from target (target %d).", static_cast<int>(ctx->module.targetNumber));
             return;
         }
 
@@ -140,7 +139,7 @@ namespace
                 if (selectedLabel == std::string_view { name.data() })
                 {
                     ctx->module.targetNumber = handle;
-                    g_pluginRuntime->vertex_log_info("Selected target: %s (handle %d)", name.data(), static_cast<int>(handle));
+                    g_pluginRuntime->vertex_log_info("Selected target: %s (target %d)", name.data(), static_cast<int>(handle));
                     return;
                 }
             }
@@ -301,6 +300,9 @@ extern "C" VERTEX_EXPORT StatusCode VERTEX_API vertex_init(PluginInformation* pl
 
 extern "C" VERTEX_EXPORT StatusCode VERTEX_API vertex_exit()
 {
+    SNPS3ForceDisconnect(DECI3::context()->module.targetNumber);
+    SNPS3CloseTargetComms();
+
     g_discoveredTargets.clear();
     DECI3::destroy_context();
     return StatusCode::STATUS_OK;

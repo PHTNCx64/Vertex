@@ -17,7 +17,6 @@ set(SOURCES
     process/get_library_extensions.cc
     process/get_injection_methods.cc
         ${CMAKE_SOURCE_DIR}/include/vertexdeci3rt/init.hh
-    ${CMAKE_SOURCE_DIR}/include/vertexdeci3rt/config.hh
     ${CMAKE_SOURCE_DIR}/include/sdk/api.h
 )
 

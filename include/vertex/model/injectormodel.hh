@@ -6,6 +6,7 @@
 
 #include <vertex/runtime/iloader.hh>
 #include <vertex/log/ilog.hh>
+#include <vertex/thread/ithreaddispatcher.hh>
 
 #include <string>
 #include <vector>
@@ -19,9 +20,11 @@ namespace Vertex::Model
     class InjectorModel final
     {
     public:
-        explicit InjectorModel(Runtime::ILoader& loaderService, Log::ILog& loggerService)
+        explicit InjectorModel(Runtime::ILoader& loaderService, Log::ILog& loggerService,
+                               Thread::IThreadDispatcher& dispatcher)
             : m_loaderService{loaderService},
-              m_loggerService{loggerService}
+              m_loggerService{loggerService},
+              m_dispatcher{dispatcher}
         {
         }
 
@@ -32,5 +35,6 @@ namespace Vertex::Model
     private:
         Runtime::ILoader& m_loaderService;
         Log::ILog& m_loggerService;
+        Thread::IThreadDispatcher& m_dispatcher;
     };
 }

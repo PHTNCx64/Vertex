@@ -6,7 +6,7 @@
 
 #include <filesystem>
 #include <sdk/api.h>
-#include <sdk/feature.hh>
+#include <sdk/feature.h>
 #include <sdk/statuscode.h>
 
 // these are auto generated

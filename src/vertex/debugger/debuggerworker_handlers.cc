@@ -5,9 +5,11 @@
 #include <vertex/debugger/debuggerworker.hh>
 #include <vertex/runtime/plugin.hh>
 #include <vertex/runtime/caller.hh>
+#include <vertex/thread/threadchannel.hh>
 
 #include <wx/app.h>
 #include <format>
+#include <future>
 
 namespace Vertex::Debugger
 {
@@ -54,23 +56,34 @@ namespace Vertex::Debugger
 
         if (isPausedState && m_currentThreadId.load(std::memory_order_acquire) == 0 && m_attached.load(std::memory_order_acquire))
         {
-            const Runtime::Plugin* plugin = get_plugin();
-            if (plugin != nullptr)
-            {
-                std::uint32_t tid{};
-                const auto result = Runtime::safe_call(plugin->internal_vertex_debugger_get_current_thread, &tid);
-                if (Runtime::status_ok(result) && tid != 0)
+            std::packaged_task<StatusCode()> task(
+                [this]() -> StatusCode
                 {
-                    m_currentThreadId.store(tid, std::memory_order_release);
-                }
-                else if (!Runtime::status_ok(result))
-                {
-                    post_error(Runtime::get_status(result), "Failed to get current thread ID");
-                }
-            }
-        }
+                    const Runtime::Plugin* plugin = get_plugin();
+                    if (plugin != nullptr)
+                    {
+                        std::uint32_t tid{};
+                        const auto result = Runtime::safe_call(plugin->internal_vertex_debugger_get_current_thread, &tid);
+                        if (Runtime::status_ok(result) && tid != 0)
+                        {
+                            m_currentThreadId.store(tid, std::memory_order_release);
+                        }
+                        else if (!Runtime::status_ok(result))
+                        {
+                            post_error(Runtime::get_status(result), "Failed to get current thread ID");
+                        }
+                    }
 
-        post_state_changed();
+                    post_state_changed();
+                    return StatusCode::STATUS_OK;
+                });
+
+            std::ignore = m_dispatcher.dispatch_fire_and_forget(Thread::ThreadChannel::Debugger, std::move(task));
+        }
+        else
+        {
+            post_state_changed();
+        }
     }
 
     void DebuggerWorker::handle_error(const StatusCode code, const char* message) const

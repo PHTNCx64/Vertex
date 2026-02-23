@@ -10,6 +10,7 @@
 #include <sdk/memory.h>
 #include <vertex/runtime/iloader.hh>
 #include <vertex/configuration/ipluginconfig.hh>
+#include <vertex/thread/ithreaddispatcher.hh>
 
 namespace Vertex::Model
 {
@@ -25,7 +26,9 @@ namespace Vertex::Model
     class MemoryAttributeModel final
     {
     public:
-        explicit MemoryAttributeModel(Runtime::ILoader& loader, Configuration::IPluginConfig& pluginConfig, std::string configSection = "memoryAttributes", bool fallbackToPluginState = true);
+        explicit MemoryAttributeModel(Runtime::ILoader& loader, Configuration::IPluginConfig& pluginConfig,
+                                      Thread::IThreadDispatcher& dispatcher,
+                                      std::string configSection = "memoryAttributes", bool fallbackToPluginState = true);
         ~MemoryAttributeModel() = default;
 
         [[nodiscard]] StatusCode fetch_memory_attribute_options(std::vector<MemoryAttributeOptionData>& options) const;
@@ -41,6 +44,7 @@ namespace Vertex::Model
 
         Runtime::ILoader& m_loader;
         Configuration::IPluginConfig& m_pluginConfig;
+        Thread::IThreadDispatcher& m_dispatcher;
         std::string m_configSection;
         bool m_fallbackToPluginState{};
     };

@@ -1,6 +1,6 @@
 # Vertex DECI3 Runtime
 
-Vertexdeci3rt is a plugin which allows communications with the Playstation 3 console through TMAPI.
+Vertexdeci3rt is a plugin which allows communications with the PlayStation 3 console through TMAPI.
 
 ## Installation
 

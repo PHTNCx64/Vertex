@@ -5,8 +5,10 @@
 #include <vertex/debugger/debuggerworker.hh>
 #include <vertex/runtime/plugin.hh>
 #include <vertex/runtime/caller.hh>
+#include <vertex/thread/threadchannel.hh>
 
 #include <chrono>
+#include <future>
 
 namespace Vertex::Debugger
 {
@@ -178,16 +180,50 @@ namespace Vertex::Debugger
         callbacks.on_error = on_error;
         callbacks.user_data = m_callbackContext.get();
 
-        const auto result = Runtime::safe_call(plugin->internal_vertex_debugger_run, &callbacks);
-        if (!Runtime::status_ok(result))
+        const bool isDependentDebugger = plugin->has_feature(VERTEX_FEATURE_DEBUGGER_DEPENDENT);
+
+        if (isDependentDebugger) [[unlikely]]
         {
-            const StatusCode status = Runtime::get_status(result);
-            m_callbackContext->valid.store(false, std::memory_order_release);
-            m_callbackContext->worker.store(nullptr, std::memory_order_release);
-            CallbackContextRegistry::instance().unregister_context(m_callbackContext.get());
-            m_callbackContext.reset();
-            m_isRunning.store(false, std::memory_order_release);
-            return status;
+            std::packaged_task<StatusCode()> task(
+                [plugin, callbacks]() -> StatusCode
+                {
+                    const auto result = Runtime::safe_call(plugin->internal_vertex_debugger_run, &callbacks);
+                    return Runtime::status_ok(result) ? StatusCode::STATUS_OK : Runtime::get_status(result);
+                });
+
+            auto dispatchResult = m_dispatcher.dispatch(Thread::ThreadChannel::Debugger, std::move(task));
+            if (!dispatchResult.has_value()) [[unlikely]]
+            {
+                m_callbackContext->valid.store(false, std::memory_order_release);
+                m_callbackContext->worker.store(nullptr, std::memory_order_release);
+                CallbackContextRegistry::instance().unregister_context(m_callbackContext.get());
+                m_callbackContext.reset();
+                m_isRunning.store(false, std::memory_order_release);
+                return dispatchResult.error();
+            }
+
+            const StatusCode status = dispatchResult.value().get();
+            if (status != StatusCode::STATUS_OK) [[unlikely]]
+            {
+                m_callbackContext->valid.store(false, std::memory_order_release);
+                m_callbackContext->worker.store(nullptr, std::memory_order_release);
+                CallbackContextRegistry::instance().unregister_context(m_callbackContext.get());
+                m_callbackContext.reset();
+                m_isRunning.store(false, std::memory_order_release);
+                return status;
+            }
+        }
+        else [[likely]]
+        {
+            m_runThread = std::jthread(
+                [this, plugin, callbacks]()
+                {
+                    const auto result = Runtime::safe_call(plugin->internal_vertex_debugger_run, &callbacks);
+                    if (!Runtime::status_ok(result))
+                    {
+                        post_error(Runtime::get_status(result), "debugger_run failed");
+                    }
+                });
         }
 
         return StatusCode::STATUS_OK;
@@ -200,6 +236,14 @@ namespace Vertex::Debugger
             return StatusCode::STATUS_ERROR_THREAD_IS_NOT_RUNNING;
         }
 
+        signal_stop();
+        finalize_stop();
+
+        return StatusCode::STATUS_OK;
+    }
+
+    void DebuggerWorker::signal_stop()
+    {
         m_stopping.store(true, std::memory_order_release);
 
         if (m_callbackContext != nullptr)
@@ -226,6 +270,14 @@ namespace Vertex::Debugger
                 post_error(Runtime::get_status(stopResult), "Failed to request stop");
             }
         }
+    }
+
+    void DebuggerWorker::finalize_stop()
+    {
+        if (m_runThread.joinable())
+        {
+            m_runThread.join();
+        }
 
         wait_for_callbacks_to_drain();
 
@@ -241,8 +293,6 @@ namespace Vertex::Debugger
         m_stopping.store(false, std::memory_order_release);
         m_currentAddress.store(0, std::memory_order_release);
         m_currentThreadId.store(0, std::memory_order_release);
-
-        return StatusCode::STATUS_OK;
     }
 
     void DebuggerWorker::increment_callback_count()

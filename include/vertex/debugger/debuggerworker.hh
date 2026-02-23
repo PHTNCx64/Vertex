@@ -16,6 +16,7 @@
 #include <memory>
 #include <mutex>
 #include <shared_mutex>
+#include <thread>
 #include <unordered_map>
 #include <variant>
 
@@ -140,6 +141,8 @@ namespace Vertex::Debugger
 
         [[nodiscard]] bool is_valid_command_for_state(const DebuggerCommand& cmd) const;
         [[nodiscard]] StatusCode execute_command(Runtime::Plugin* plugin, const DebuggerCommand& cmd);
+        void signal_stop();
+        void finalize_stop();
         void wait_for_callbacks_to_drain();
 
         Runtime::ILoader& m_loaderService;
@@ -161,6 +164,7 @@ namespace Vertex::Debugger
         mutable std::mutex m_callbackMutex {};
 
         std::shared_ptr<CallbackContext> m_callbackContext {};
+        std::jthread m_runThread {};
     };
 
 }

@@ -16,7 +16,7 @@
 #include "process.h"
 #include "registry.h"
 #include "ui.h"
-#include "feature.hh"
+#include "feature.h"
 
 #ifdef __cplusplus
 extern "C" {

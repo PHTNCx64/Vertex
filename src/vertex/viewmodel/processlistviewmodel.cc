@@ -107,8 +107,10 @@ namespace Vertex::ViewModel
                     process.get_selected_process_id().value(),
                     process.get_selected_process_name().value()};
 
-                m_eventBus.broadcast_to(ViewModelName::PROCESSLIST, Event::ViewEvent(Event::VIEW_EVENT));
-                m_eventBus.broadcast(processOpenEvent);
+                if (m_eventCallback)
+                {
+                    m_eventCallback(Event::PROCESS_OPEN_EVENT, processOpenEvent);
+                }
 
                 return StatusCode::STATUS_OK;
             });
@@ -175,5 +177,13 @@ namespace Vertex::ViewModel
     {
         m_model->set_filter_type(filterType);
         m_model->set_ui_state_int("uiState.processListView.filterTypeIndex", static_cast<int>(filterType));
+    }
+
+    void ProcessListViewModel::broadcast_process_opened(
+        const std::uint32_t processId, std::string processName) const
+    {
+        const Event::ProcessOpenEvent processOpenEvent{
+            Event::PROCESS_OPEN_EVENT, processId, std::move(processName)};
+        m_eventBus.broadcast(processOpenEvent);
     }
 } // namespace Vertex::ViewModel

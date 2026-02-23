@@ -87,6 +87,11 @@ int VertexApp::OnExit()
         {
             log.log_warn("Failed to save settings on exit");
         }
+
+        auto& dispatcher = m_injector->create<Vertex::Thread::IThreadDispatcher&>();
+        std::ignore = dispatcher.stop();
+
+        m_injector.reset();
     }
 
     return wxAppBase::OnExit();

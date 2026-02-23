@@ -37,6 +37,7 @@ namespace Vertex::ViewModel
         void set_selected_process_from_node(std::size_t nodeIndex) const;
         void clear_selected_process() const;
         void open_process() const;
+        void broadcast_process_opened(std::uint32_t processId, std::string processName) const;
 
         [[nodiscard]] std::size_t get_root_count() const;
         [[nodiscard]] std::size_t get_child_count(std::size_t nodeIndex) const;

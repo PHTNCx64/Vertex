@@ -7,6 +7,7 @@
 #include <vertex/runtime/iuiregistry.hh>
 #include <vertex/configuration/ipluginconfig.hh>
 #include <vertex/log/ilog.hh>
+#include <vertex/thread/ithreaddispatcher.hh>
 
 #include <sdk/statuscode.h>
 #include <sdk/ui.h>
@@ -24,7 +25,8 @@ namespace Vertex::Model
         explicit PluginConfigModel(
             Runtime::IUIRegistry& uiRegistry,
             Configuration::IPluginConfig& pluginConfigService,
-            Log::ILog& loggerService
+            Log::ILog& loggerService,
+            Thread::IThreadDispatcher& dispatcher
         );
 
         [[nodiscard]] std::vector<Runtime::PanelSnapshot> get_panels() const;
@@ -43,5 +45,6 @@ namespace Vertex::Model
         Runtime::IUIRegistry& m_uiRegistry;
         Configuration::IPluginConfig& m_pluginConfigService;
         Log::ILog& m_loggerService;
+        Thread::IThreadDispatcher& m_dispatcher;
     };
 }

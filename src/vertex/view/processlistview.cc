@@ -4,6 +4,7 @@
 //
 #include <vertex/utility.hh>
 #include <vertex/event/eventid.hh>
+#include <vertex/event/types/processopenevent.hh>
 #include <vertex/customwidgets/processlistctrl.hh>
 #include <vertex/view/processlistview.hh>
 
@@ -198,6 +199,18 @@ namespace Vertex::View
                 std::ignore = toggle_view();
             });
             break;
+        case Event::PROCESS_OPEN_EVENT:
+        {
+            const auto& openEvent = static_cast<const Event::ProcessOpenEvent&>(event);
+            const auto processId = openEvent.get_process_id();
+            const std::string processName{openEvent.get_process_name()};
+            CallAfter([this, processId, processName]()
+            {
+                std::ignore = toggle_view();
+                m_viewModel->broadcast_process_opened(processId, processName);
+            });
+            break;
+        }
         default: break;
         }
     }

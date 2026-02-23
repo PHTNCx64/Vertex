@@ -5,8 +5,6 @@
 
 #pragma once
 
-#include "config.hh"
-
 #include "ps3tmapi.h"
 
 namespace DECI3
@@ -19,14 +17,9 @@ namespace DECI3
 
     struct Deci3Context final
     {
-        Config config {};
         Module module {};
 
-        explicit Deci3Context(Config config)
-            : config { std::move(config) }
-        {
-        }
-
+        Deci3Context()                               = default;
         Deci3Context(const Deci3Context&)            = delete;
         Deci3Context& operator=(const Deci3Context&) = delete;
         Deci3Context(Deci3Context&&)                  = default;

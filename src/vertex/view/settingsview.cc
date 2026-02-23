@@ -205,6 +205,7 @@ namespace Vertex::View
         if (m_pluginConfigFactory)
         {
             m_pluginConfigPanel = new wxPanel(m_tabNotebook);
+            m_pluginConfigPanel->Hide();
         }
 
         m_resetButton = new wxButton(this, wxID_ANY, wxString::FromUTF8(m_languageService.fetch_translation("general.resetToDefaults")));
@@ -544,6 +545,7 @@ namespace Vertex::View
         else if (!hasPanels && pageIndex != wxNOT_FOUND)
         {
             m_tabNotebook->RemovePage(pageIndex);
+            m_pluginConfigPanel->Hide();
         }
     }
 

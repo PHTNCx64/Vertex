@@ -24,6 +24,8 @@ The following headers define the public plugin API:
 - **process.h** - Process control and inspection
 - **registry.h** - Registry/configuration access
 - **statuscode.h** - Status codes and error handling
+- **feature.h**
+- **ui.h**
 
 ## Important Restrictions
 

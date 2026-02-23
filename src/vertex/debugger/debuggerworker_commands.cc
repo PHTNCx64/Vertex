@@ -125,7 +125,7 @@ namespace Vertex::Debugger
               }
               else if constexpr (std::is_same_v<T, CmdShutdown>)
               {
-                  std::ignore = stop();
+                  signal_stop();
               }
 
               return StatusCode::STATUS_OK;

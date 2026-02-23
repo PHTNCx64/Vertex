@@ -35,7 +35,7 @@ namespace Vertex
 
     View::MemoryAttributeView* ViewFactory::create_memoryattributeview(const std::string_view name) const
     {
-        auto model = std::make_unique<Model::MemoryAttributeModel>(m_loaderService, m_pluginConfigService);
+        auto model = std::make_unique<Model::MemoryAttributeModel>(m_loaderService, m_pluginConfigService, m_dispatcher);
         auto viewModel = std::make_unique<ViewModel::MemoryAttributeViewModel>(std::move(model), m_eventBus, std::string{name});
         return new View::MemoryAttributeView(std::move(viewModel), m_languageService);
     }
@@ -56,21 +56,21 @@ namespace Vertex
 
     View::MemoryAttributeView* ViewFactory::create_pointerscan_memoryattributeview(const std::string_view name) const
     {
-        auto model = std::make_unique<Model::MemoryAttributeModel>(m_loaderService, m_pluginConfigService, "pointerScanMemoryAttributes", false);
+        auto model = std::make_unique<Model::MemoryAttributeModel>(m_loaderService, m_pluginConfigService, m_dispatcher, "pointerScanMemoryAttributes", false);
         auto viewModel = std::make_unique<ViewModel::MemoryAttributeViewModel>(std::move(model), m_eventBus, std::string{name}, false);
         return new View::MemoryAttributeView(std::move(viewModel), m_languageService);
     }
 
     View::InjectorView* ViewFactory::create_injectorview(const std::string_view name) const
     {
-        auto model = std::make_unique<Model::InjectorModel>(m_loaderService, m_loggerService);
+        auto model = std::make_unique<Model::InjectorModel>(m_loaderService, m_loggerService, m_dispatcher);
         auto viewModel = std::make_unique<ViewModel::InjectorViewModel>(std::move(model), m_eventBus, m_loggerService, std::string{name});
         return new View::InjectorView(m_languageService, std::move(viewModel));
     }
 
     View::PluginConfigView* ViewFactory::create_pluginconfigview(wxWindow* parent) const
     {
-        auto model = std::make_unique<Model::PluginConfigModel>(m_loaderService.get_ui_registry(), m_pluginConfigService, m_loggerService);
+        auto model = std::make_unique<Model::PluginConfigModel>(m_loaderService.get_ui_registry(), m_pluginConfigService, m_loggerService, m_dispatcher);
         auto viewModel = std::make_unique<ViewModel::PluginConfigViewModel>(std::move(model), m_eventBus, m_loggerService);
         return new View::PluginConfigView(parent, m_languageService, std::move(viewModel));
     }

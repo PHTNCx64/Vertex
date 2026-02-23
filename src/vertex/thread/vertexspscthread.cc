@@ -57,8 +57,13 @@ namespace Vertex::Thread
             return StatusCode::STATUS_ERROR_THREAD_IS_NOT_RUNNING;
         }
 
-        m_vertexThread.request_stop();
         m_isRunning.store(false, std::memory_order_release);
+        m_vertexThread.request_stop();
+
+        if (m_vertexThread.joinable())
+        {
+            m_vertexThread.join();
+        }
 
         return StatusCode::STATUS_OK;
     }

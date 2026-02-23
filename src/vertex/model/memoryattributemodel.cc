@@ -4,14 +4,18 @@
 //
 #include <vertex/model/memoryattributemodel.hh>
 #include <vertex/runtime/caller.hh>
+#include <vertex/thread/threadchannel.hh>
 #include <ranges>
 #include <algorithm>
 
 namespace Vertex::Model
 {
-    MemoryAttributeModel::MemoryAttributeModel(Runtime::ILoader& loader, Configuration::IPluginConfig& pluginConfig, std::string configSection, const bool fallbackToPluginState)
+    MemoryAttributeModel::MemoryAttributeModel(Runtime::ILoader& loader, Configuration::IPluginConfig& pluginConfig,
+                                               Thread::IThreadDispatcher& dispatcher,
+                                               std::string configSection, const bool fallbackToPluginState)
         : m_loader{loader},
           m_pluginConfig{pluginConfig},
+          m_dispatcher{dispatcher},
           m_configSection{std::move(configSection)},
           m_fallbackToPluginState{fallbackToPluginState}
     {
@@ -31,12 +35,24 @@ namespace Vertex::Model
         std::uint32_t count{};
 
         const auto& plugin = activePlugin.value().get();
-        const auto result = Runtime::safe_call(plugin.internal_vertex_memory_construct_attribute_filters, &rawOptions, &count);
-        const auto status = Runtime::get_status(result);
 
-        if (!Runtime::status_ok(result) || !rawOptions || count == 0)
+        std::packaged_task<StatusCode()> constructTask(
+            [&plugin, &rawOptions, &count]() -> StatusCode
+            {
+                const auto result = Runtime::safe_call(plugin.internal_vertex_memory_construct_attribute_filters, &rawOptions, &count);
+                return Runtime::get_status(result);
+            });
+
+        auto constructResult = m_dispatcher.dispatch(Thread::ThreadChannel::ProcessList, std::move(constructTask));
+        if (!constructResult.has_value())
         {
-            return Runtime::status_ok(result) ? StatusCode::STATUS_ERROR_PLUGIN_NO_MEMORY_ATTRIBUTE_OPTIONS : status;
+            return constructResult.error();
+        }
+        const auto constructStatus = constructResult.value().get();
+
+        if (constructStatus != StatusCode::STATUS_OK || !rawOptions || count == 0)
+        {
+            return rawOptions ? StatusCode::STATUS_ERROR_PLUGIN_NO_MEMORY_ATTRIBUTE_OPTIONS : constructStatus;
         }
 
         const std::string pluginFilename = plugin.get_filename();
@@ -80,7 +96,15 @@ namespace Vertex::Model
                 data.currentState = true;
                 if (option.stateFunction)
                 {
-                    option.stateFunction(true);
+                    const auto fn = option.stateFunction;
+                    std::ignore = m_dispatcher.dispatch_fire_and_forget(
+                        Thread::ThreadChannel::ProcessList,
+                        std::packaged_task<StatusCode()>{
+                            [fn]() -> StatusCode
+                            {
+                                fn(true);
+                                return StatusCode::STATUS_OK;
+                            }});
                 }
             }
             else if (m_fallbackToPluginState && option.currentState)

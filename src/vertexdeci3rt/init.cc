@@ -4,7 +4,6 @@
 //
 
 #include <vertexdeci3rt/init.hh>
-#include <vertexdeci3rt/config.hh>
 #include <sdk/api.h>
 
 #include <memory>
@@ -30,13 +29,6 @@ namespace DECI3
 
     SNRESULT initialize_communications()
     {
-        const auto config = Config::load();
-        if (!config)
-        {
-            g_pluginRuntime->vertex_log_error("Failed to load or parse deci3config.ini.");
-            return -1;
-        }
-
         const SNRESULT result = SNPS3InitTargetComms();
         if (result != SN_S_OK)
         {
@@ -44,7 +36,7 @@ namespace DECI3
             return result;
         }
 
-        g_context = std::make_unique<Deci3Context>(std::move(*config));
+        g_context = std::make_unique<Deci3Context>();
         return SN_S_OK;
     }
 } // namespace DECI3

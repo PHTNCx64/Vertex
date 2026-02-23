@@ -7,6 +7,7 @@
 #include <vertex/model/debuggermodel.hh>
 #include <vertex/runtime/plugin.hh>
 #include <vertex/runtime/caller.hh>
+#include <vertex/thread/threadchannel.hh>
 #include <sdk/disassembler.h>
 
 #include <algorithm>
@@ -22,6 +23,7 @@ namespace Vertex::Model
         : m_settingsService{settingsService},
           m_loaderService{loaderService},
           m_loggerService{loggerService},
+          m_dispatcher{dispatcher},
           m_worker(std::make_unique<Debugger::DebuggerWorker>(loaderService, dispatcher))
     {
         m_worker->set_event_callback([this](const Debugger::DebuggerEvent& evt)
@@ -180,10 +182,21 @@ namespace Vertex::Model
         auto& plugin = pluginOpt.value().get();
 
         std::uint32_t breakpointId{};
-        const auto result = Runtime::safe_call(plugin.internal_vertex_debugger_set_breakpoint, address, VERTEX_BP_EXECUTE, &breakpointId);
-        const auto status = Runtime::get_status(result);
+        std::packaged_task<StatusCode()> task(
+            [&plugin, address, &breakpointId]() -> StatusCode
+            {
+                const auto result = Runtime::safe_call(plugin.internal_vertex_debugger_set_breakpoint, address, VERTEX_BP_EXECUTE, &breakpointId);
+                return Runtime::get_status(result);
+            });
 
-        if (!Runtime::status_ok(result))
+        auto dispatchResult = m_dispatcher.dispatch(Thread::ThreadChannel::Debugger, std::move(task));
+        if (!dispatchResult.has_value())
+        {
+            return;
+        }
+        const auto status = dispatchResult.value().get();
+
+        if (status != StatusCode::STATUS_OK)
         {
             m_loggerService.log_error(fmt::format("{}: Failed to set breakpoint at 0x{:X}: {}", MODEL_NAME, address, static_cast<int>(status)));
             return;
@@ -214,10 +227,22 @@ namespace Vertex::Model
         }
 
         auto& plugin = pluginOpt.value().get();
-        const auto result = Runtime::safe_call(plugin.internal_vertex_debugger_remove_breakpoint, breakpointId);
-        const auto status = Runtime::get_status(result);
 
-        if (!Runtime::status_ok(result))
+        std::packaged_task<StatusCode()> task(
+            [&plugin, breakpointId]() -> StatusCode
+            {
+                const auto result = Runtime::safe_call(plugin.internal_vertex_debugger_remove_breakpoint, breakpointId);
+                return Runtime::get_status(result);
+            });
+
+        auto dispatchResult = m_dispatcher.dispatch(Thread::ThreadChannel::Debugger, std::move(task));
+        if (!dispatchResult.has_value())
+        {
+            return;
+        }
+        const auto status = dispatchResult.value().get();
+
+        if (status != StatusCode::STATUS_OK)
         {
             m_loggerService.log_error(fmt::format("{}: Failed to remove breakpoint {}: {}", MODEL_NAME, breakpointId, static_cast<int>(status)));
             return;
@@ -279,10 +304,22 @@ namespace Vertex::Model
         }
 
         auto& plugin = pluginOpt.value().get();
-        const auto result = Runtime::safe_call(plugin.internal_vertex_debugger_enable_breakpoint, breakpointId, enable ? 1 : 0);
-        const auto status = Runtime::get_status(result);
 
-        if (!Runtime::status_ok(result))
+        std::packaged_task<StatusCode()> task(
+            [&plugin, breakpointId, enable]() -> StatusCode
+            {
+                const auto result = Runtime::safe_call(plugin.internal_vertex_debugger_enable_breakpoint, breakpointId, enable ? 1 : 0);
+                return Runtime::get_status(result);
+            });
+
+        auto dispatchResult = m_dispatcher.dispatch(Thread::ThreadChannel::Debugger, std::move(task));
+        if (!dispatchResult.has_value())
+        {
+            return;
+        }
+        const auto status = dispatchResult.value().get();
+
+        if (status != StatusCode::STATUS_OK)
         {
             m_loggerService.log_error(fmt::format("{}: Failed to {} breakpoint {}: {}", MODEL_NAME, enable ? "enable" : "disable", breakpointId, static_cast<int>(status)));
             return;
@@ -321,10 +358,21 @@ namespace Vertex::Model
         wp.active = true;
 
         std::uint32_t watchpointId{};
-        const auto result = Runtime::safe_call(plugin.internal_vertex_debugger_set_watchpoint, &wp, &watchpointId);
-        const auto status = Runtime::get_status(result);
+        std::packaged_task<StatusCode()> task(
+            [&plugin, &wp, &watchpointId]() -> StatusCode
+            {
+                const auto result = Runtime::safe_call(plugin.internal_vertex_debugger_set_watchpoint, &wp, &watchpointId);
+                return Runtime::get_status(result);
+            });
 
-        if (!Runtime::status_ok(result))
+        auto dispatchResult = m_dispatcher.dispatch(Thread::ThreadChannel::Debugger, std::move(task));
+        if (!dispatchResult.has_value())
+        {
+            return dispatchResult.error();
+        }
+        const auto status = dispatchResult.value().get();
+
+        if (status != StatusCode::STATUS_OK)
         {
             m_loggerService.log_error(fmt::format("{}: Failed to set watchpoint at 0x{:X}: {}", MODEL_NAME, address, static_cast<int>(status)));
             return status;
@@ -363,10 +411,22 @@ namespace Vertex::Model
         }
 
         auto& plugin = pluginOpt.value().get();
-        const auto result = Runtime::safe_call(plugin.internal_vertex_debugger_remove_watchpoint, watchpointId);
-        const auto status = Runtime::get_status(result);
 
-        if (!Runtime::status_ok(result))
+        std::packaged_task<StatusCode()> removeWpTask(
+            [&plugin, watchpointId]() -> StatusCode
+            {
+                const auto result = Runtime::safe_call(plugin.internal_vertex_debugger_remove_watchpoint, watchpointId);
+                return Runtime::get_status(result);
+            });
+
+        auto removeDispatch = m_dispatcher.dispatch(Thread::ThreadChannel::Debugger, std::move(removeWpTask));
+        if (!removeDispatch.has_value())
+        {
+            return removeDispatch.error();
+        }
+        const auto status = removeDispatch.value().get();
+
+        if (status != StatusCode::STATUS_OK)
         {
             m_loggerService.log_error(fmt::format("{}: Failed to remove watchpoint {}: {}", MODEL_NAME, watchpointId, static_cast<int>(status)));
             return status;
@@ -396,10 +456,22 @@ namespace Vertex::Model
         }
 
         auto& plugin = pluginOpt.value().get();
-        const auto result = Runtime::safe_call(plugin.internal_vertex_debugger_enable_watchpoint, watchpointId, enable ? 1 : 0);
-        const auto status = Runtime::get_status(result);
 
-        if (!Runtime::status_ok(result))
+        std::packaged_task<StatusCode()> enableWpTask(
+            [&plugin, watchpointId, enable]() -> StatusCode
+            {
+                const auto result = Runtime::safe_call(plugin.internal_vertex_debugger_enable_watchpoint, watchpointId, enable ? 1 : 0);
+                return Runtime::get_status(result);
+            });
+
+        auto enableDispatch = m_dispatcher.dispatch(Thread::ThreadChannel::Debugger, std::move(enableWpTask));
+        if (!enableDispatch.has_value())
+        {
+            return enableDispatch.error();
+        }
+        const auto status = enableDispatch.value().get();
+
+        if (status != StatusCode::STATUS_OK)
         {
             m_loggerService.log_error(fmt::format("{}: Failed to {} watchpoint {}: {}", MODEL_NAME, enable ? "enable" : "disable", watchpointId, static_cast<int>(status)));
             return status;
@@ -548,36 +620,64 @@ namespace Vertex::Model
 
         auto& plugin = pluginOpt.value().get();
 
-        std::uint32_t count{};
-        const auto countResult = Runtime::safe_call(plugin.internal_vertex_process_get_modules_list, nullptr, &count);
-        const auto countStatus = Runtime::get_status(countResult);
-        if (countStatus == StatusCode::STATUS_ERROR_FUNCTION_NOT_FOUND)
+        std::vector<::ModuleInformation> modules{};
+        std::packaged_task<StatusCode()> task(
+            [this, &plugin, &modules]() -> StatusCode
+            {
+                std::uint32_t count{};
+                const auto countResult = Runtime::safe_call(plugin.internal_vertex_process_get_modules_list, nullptr, &count);
+                const auto countStatus = Runtime::get_status(countResult);
+                if (countStatus == StatusCode::STATUS_ERROR_FUNCTION_NOT_FOUND)
+                {
+                    return StatusCode::STATUS_ERROR_NOT_IMPLEMENTED;
+                }
+                if (!Runtime::status_ok(countResult))
+                {
+                    m_loggerService.log_error(fmt::format("{}: Failed to get modules count", MODEL_NAME));
+                    return countStatus;
+                }
+
+                if (count == 0)
+                {
+                    return StatusCode::STATUS_OK;
+                }
+
+                modules.resize(count);
+                auto* modulesPtr = modules.data();
+                const auto result = Runtime::safe_call(plugin.internal_vertex_process_get_modules_list, &modulesPtr, &count);
+                if (!Runtime::status_ok(result))
+                {
+                    m_loggerService.log_error(fmt::format("{}: Failed to get modules list", MODEL_NAME));
+                    return Runtime::get_status(result);
+                }
+
+                modules.resize(count);
+                return StatusCode::STATUS_OK;
+            });
+
+        auto dispatchResult = m_dispatcher.dispatch(Thread::ThreadChannel::Debugger, std::move(task));
+        if (!dispatchResult.has_value())
         {
-            return StatusCode::STATUS_ERROR_NOT_IMPLEMENTED;
+            return dispatchResult.error();
         }
-        if (!Runtime::status_ok(countResult))
+        const auto status = dispatchResult.value().get();
+        if (status != StatusCode::STATUS_OK)
         {
-            m_loggerService.log_error(fmt::format("{}: Failed to get modules count", MODEL_NAME));
-            return countStatus;
+            if (status == StatusCode::STATUS_ERROR_NOT_IMPLEMENTED)
+            {
+                return status;
+            }
+            m_cachedModules.clear();
+            return status;
         }
 
-        if (count == 0)
+        if (modules.empty())
         {
             m_cachedModules.clear();
             return StatusCode::STATUS_OK;
         }
 
-        std::vector<::ModuleInformation> modules(count);
-        auto* modulesPtr = modules.data();
-        const auto result = Runtime::safe_call(plugin.internal_vertex_process_get_modules_list, &modulesPtr, &count);
-        if (!Runtime::status_ok(result))
-        {
-            m_loggerService.log_error(fmt::format("{}: Failed to get modules list", MODEL_NAME));
-            return Runtime::get_status(result);
-        }
-
         m_cachedModules = modules
-            | std::views::take(count)
             | std::views::transform([](const auto& m) {
                 return Debugger::ModuleInfo{
                     .name = m.moduleName,
@@ -588,7 +688,7 @@ namespace Vertex::Model
             })
             | std::ranges::to<std::vector>();
 
-        m_loggerService.log_info(fmt::format("{}: Loaded {} modules", MODEL_NAME, count));
+        m_loggerService.log_info(fmt::format("{}: Loaded {} modules", MODEL_NAME, modules.size()));
         return StatusCode::STATUS_OK;
     }
 
@@ -618,19 +718,30 @@ namespace Vertex::Model
         results.capacity = static_cast<std::uint32_t>(MAX_INSTRUCTIONS);
         results.startAddress = address;
 
-        const auto result = Runtime::safe_call(
-            plugin.internal_vertex_process_disassemble_range,
-            address,
-            static_cast<std::uint32_t>(DISASM_BYTES),
-            &results
-        );
-        const auto status = Runtime::get_status(result);
+        std::packaged_task<StatusCode()> disasmTask(
+            [&plugin, address, &results]() -> StatusCode
+            {
+                const auto result = Runtime::safe_call(
+                    plugin.internal_vertex_process_disassemble_range,
+                    address,
+                    static_cast<std::uint32_t>(DISASM_BYTES),
+                    &results
+                );
+                return Runtime::get_status(result);
+            });
+
+        auto disasmDispatch = m_dispatcher.dispatch(Thread::ThreadChannel::Debugger, std::move(disasmTask));
+        if (!disasmDispatch.has_value())
+        {
+            return disasmDispatch.error();
+        }
+        const auto status = disasmDispatch.value().get();
 
         if (status == StatusCode::STATUS_ERROR_FUNCTION_NOT_FOUND)
         {
             return StatusCode::STATUS_ERROR_NOT_IMPLEMENTED;
         }
-        if (!Runtime::status_ok(result))
+        if (status != StatusCode::STATUS_OK)
         {
             m_loggerService.log_error(fmt::format("{}: Disassembly failed with status {}",
                 MODEL_NAME, static_cast<int>(status)));
@@ -723,19 +834,30 @@ namespace Vertex::Model
         results.capacity = static_cast<std::uint32_t>(MAX_INSTRUCTIONS);
         results.startAddress = startAddress;
 
-        const auto result = Runtime::safe_call(
-            plugin.internal_vertex_process_disassemble_range,
-            startAddress,
-            static_cast<std::uint32_t>(fromAddress - startAddress),
-            &results
-        );
-        const auto status = Runtime::get_status(result);
+        std::packaged_task<StatusCode()> extUpTask(
+            [&plugin, startAddress, fromAddress, &results]() -> StatusCode
+            {
+                const auto result = Runtime::safe_call(
+                    plugin.internal_vertex_process_disassemble_range,
+                    startAddress,
+                    static_cast<std::uint32_t>(fromAddress - startAddress),
+                    &results
+                );
+                return Runtime::get_status(result);
+            });
+
+        auto extUpDispatch = m_dispatcher.dispatch(Thread::ThreadChannel::Debugger, std::move(extUpTask));
+        if (!extUpDispatch.has_value())
+        {
+            return extUpDispatch.error();
+        }
+        const auto status = extUpDispatch.value().get();
 
         if (status == StatusCode::STATUS_ERROR_FUNCTION_NOT_FOUND)
         {
             return StatusCode::STATUS_ERROR_NOT_IMPLEMENTED;
         }
-        if (!Runtime::status_ok(result) || results.count == 0)
+        if (status != StatusCode::STATUS_OK || results.count == 0)
         {
             return status;
         }
@@ -840,19 +962,30 @@ namespace Vertex::Model
         results.capacity = static_cast<std::uint32_t>(MAX_INSTRUCTIONS);
         results.startAddress = fromAddress;
 
-        const auto result = Runtime::safe_call(
-            plugin.internal_vertex_process_disassemble_range,
-            fromAddress,
-            static_cast<std::uint32_t>(byteCount),
-            &results
-        );
-        const auto status = Runtime::get_status(result);
+        std::packaged_task<StatusCode()> extDownTask(
+            [&plugin, fromAddress, byteCount, &results]() -> StatusCode
+            {
+                const auto result = Runtime::safe_call(
+                    plugin.internal_vertex_process_disassemble_range,
+                    fromAddress,
+                    static_cast<std::uint32_t>(byteCount),
+                    &results
+                );
+                return Runtime::get_status(result);
+            });
+
+        auto extDownDispatch = m_dispatcher.dispatch(Thread::ThreadChannel::Debugger, std::move(extDownTask));
+        if (!extDownDispatch.has_value())
+        {
+            return extDownDispatch.error();
+        }
+        const auto status = extDownDispatch.value().get();
 
         if (status == StatusCode::STATUS_ERROR_FUNCTION_NOT_FOUND)
         {
             return StatusCode::STATUS_ERROR_NOT_IMPLEMENTED;
         }
-        if (!Runtime::status_ok(result) || results.count == 0)
+        if (status != StatusCode::STATUS_OK || results.count == 0)
         {
             return status;
         }
@@ -943,43 +1076,53 @@ namespace Vertex::Model
         {
             const bool isDebuggerActive = m_cachedSnapshot.state != Debugger::DebuggerState::Detached;
 
-            if (isDebuggerActive)
-            {
-                const auto currentThreadResult = Runtime::safe_call(plugin.internal_vertex_debugger_get_current_thread, &threadId);
-                if (!Runtime::status_ok(currentThreadResult))
+            std::packaged_task<StatusCode()> resolveTask(
+                [&plugin, isDebuggerActive, &threadId]() -> StatusCode
                 {
-                    threadId = 0;
-                }
+                    if (isDebuggerActive)
+                    {
+                        const auto currentThreadResult = Runtime::safe_call(plugin.internal_vertex_debugger_get_current_thread, &threadId);
+                        if (!Runtime::status_ok(currentThreadResult))
+                        {
+                            threadId = 0;
+                        }
+                    }
+
+                    if (threadId == 0)
+                    {
+                        ::ThreadList threadList{};
+                        const auto debuggerThreadsResult = Runtime::safe_call(plugin.internal_vertex_debugger_get_threads, &threadList);
+                        if (Runtime::status_ok(debuggerThreadsResult))
+                        {
+                            threadId = threadList.currentThreadId;
+                        }
+                    }
+
+                    if (threadId == 0)
+                    {
+                        ::ThreadList threadList{};
+                        const auto processThreadsResult = Runtime::safe_call(plugin.internal_vertex_debugger_get_threads, &threadList);
+                        const auto resolveStatus = Runtime::get_status(processThreadsResult);
+                        if (!Runtime::status_ok(processThreadsResult) || threadList.threadCount == 0)
+                        {
+                            return Runtime::status_ok(processThreadsResult) ? StatusCode::STATUS_ERROR_GENERAL : resolveStatus;
+                        }
+
+                        threadId = threadList.currentThreadId != 0 ? threadList.currentThreadId : threadList.threads[0].id;
+                    }
+
+                    return StatusCode::STATUS_OK;
+                });
+
+            auto resolveDispatch = m_dispatcher.dispatch(Thread::ThreadChannel::Debugger, std::move(resolveTask));
+            if (!resolveDispatch.has_value())
+            {
+                return resolveDispatch.error();
             }
-
-            if (threadId == 0)
+            const auto resolveStatus = resolveDispatch.value().get();
+            if (resolveStatus != StatusCode::STATUS_OK)
             {
-                ::ThreadList threadList{};
-                const auto debuggerThreadsResult = Runtime::safe_call(plugin.internal_vertex_debugger_get_threads, &threadList);
-                if (Runtime::status_ok(debuggerThreadsResult))
-                {
-                    threadId = threadList.currentThreadId;
-                }
-            }
-
-            if (threadId == 0)
-            {
-                ::ThreadList threadList{};
-                const auto processThreadsResult = Runtime::safe_call(plugin.internal_vertex_debugger_get_threads, &threadList);
-                const auto status = Runtime::get_status(processThreadsResult);
-                if (!Runtime::status_ok(processThreadsResult) || threadList.threadCount == 0)
-                {
-                    return Runtime::status_ok(processThreadsResult) ? StatusCode::STATUS_ERROR_GENERAL : status;
-                }
-
-                if (threadList.currentThreadId != 0)
-                {
-                    threadId = threadList.currentThreadId;
-                }
-                else
-                {
-                    threadId = threadList.threads[0].id;
-                }
+                return resolveStatus;
             }
 
             if (threadId == 0)
@@ -1007,7 +1150,6 @@ namespace Vertex::Model
         auto& plugin = pluginOpt.value().get();
 
         ::RegisterSet sdkRegs{};
-        StatusCode status{};
 
         const bool isPausedState =
             m_cachedSnapshot.state == Debugger::DebuggerState::Paused ||
@@ -1015,33 +1157,44 @@ namespace Vertex::Model
             m_cachedSnapshot.state == Debugger::DebuggerState::Stepping ||
             m_cachedSnapshot.state == Debugger::DebuggerState::Exception;
 
-        if (isPausedState)
-        {
-            const auto result = Runtime::safe_call(plugin.internal_vertex_debugger_get_registers, threadId, &sdkRegs);
-            status = Runtime::get_status(result);
-        }
-        else
-        {
-            const auto suspendResult = Runtime::safe_call(plugin.internal_vertex_debugger_suspend_thread, threadId);
-            const auto suspendStatus = Runtime::get_status(suspendResult);
-            if (suspendStatus != StatusCode::STATUS_OK)
+        std::packaged_task<StatusCode()> regTask(
+            [this, &plugin, threadId, isPausedState, &sdkRegs]() -> StatusCode
             {
-                m_loggerService.log_error(fmt::format("{}: Failed to suspend thread {} for register read: {}",
-                    MODEL_NAME, threadId, static_cast<int>(suspendStatus)));
-                return suspendStatus;
-            }
+                if (isPausedState)
+                {
+                    const auto result = Runtime::safe_call(plugin.internal_vertex_debugger_get_registers, threadId, &sdkRegs);
+                    return Runtime::get_status(result);
+                }
 
-            const auto result = Runtime::safe_call(plugin.internal_vertex_debugger_get_registers, threadId, &sdkRegs);
-            status = Runtime::get_status(result);
+                const auto suspendResult = Runtime::safe_call(plugin.internal_vertex_debugger_suspend_thread, threadId);
+                const auto suspendStatus = Runtime::get_status(suspendResult);
+                if (suspendStatus != StatusCode::STATUS_OK)
+                {
+                    m_loggerService.log_error(fmt::format("{}: Failed to suspend thread {} for register read: {}",
+                        MODEL_NAME, threadId, static_cast<int>(suspendStatus)));
+                    return suspendStatus;
+                }
 
-            const auto resumeResult = Runtime::safe_call(plugin.internal_vertex_debugger_resume_thread, threadId);
-            const auto resumeStatus = Runtime::get_status(resumeResult);
-            if (resumeStatus != StatusCode::STATUS_OK)
-            {
-                m_loggerService.log_warn(fmt::format("{}: Failed to resume thread {} after register read: {}",
-                    MODEL_NAME, threadId, static_cast<int>(resumeStatus)));
-            }
+                const auto result = Runtime::safe_call(plugin.internal_vertex_debugger_get_registers, threadId, &sdkRegs);
+                const auto regStatus = Runtime::get_status(result);
+
+                const auto resumeResult = Runtime::safe_call(plugin.internal_vertex_debugger_resume_thread, threadId);
+                const auto resumeStatus = Runtime::get_status(resumeResult);
+                if (resumeStatus != StatusCode::STATUS_OK)
+                {
+                    m_loggerService.log_warn(fmt::format("{}: Failed to resume thread {} after register read: {}",
+                        MODEL_NAME, threadId, static_cast<int>(resumeStatus)));
+                }
+
+                return regStatus;
+            });
+
+        auto regDispatch = m_dispatcher.dispatch(Thread::ThreadChannel::Debugger, std::move(regTask));
+        if (!regDispatch.has_value())
+        {
+            return regDispatch.error();
         }
+        const auto status = regDispatch.value().get();
 
         if (status != StatusCode::STATUS_OK)
         {
@@ -1116,55 +1269,75 @@ namespace Vertex::Model
         const auto& plugin = pluginOpt.value().get();
 
         ::ThreadList threadList{};
-        const auto threadResult = Runtime::safe_call(plugin.internal_vertex_debugger_get_threads, &threadList);
-        const auto status = Runtime::get_status(threadResult);
+        std::vector<Debugger::ThreadInfo> loadedThreads{};
+
+        std::packaged_task<StatusCode()> threadsTask(
+            [&plugin, &threadList, &loadedThreads]() -> StatusCode
+            {
+                const auto threadResult = Runtime::safe_call(plugin.internal_vertex_debugger_get_threads, &threadList);
+                const auto taskStatus = Runtime::get_status(threadResult);
+                if (taskStatus != StatusCode::STATUS_OK)
+                {
+                    return taskStatus;
+                }
+
+                for (const auto& sdkThread
+                    : std::span{threadList.threads, std::min<std::uint32_t>(threadList.threadCount, VERTEX_MAX_THREADS)})
+                {
+                    Debugger::ThreadInfo thread{};
+                    thread.id = sdkThread.id;
+                    thread.name = sdkThread.name;
+                    thread.instructionPointer = sdkThread.instructionPointer;
+                    thread.stackPointer = sdkThread.stackPointer;
+                    thread.entryPoint = sdkThread.entryPoint;
+                    thread.priority = sdkThread.priority;
+                    thread.isCurrent = (sdkThread.isCurrent != 0) || (sdkThread.id == threadList.currentThreadId);
+
+                    char* priorityStr = nullptr;
+                    const auto priorityResult = Runtime::safe_call(plugin.internal_vertex_debugger_thread_priority_value_to_string, sdkThread.priority, &priorityStr, nullptr);
+                    if (Runtime::status_ok(priorityResult) && priorityStr)
+                    {
+                        thread.priorityString = priorityStr;
+                    }
+
+                    switch (sdkThread.state)
+                    {
+                        case VERTEX_THREAD_RUNNING:
+                            thread.state = Debugger::ThreadState::Running;
+                            break;
+                        case VERTEX_THREAD_SUSPENDED:
+                            thread.state = Debugger::ThreadState::Suspended;
+                            break;
+                        case VERTEX_THREAD_WAITING:
+                            thread.state = Debugger::ThreadState::Waiting;
+                            break;
+                        case VERTEX_THREAD_TERMINATED:
+                            thread.state = Debugger::ThreadState::Terminated;
+                            break;
+                        default:
+                            thread.state = Debugger::ThreadState::Running;
+                            break;
+                    }
+
+                    loadedThreads.push_back(std::move(thread));
+                }
+
+                return StatusCode::STATUS_OK;
+            });
+
+        auto threadsDispatch = m_dispatcher.dispatch(Thread::ThreadChannel::Debugger, std::move(threadsTask));
+        if (!threadsDispatch.has_value())
+        {
+            return threadsDispatch.error();
+        }
+        const auto status = threadsDispatch.value().get();
 
         if (status != StatusCode::STATUS_OK)
         {
             return status;
         }
 
-        m_cachedThreads.clear();
-        for (const auto& sdkThread
-            : std::span{threadList.threads, std::min<std::uint32_t>(threadList.threadCount, VERTEX_MAX_THREADS)})
-        {
-            Debugger::ThreadInfo thread{};
-            thread.id = sdkThread.id;
-            thread.name = sdkThread.name;
-            thread.instructionPointer = sdkThread.instructionPointer;
-            thread.stackPointer = sdkThread.stackPointer;
-            thread.entryPoint = sdkThread.entryPoint;
-            thread.priority = sdkThread.priority;
-            thread.isCurrent = (sdkThread.isCurrent != 0) || (sdkThread.id == threadList.currentThreadId);
-
-            char* priorityStr = nullptr;
-            const auto priorityResult = Runtime::safe_call(plugin.internal_vertex_debugger_thread_priority_value_to_string, sdkThread.priority, &priorityStr, nullptr);
-            if (Runtime::status_ok(priorityResult) && priorityStr)
-            {
-                thread.priorityString = priorityStr;
-            }
-
-            switch (sdkThread.state)
-            {
-                case VERTEX_THREAD_RUNNING:
-                    thread.state = Debugger::ThreadState::Running;
-                    break;
-                case VERTEX_THREAD_SUSPENDED:
-                    thread.state = Debugger::ThreadState::Suspended;
-                    break;
-                case VERTEX_THREAD_WAITING:
-                    thread.state = Debugger::ThreadState::Waiting;
-                    break;
-                case VERTEX_THREAD_TERMINATED:
-                    thread.state = Debugger::ThreadState::Terminated;
-                    break;
-                default:
-                    thread.state = Debugger::ThreadState::Running;
-                    break;
-            }
-
-            m_cachedThreads.push_back(std::move(thread));
-        }
+        m_cachedThreads = std::move(loadedThreads);
 
         if (threadList.currentThreadId != 0 && m_cachedSnapshot.currentThreadId == 0)
         {
@@ -1229,43 +1402,62 @@ namespace Vertex::Model
         moduleInfo.baseAddress = targetModule.baseAddress;
         moduleInfo.size = targetModule.size;
 
-        ModuleImport* imports = nullptr;
-        std::uint32_t importCount = 0;
+        std::vector<Debugger::ImportEntry> loadedImports{};
+        std::vector<Debugger::ExportEntry> loadedExports{};
 
-        const auto importsResult = Runtime::safe_call(plugin.internal_vertex_process_get_module_imports, &moduleInfo, &imports, &importCount);
-        if (Runtime::status_ok(importsResult) && imports && importCount > 0)
+        std::packaged_task<StatusCode()> imexTask(
+            [&plugin, &moduleInfo, &loadedImports, &loadedExports]() -> StatusCode
+            {
+                ModuleImport* imports = nullptr;
+                std::uint32_t importCount = 0;
+
+                const auto importsResult = Runtime::safe_call(plugin.internal_vertex_process_get_module_imports, &moduleInfo, &imports, &importCount);
+                if (Runtime::status_ok(importsResult) && imports && importCount > 0)
+                {
+                    loadedImports = std::span{imports, importCount}
+                        | std::views::transform([](const auto& imp) {
+                            return Debugger::ImportEntry{
+                                .moduleName = imp.libraryName ? imp.libraryName : EMPTY_STRING,
+                                .functionName = imp.entry.name ? imp.entry.name : fmt::format("Ordinal #{}", imp.entry.ordinal),
+                                .address = reinterpret_cast<std::uint64_t>(imp.importAddress),
+                                .hint = static_cast<std::uint64_t>(imp.hint),
+                                .bound = false
+                            };
+                        })
+                        | std::ranges::to<std::vector>();
+                }
+
+                ModuleExport* exports = nullptr;
+                std::uint32_t exportCount = 0;
+
+                const auto exportsResult = Runtime::safe_call(plugin.internal_vertex_process_get_module_exports, &moduleInfo, &exports, &exportCount);
+                if (Runtime::status_ok(exportsResult) && exports && exportCount > 0)
+                {
+                    loadedExports = std::span{exports, exportCount}
+                        | std::views::transform([](const auto& exp) {
+                            return Debugger::ExportEntry{
+                                .functionName = exp.entry.name ? exp.entry.name : fmt::format("Ordinal #{}", exp.entry.ordinal),
+                                .address = reinterpret_cast<std::uint64_t>(exp.entry.address),
+                                .ordinal = static_cast<std::uint32_t>(exp.entry.ordinal),
+                                .forwarded = exp.entry.isForwarder != 0,
+                                .forwardTarget = exp.entry.forwarderName ? exp.entry.forwarderName : EMPTY_STRING
+                            };
+                        })
+                        | std::ranges::to<std::vector>();
+                }
+
+                return StatusCode::STATUS_OK;
+            });
+
+        auto imexDispatch = m_dispatcher.dispatch(Thread::ThreadChannel::Debugger, std::move(imexTask));
+        if (!imexDispatch.has_value())
         {
-            m_cachedImports = std::span{imports, importCount}
-                | std::views::transform([](const auto& imp) {
-                    return Debugger::ImportEntry{
-                        .moduleName = imp.libraryName ? imp.libraryName : EMPTY_STRING,
-                        .functionName = imp.entry.name ? imp.entry.name : fmt::format("Ordinal #{}", imp.entry.ordinal),
-                        .address = reinterpret_cast<std::uint64_t>(imp.importAddress),
-                        .hint = static_cast<std::uint64_t>(imp.hint),
-                        .bound = false
-                    };
-                })
-                | std::ranges::to<std::vector>();
+            return imexDispatch.error();
         }
+        std::ignore = imexDispatch.value().get();
 
-        ModuleExport* exports = nullptr;
-        std::uint32_t exportCount = 0;
-
-        const auto exportsResult = Runtime::safe_call(plugin.internal_vertex_process_get_module_exports, &moduleInfo, &exports, &exportCount);
-        if (Runtime::status_ok(exportsResult) && exports && exportCount > 0)
-        {
-            m_cachedExports = std::span{exports, exportCount}
-                | std::views::transform([](const auto& exp) {
-                    return Debugger::ExportEntry{
-                        .functionName = exp.entry.name ? exp.entry.name : fmt::format("Ordinal #{}", exp.entry.ordinal),
-                        .address = reinterpret_cast<std::uint64_t>(exp.entry.address),
-                        .ordinal = static_cast<std::uint32_t>(exp.entry.ordinal),
-                        .forwarded = exp.entry.isForwarder != 0,
-                        .forwardTarget = exp.entry.forwarderName ? exp.entry.forwarderName : EMPTY_STRING
-                    };
-                })
-                | std::ranges::to<std::vector>();
-        }
+        m_cachedImports = std::move(loadedImports);
+        m_cachedExports = std::move(loadedExports);
 
         return StatusCode::STATUS_OK;
     }

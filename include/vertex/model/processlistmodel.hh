@@ -31,7 +31,8 @@ namespace Vertex::Model
     class ProcessListModel final
     {
       public:
-        explicit ProcessListModel(Runtime::ILoader& loaderService, Log::ILog& loggerService, Configuration::ISettings& settingsService)
+        explicit ProcessListModel(Runtime::ILoader& loaderService, Log::ILog& loggerService,
+                                  Configuration::ISettings& settingsService)
             : m_loaderService{loaderService},
               m_loggerService{loggerService},
               m_settingsService{settingsService}
@@ -89,7 +90,7 @@ namespace Vertex::Model
                               const std::string& lowercaseFilterText,
                               const std::optional<std::boyer_moore_searcher<std::string::const_iterator>>& searcher);
         bool propagate_visibility(std::size_t nodeIndex);
-        void sort_children(std::vector<std::size_t>& indices);
+        void sort_children(std::vector<std::size_t>& indices) const;
         void invalidate_cache();
 
         struct ProcessCache final

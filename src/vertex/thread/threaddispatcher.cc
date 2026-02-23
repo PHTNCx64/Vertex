@@ -4,7 +4,7 @@
 //
 #include <vertex/thread/threaddispatcher.hh>
 
-#include <sdk/feature.hh>
+#include <sdk/feature.h>
 
 namespace Vertex::Thread
 {

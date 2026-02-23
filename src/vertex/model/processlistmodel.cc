@@ -39,38 +39,39 @@ namespace Vertex::Model
 
     StatusCode ProcessListModel::open_process() const
     {
-        if (m_selectedProcess.get_selected_process_id().has_value())
+        if (!m_selectedProcess.get_selected_process_id().has_value())
         {
-            if (!m_loaderService.get_active_plugin().has_value())
-            {
-                m_loggerService.log_error(fmt::format("{}: {}", MODEL_NAME, "No active plugin set. Cannot proceed."));
-                return StatusCode::STATUS_ERROR_PLUGIN_NOT_FOUND;
-            }
-
-            const auto& activePlugin = m_loaderService.get_active_plugin().value().get();
-
-            const std::uint32_t processId = m_selectedProcess.get_selected_process_id().value();
-            const auto result = Runtime::safe_call(activePlugin.internal_vertex_process_open, processId);
-            const auto status = Runtime::get_status(result);
-            if (status == StatusCode::STATUS_ERROR_FUNCTION_NOT_FOUND)
-            {
-                m_loggerService.log_error(fmt::format("{}: {}", MODEL_NAME, "vertex_open_process is not implemented by plugin!"));
-                return StatusCode::STATUS_ERROR_PLUGIN_FUNCTION_NOT_IMPLEMENTED;
-            }
-            if (!Runtime::status_ok(result))
-            {
-                m_loggerService.log_error(fmt::format("{}: {} {}", MODEL_NAME, "vertex_open_process failed with STATUS_CODE: ", static_cast<int>(status)));
-                return status;
-            }
-
-            ProcessEventData eventData{};
-            eventData.processId = processId;
-            eventData.processHandle = nullptr;
-            m_loaderService.dispatch_event(VERTEX_PROCESS_OPENED, &eventData);
-
-            return StatusCode::STATUS_OK;
+            return StatusCode::STATUS_ERROR_PROCESS_INVALID;
         }
-        return StatusCode::STATUS_ERROR_PROCESS_INVALID;
+
+        if (!m_loaderService.get_active_plugin().has_value())
+        {
+            m_loggerService.log_error(fmt::format("{}: {}", MODEL_NAME, "No active plugin set. Cannot proceed."));
+            return StatusCode::STATUS_ERROR_PLUGIN_NOT_FOUND;
+        }
+
+        const auto& activePlugin = m_loaderService.get_active_plugin().value().get();
+        const std::uint32_t processId = m_selectedProcess.get_selected_process_id().value();
+
+        const auto result = Runtime::safe_call(activePlugin.internal_vertex_process_open, processId);
+        const auto status = Runtime::get_status(result);
+        if (status == StatusCode::STATUS_ERROR_FUNCTION_NOT_FOUND)
+        {
+            m_loggerService.log_error(fmt::format("{}: {}", MODEL_NAME, "vertex_open_process is not implemented by plugin!"));
+            return StatusCode::STATUS_ERROR_PLUGIN_FUNCTION_NOT_IMPLEMENTED;
+        }
+        if (!Runtime::status_ok(result))
+        {
+            m_loggerService.log_error(fmt::format("{}: {} {}", MODEL_NAME, "vertex_open_process failed with STATUS_CODE: ", static_cast<int>(status)));
+            return status;
+        }
+
+        ProcessEventData eventData{};
+        eventData.processId = processId;
+        eventData.processHandle = nullptr;
+        m_loaderService.dispatch_event(VERTEX_PROCESS_OPENED, &eventData);
+
+        return StatusCode::STATUS_OK;
     }
 
     void ProcessListModel::set_should_filter(const bool shouldFilter) noexcept
@@ -96,10 +97,10 @@ namespace Vertex::Model
 
     StatusCode ProcessListModel::get_process_list()
     {
-        auto result = m_loaderService.has_plugin_loaded();
-        if (result != StatusCode::STATUS_OK)
+        const auto pluginStatus = m_loaderService.has_plugin_loaded();
+        if (pluginStatus != StatusCode::STATUS_OK)
         {
-            return result;
+            return pluginStatus;
         }
 
         const auto& activePlugin = m_loaderService.get_active_plugin().value().get();
@@ -108,42 +109,33 @@ namespace Vertex::Model
         safeProcesses.reserve(INITIAL_PROCESS_LIST_SIZE);
 
         std::uint32_t processCount{};
-
         const auto processCountResult = Runtime::safe_call(activePlugin.internal_vertex_process_get_list, nullptr, &processCount);
-        result = Runtime::get_status(processCountResult);
-        if (!Runtime::status_ok(result))
-        {
-            safeProcesses.clear();
-        }
-        else
+        if (Runtime::status_ok(processCountResult))
         {
             safeProcesses.resize(processCount);
-
             ProcessInformation* buffer = safeProcesses.data();
             std::uint32_t bufferSize = processCount;
 
             auto listResult = Runtime::safe_call(activePlugin.internal_vertex_process_get_list, &buffer, &bufferSize);
-            result = Runtime::get_status(listResult);
+            const auto listStatus = Runtime::get_status(listResult);
 
             if (Runtime::status_ok(listResult))
             {
                 safeProcesses.resize(bufferSize);
             }
-            else if (result == StatusCode::STATUS_ERROR_MEMORY_BUFFER_TOO_SMALL)
+            else if (listStatus == StatusCode::STATUS_ERROR_MEMORY_BUFFER_TOO_SMALL)
             {
                 safeProcesses.resize(bufferSize);
                 buffer = safeProcesses.data();
-                listResult = Runtime::safe_call(activePlugin.internal_vertex_process_get_list, &buffer, &bufferSize);
-                result = Runtime::get_status(listResult);
-
-                if (!Runtime::status_ok(result))
+                const auto retryResult = Runtime::safe_call(activePlugin.internal_vertex_process_get_list, &buffer, &bufferSize);
+                if (!Runtime::status_ok(retryResult))
                 {
                     return StatusCode::STATUS_ERROR_MEMORY_OPERATION_ABORTED;
                 }
             }
             else
             {
-                return result;
+                return listStatus;
             }
         }
 
@@ -289,7 +281,7 @@ namespace Vertex::Model
         m_treeDirty.store(true, std::memory_order_release);
     }
 
-    void ProcessListModel::sort_children(std::vector<std::size_t>& indices)
+    void ProcessListModel::sort_children(std::vector<std::size_t>& indices) const
     {
         std::ranges::sort(indices,
                           [this](std::size_t a, std::size_t b)

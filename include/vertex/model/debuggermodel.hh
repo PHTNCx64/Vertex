@@ -120,6 +120,7 @@ namespace Vertex::Model
         Configuration::ISettings& m_settingsService;
         Runtime::ILoader& m_loaderService;
         Log::ILog& m_loggerService;
+        Thread::IThreadDispatcher& m_dispatcher;
 
         std::unique_ptr<Debugger::DebuggerWorker> m_worker;
 

@@ -5,6 +5,8 @@
 #include <vertex/model/pluginconfigmodel.hh>
 
 #include <fmt/format.h>
+#include <functional>
+#include <future>
 #include <span>
 
 namespace Vertex::Model
@@ -14,10 +16,12 @@ namespace Vertex::Model
     PluginConfigModel::PluginConfigModel(
         Runtime::IUIRegistry& uiRegistry,
         Configuration::IPluginConfig& pluginConfigService,
-        Log::ILog& loggerService)
+        Log::ILog& loggerService,
+        Thread::IThreadDispatcher& dispatcher)
         : m_uiRegistry{uiRegistry},
           m_pluginConfigService{pluginConfigService},
-          m_loggerService{loggerService}
+          m_loggerService{loggerService},
+          m_dispatcher{dispatcher}
     {
     }
 
@@ -58,7 +62,19 @@ namespace Vertex::Model
 
         if (snapshot->panel.onApply)
         {
-            snapshot->panel.onApply(std::string{fieldId}.c_str(), &value, snapshot->panel.userData);
+            const auto fn = snapshot->panel.onApply;
+            const auto userData = snapshot->panel.userData;
+            const std::string capturedFieldId{fieldId};
+            const UIValue capturedValue = value;
+
+            std::ignore = m_dispatcher.dispatch_fire_and_forget(
+                Thread::ThreadChannel::ProcessList,
+                std::packaged_task<StatusCode()>{
+                    [fn, userData, capturedFieldId, capturedValue]() mutable -> StatusCode
+                    {
+                        fn(capturedFieldId.c_str(), &capturedValue, userData);
+                        return StatusCode::STATUS_OK;
+                    }});
         }
 
         return StatusCode::STATUS_OK;
@@ -83,7 +99,17 @@ namespace Vertex::Model
 
         if (snapshot->panel.onReset)
         {
-            snapshot->panel.onReset(snapshot->panel.userData);
+            const auto fn = snapshot->panel.onReset;
+            const auto userData = snapshot->panel.userData;
+
+            std::ignore = m_dispatcher.dispatch_fire_and_forget(
+                Thread::ThreadChannel::ProcessList,
+                std::packaged_task<StatusCode()>{
+                    [fn, userData]() -> StatusCode
+                    {
+                        fn(userData);
+                        return StatusCode::STATUS_OK;
+                    }});
         }
 
         return StatusCode::STATUS_OK;

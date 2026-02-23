@@ -18,10 +18,17 @@ extern "C"
             return StatusCode::STATUS_ERROR_GENERAL;
         }
 
-        const SNRESULT result = SNPS3ProcessAttach(ctx->module.targetNumber, 0, processId);
+        SNRESULT result = SNPS3ProcessAttach(ctx->module.targetNumber, 0, processId);
         if (SN_SUCCEEDED(result))
         {
             ctx->module.processId = processId;
+            result = SNPS3ProcessContinue(ctx->module.targetNumber, processId);
+            if (result != SN_S_OK)
+            {
+                g_pluginRuntime->vertex_log_error("Failed to continue process with id %u. SNRESULT: %d", processId, result);
+                return StatusCode::STATUS_ERROR_GENERAL;
+            }
+
             return StatusCode::STATUS_OK;
         }
 
