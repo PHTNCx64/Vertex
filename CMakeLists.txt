@@ -31,7 +31,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 option(BUILD_ALL "Build all plugins and components" OFF)
 option(BUILD_ONLY_RUNTIME "Build only the runtime (no plugins)" OFF)
 option(BUILD_VERTEXUSRRT "Build the vertexusrrt plugin" ON)
-option(BUILD_VERTEXDECI3RT "Build the vertexdeci3rt plugin (requires Sony SDK)" ON)
+option(BUILD_VERTEXDECI3RT "Build the vertexdeci3rt plugin (requires Sony SDK)" OFF)
 option(BUILD_LIBTEST "Build the libtest plugin" ON)
 option(BUILD_TESTING "Build tests" ON)
 
