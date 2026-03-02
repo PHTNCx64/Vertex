@@ -228,34 +228,70 @@ namespace Vertex::View::Debugger
         }
         else
         {
-            m_registerList->DeleteAllItems();
-            m_registerIndexMap.clear();
+            struct RegisterRow final
+            {
+                std::string name;
+                std::string value;
+                bool modified {};
+            };
 
-            long idx{};
+            std::vector<RegisterRow> rows;
+            rows.reserve(registers.generalPurpose.size() + 3);
 
             for (const auto& reg : registers.generalPurpose)
             {
-                m_registerList->InsertItem(idx, reg.name);
-                m_registerList->SetItem(idx, 1, fmt::format("{:016X}", reg.value));
-                m_registerIndexMap[reg.name] = idx;
+                rows.push_back({reg.name, fmt::format("{:016X}", reg.value), reg.modified});
+            }
+            rows.push_back({"RIP", fmt::format("{:016X}", registers.instructionPointer), false});
+            rows.push_back({"RSP", fmt::format("{:016X}", registers.stackPointer), false});
+            rows.push_back({"RBP", fmt::format("{:016X}", registers.basePointer), false});
 
-                if (reg.modified)
+            bool requiresRebuild = static_cast<std::size_t>(m_registerList->GetItemCount()) != rows.size();
+            if (!requiresRebuild)
+            {
+                for (std::size_t i = 0; i < rows.size(); ++i)
                 {
-                    m_registerList->SetItemTextColour(idx, *wxRED);
+                    if (m_registerList->GetItemText(static_cast<long>(i), 0) != rows[i].name)
+                    {
+                        requiresRebuild = true;
+                        break;
+                    }
                 }
-                ++idx;
             }
 
-            m_registerList->InsertItem(idx, "RIP");
-            m_registerList->SetItem(idx, 1, fmt::format("{:016X}", registers.instructionPointer));
-            ++idx;
+            if (requiresRebuild)
+            {
+                m_registerList->Freeze();
+                m_registerList->DeleteAllItems();
+                m_registerIndexMap.clear();
 
-            m_registerList->InsertItem(idx, "RSP");
-            m_registerList->SetItem(idx, 1, fmt::format("{:016X}", registers.stackPointer));
-            ++idx;
+                for (std::size_t i = 0; i < rows.size(); ++i)
+                {
+                    const long idx = m_registerList->InsertItem(static_cast<long>(i), rows[i].name);
+                    m_registerList->SetItem(idx, 1, rows[i].value);
+                    m_registerList->SetItemTextColour(idx, rows[i].modified ? *wxRED : *wxWHITE);
+                }
 
-            m_registerList->InsertItem(idx, "RBP");
-            m_registerList->SetItem(idx, 1, fmt::format("{:016X}", registers.basePointer));
+                m_registerList->Thaw();
+            }
+            else
+            {
+                for (std::size_t i = 0; i < rows.size(); ++i)
+                {
+                    const long idx = static_cast<long>(i);
+                    const wxString newValue = rows[i].value;
+                    if (m_registerList->GetItemText(idx, 1) != newValue)
+                    {
+                        m_registerList->SetItem(idx, 1, newValue);
+                    }
+
+                    const wxColour textColour = rows[i].modified ? *wxRED : *wxWHITE;
+                    if (m_registerList->GetItemTextColour(idx) != textColour)
+                    {
+                        m_registerList->SetItemTextColour(idx, textColour);
+                    }
+                }
+            }
         }
     }
 

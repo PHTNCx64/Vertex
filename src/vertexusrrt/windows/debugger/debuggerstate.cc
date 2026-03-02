@@ -4,69 +4,116 @@
 //
 #include <vertexusrrt/native_handle.hh>
 #include <vertexusrrt/debugloopcontext.hh>
+#include <vertexusrrt/debugger_internal.hh>
 
 #include <sdk/api.h>
 
 #include <Windows.h>
 
-#include <atomic>
-#include <condition_variable>
-#include <mutex>
-#include <optional>
-#include <thread>
+#include <algorithm>
+#include <format>
 
 extern native_handle& get_native_handle();
 
+extern void cache_process_architecture();
+extern void clear_process_architecture();
+extern ProcessArchitecture get_process_architecture();
+
 namespace
 {
-    std::atomic<bool> g_stopRequested{false};
-    std::atomic<::DebuggerState> g_currentState{VERTEX_DBG_STATE_DETACHED};
-    std::atomic<std::uint32_t> g_attachedProcessId{0};
-    std::atomic<std::uint32_t> g_pendingAttachProcessId{0};
-    std::atomic<std::uint32_t> g_currentThreadId{0};
-    std::atomic<bool> g_passException{false};
-    std::atomic<bool> g_initialBreakpointPending{false};
-    std::optional<::DebuggerCallbacks> g_callbacks{};
-    std::mutex g_callbackMutex{};
-    std::jthread g_debugThread{};
+    debugger::TickState g_tickState{};
+}
 
-    std::atomic<debugger::DebugCommand> g_pendingCommand{debugger::DebugCommand::None};
-    std::atomic<std::uint64_t> g_targetAddress{0};
-    std::condition_variable g_commandSignal{};
-    std::mutex g_commandMutex{};
-    std::atomic<bool> g_isWow64Process{false};
-    std::atomic<bool> g_pauseRequested{false};
-
-    debugger::DebugLoopContext make_context()
+namespace debugger
+{
+    ExceptionCode map_windows_exception_code(const DWORD code)
     {
-        return debugger::DebugLoopContext{
-            .stopRequested = &g_stopRequested,
-            .currentState = &g_currentState,
-            .attachedProcessId = &g_attachedProcessId,
-            .pendingAttachProcessId = &g_pendingAttachProcessId,
-            .currentThreadId = &g_currentThreadId,
-            .passException = &g_passException,
-            .callbacks = &g_callbacks,
-            .callbackMutex = &g_callbackMutex,
-            .pendingCommand = &g_pendingCommand,
-            .targetAddress = &g_targetAddress,
-            .commandSignal = &g_commandSignal,
-            .commandMutex = &g_commandMutex,
-            .isWow64Process = &g_isWow64Process,
-            .initialBreakpointPending = &g_initialBreakpointPending,
-            .pauseRequested = &g_pauseRequested
-        };
+        switch (code)
+        {
+            case EXCEPTION_ACCESS_VIOLATION:     return VERTEX_EXCEPTION_ACCESS_VIOLATION;
+            case EXCEPTION_BREAKPOINT:           return VERTEX_EXCEPTION_BREAKPOINT;
+            case EXCEPTION_SINGLE_STEP:          return VERTEX_EXCEPTION_SINGLE_STEP;
+            case EXCEPTION_ARRAY_BOUNDS_EXCEEDED:return VERTEX_EXCEPTION_ARRAY_BOUNDS_EXCEEDED;
+            case EXCEPTION_DATATYPE_MISALIGNMENT:return VERTEX_EXCEPTION_DATATYPE_MISALIGNMENT;
+            case EXCEPTION_FLT_DENORMAL_OPERAND: return VERTEX_EXCEPTION_FLT_DENORMAL_OPERAND;
+            case EXCEPTION_FLT_DIVIDE_BY_ZERO:   return VERTEX_EXCEPTION_FLT_DIVIDE_BY_ZERO;
+            case EXCEPTION_FLT_INEXACT_RESULT:   return VERTEX_EXCEPTION_FLT_INEXACT_RESULT;
+            case EXCEPTION_FLT_INVALID_OPERATION:return VERTEX_EXCEPTION_FLT_INVALID_OPERATION;
+            case EXCEPTION_FLT_OVERFLOW:         return VERTEX_EXCEPTION_FLT_OVERFLOW;
+            case EXCEPTION_FLT_STACK_CHECK:      return VERTEX_EXCEPTION_FLT_STACK_CHECK;
+            case EXCEPTION_FLT_UNDERFLOW:        return VERTEX_EXCEPTION_FLT_UNDERFLOW;
+            case EXCEPTION_ILLEGAL_INSTRUCTION:  return VERTEX_EXCEPTION_ILLEGAL_INSTRUCTION;
+            case EXCEPTION_INT_DIVIDE_BY_ZERO:   return VERTEX_EXCEPTION_INT_DIVIDE_BY_ZERO;
+            case EXCEPTION_INT_OVERFLOW:         return VERTEX_EXCEPTION_INT_OVERFLOW;
+            case EXCEPTION_PRIV_INSTRUCTION:     return VERTEX_EXCEPTION_PRIV_INSTRUCTION;
+            case EXCEPTION_STACK_OVERFLOW:       return VERTEX_EXCEPTION_STACK_OVERFLOW;
+            default:                             return VERTEX_EXCEPTION_UNKNOWN;
+        }
+    }
+
+    StatusCode fill_exception_info(ExceptionInfo* out)
+    {
+        if (out == nullptr)
+        {
+            return STATUS_ERROR_INVALID_PARAMETER;
+        }
+
+        if (g_tickState.lastPauseReason != PauseReason::Exception || !g_tickState.hasPendingEvent)
+        {
+            return STATUS_ERROR_DEBUGGER_INVALID_STATE;
+        }
+
+        const auto& [ExceptionRecord, dwFirstChance] = g_tickState.pendingEvent.u.Exception;
+        const auto& record = ExceptionRecord;
+
+        out->code = map_windows_exception_code(record.ExceptionCode);
+        out->address = reinterpret_cast<std::uint64_t>(record.ExceptionAddress);
+        out->firstChance = dwFirstChance != 0 ? 1 : 0;
+        out->continuable = (record.ExceptionFlags == 0) ? 1 : 0;
+        out->threadId = g_tickState.pendingEvent.dwThreadId;
+        out->reserved = 0;
+
+        if (record.ExceptionCode == EXCEPTION_ACCESS_VIOLATION && record.NumberParameters >= 2)
+        {
+            out->isWrite = static_cast<std::uint8_t>(record.ExceptionInformation[0]);
+            out->accessAddress = record.ExceptionInformation[1];
+        }
+        else
+        {
+            out->isWrite = 0;
+            out->accessAddress = 0;
+        }
+
+        std::string desc {};
+        if (record.ExceptionCode == EXCEPTION_ACCESS_VIOLATION && record.NumberParameters >= 2)
+        {
+            const char* accessType = record.ExceptionInformation[0] == 0 ? "reading" :
+                                     record.ExceptionInformation[0] == 1 ? "writing" : "executing";
+            desc = std::format("Access violation {} address 0x{:016X}",
+                               accessType, record.ExceptionInformation[1]);
+        }
+        else
+        {
+            desc = std::format("Exception 0x{:08X}", record.ExceptionCode);
+        }
+
+        std::fill_n(out->description, VERTEX_MAX_EXCEPTION_DESC_LENGTH, '\0');
+        std::copy_n(desc.c_str(),
+                    std::min(desc.size() + 1, static_cast<std::size_t>(VERTEX_MAX_EXCEPTION_DESC_LENGTH)),
+                    out->description);
+
+        return STATUS_OK;
     }
 }
 
 std::uint32_t get_current_debug_thread_id()
 {
-    return g_currentThreadId.load(std::memory_order_acquire);
+    return g_tickState.currentThreadId;
 }
 
 std::uint32_t get_attached_process_id()
 {
-    return g_attachedProcessId.load(std::memory_order_acquire);
+    return g_tickState.attachedProcessId;
 }
 
 extern "C"
@@ -85,182 +132,133 @@ extern "C"
             return StatusCode::STATUS_ERROR_PROCESS_NOT_FOUND;
         }
 
-        const DebuggerState currentState = g_currentState.load(std::memory_order_acquire);
-        if (currentState != VERTEX_DBG_STATE_DETACHED)
+        if (g_tickState.attachedProcessId != 0)
         {
             return StatusCode::STATUS_ERROR_DEBUGGER_ALREADY_ATTACHED;
         }
 
-        g_pendingAttachProcessId.store(processId, std::memory_order_release);
-
-        if (g_debugThread.joinable())
+        if (!DebugActiveProcess(processId))
         {
-            g_debugThread.request_stop();
-            g_debugThread.join();
+            return StatusCode::STATUS_ERROR_DEBUGGER_ATTACH_FAILED;
         }
 
-        g_debugThread = std::jthread([](const std::stop_token& stopToken) {
-            debugger::run_debug_loop(make_context(), stopToken);
-        });
+        DebugSetProcessKillOnExit(FALSE);
+
+        cache_process_architecture();
+
+        g_tickState.isWow64 = get_process_architecture() == ProcessArchitecture::X86;
+        g_tickState.attachedProcessId = processId;
+        g_tickState.currentThreadId = 0;
+        g_tickState.initialBreakpointPending = true;
+        g_tickState.stopRequested = false;
+        g_tickState.pauseRequested = false;
+        g_tickState.passException = false;
+        g_tickState.pendingCommand = debugger::DebugCommand::None;
+        g_tickState.pendingTargetAddress = 0;
+        g_tickState.hasPendingEvent = false;
+        g_tickState.lastPauseReason = debugger::PauseReason::None;
+        g_tickState.lastPauseAddress = 0;
+        g_tickState.lastPauseBreakpointId = 0;
+        g_tickState.lastPauseWatchpointId = 0;
 
         return StatusCode::STATUS_OK;
     }
 
     VERTEX_EXPORT StatusCode VERTEX_API vertex_debugger_detach()
     {
-        const std::uint32_t attachedPid = g_attachedProcessId.load(std::memory_order_acquire);
-        if (attachedPid == 0)
+        if (g_tickState.attachedProcessId == 0)
         {
             return StatusCode::STATUS_ERROR_DEBUGGER_NOT_ATTACHED;
         }
 
-        g_stopRequested.store(true, std::memory_order_release);
-
+        if (g_tickState.hasPendingEvent)
         {
-            std::scoped_lock lock{g_commandMutex};
-            g_pendingCommand.store(debugger::DebugCommand::None, std::memory_order_release);
-        }
-        g_commandSignal.notify_all();
-
-        if (g_debugThread.joinable())
-        {
-            g_debugThread.request_stop();
-            g_debugThread.join();
+            ContinueDebugEvent(g_tickState.pendingEvent.dwProcessId,
+                               g_tickState.pendingEvent.dwThreadId,
+                               DBG_CONTINUE);
+            g_tickState.hasPendingEvent = false;
         }
 
-        DebugActiveProcessStop(attachedPid);
+        std::ignore = debugger::remove_temp_breakpoint();
+        debugger::reset_breakpoint_manager();
+        debugger::clear_all_breakpoint_step_overs();
+        debugger::clear_all_watchpoint_step_overs();
+        debugger::clear_thread_handle_cache();
 
-        const auto oldState = g_currentState.load(std::memory_order_acquire);
-        g_attachedProcessId.store(0, std::memory_order_release);
-        g_pendingAttachProcessId.store(0, std::memory_order_release);
-        g_currentThreadId.store(0, std::memory_order_release);
-        g_currentState.store(VERTEX_DBG_STATE_DETACHED, std::memory_order_release);
-        g_passException.store(false, std::memory_order_release);
-        g_initialBreakpointPending.store(false, std::memory_order_release);
-        g_targetAddress.store(0, std::memory_order_release);
-        g_stopRequested.store(false, std::memory_order_release);
-        g_pauseRequested.store(false, std::memory_order_release);
+        DebugActiveProcessStop(g_tickState.attachedProcessId);
 
-        {
-            std::scoped_lock lock{g_callbackMutex};
-            if (g_callbacks.has_value())
-            {
-                const auto& cb = g_callbacks.value();
-                if (cb.on_detached != nullptr)
-                {
-                    cb.on_detached(attachedPid, cb.user_data);
-                }
-                if (cb.on_state_changed != nullptr)
-                {
-                    cb.on_state_changed(oldState, VERTEX_DBG_STATE_DETACHED, cb.user_data);
-                }
-            }
-        }
+        g_tickState.attachedProcessId = 0;
+        g_tickState.currentThreadId = 0;
+        g_tickState.stopRequested = false;
+        g_tickState.pauseRequested = false;
+        g_tickState.passException = false;
+        g_tickState.initialBreakpointPending = false;
+        g_tickState.pendingCommand = debugger::DebugCommand::None;
+        g_tickState.pendingTargetAddress = 0;
+        g_tickState.lastPauseReason = debugger::PauseReason::None;
+        g_tickState.lastPauseAddress = 0;
+        g_tickState.lastPauseBreakpointId = 0;
+        g_tickState.lastPauseWatchpointId = 0;
+
+        clear_process_architecture();
 
         return StatusCode::STATUS_OK;
     }
 
-    VERTEX_EXPORT StatusCode VERTEX_API vertex_debugger_run(const DebuggerCallbacks* callbacks)
+    VERTEX_EXPORT StatusCode VERTEX_API vertex_debugger_set_callbacks(const DebuggerCallbacks* callbacks)
     {
-        g_stopRequested.store(false, std::memory_order_release);
-
+        std::scoped_lock lock{g_tickState.callbackMutex};
+        if (callbacks != nullptr)
         {
-            std::scoped_lock lock{g_callbackMutex};
-            if (callbacks != nullptr)
-            {
-                g_callbacks = *callbacks;
-            }
-            else
-            {
-                g_callbacks.reset();
-            }
+            g_tickState.callbacks = *callbacks;
         }
-
+        else
+        {
+            g_tickState.callbacks.reset();
+        }
         return StatusCode::STATUS_OK;
     }
 
-    VERTEX_EXPORT StatusCode VERTEX_API vertex_debugger_request_stop()
+    VERTEX_EXPORT StatusCode VERTEX_API vertex_debugger_tick(const std::uint32_t timeout_ms)
     {
-        g_stopRequested.store(true, std::memory_order_release);
-
-        if (g_debugThread.joinable())
+        if (g_tickState.attachedProcessId == 0)
         {
-            g_debugThread.request_stop();
-            g_debugThread.join();
+            return StatusCode::STATUS_ERROR_DEBUGGER_NOT_ATTACHED;
         }
 
-        const std::uint32_t attachedPid = g_attachedProcessId.load(std::memory_order_acquire);
-        if (attachedPid != 0)
-        {
-            DebugActiveProcessStop(attachedPid);
-            g_attachedProcessId.store(0, std::memory_order_release);
-        }
-
-        g_currentThreadId.store(0, std::memory_order_release);
-        g_currentState.store(VERTEX_DBG_STATE_DETACHED, std::memory_order_release);
-
-        {
-            std::scoped_lock lock{g_callbackMutex};
-            g_callbacks.reset();
-        }
-
-        return StatusCode::STATUS_OK;
-    }
-
-    VERTEX_EXPORT StatusCode VERTEX_API vertex_debugger_get_state(DebuggerState* state)
-    {
-        if (state == nullptr)
-        {
-            return StatusCode::STATUS_ERROR_INVALID_PARAMETER;
-        }
-
-        *state = g_currentState.load(std::memory_order_acquire);
-        return StatusCode::STATUS_OK;
+        return debugger::tick_debug_loop(g_tickState, timeout_ms);
     }
 
     VERTEX_EXPORT StatusCode VERTEX_API vertex_debugger_continue(const std::uint8_t passException)
     {
-        const DebuggerState currentState = g_currentState.load(std::memory_order_acquire);
-
-        if (currentState != VERTEX_DBG_STATE_BREAKPOINT_HIT &&
-            currentState != VERTEX_DBG_STATE_STEPPING &&
-            currentState != VERTEX_DBG_STATE_EXCEPTION &&
-            currentState != VERTEX_DBG_STATE_PAUSED)
+        if (!g_tickState.hasPendingEvent)
         {
             return StatusCode::STATUS_ERROR_DEBUGGER_INVALID_STATE;
         }
 
-        g_passException.store(passException != 0, std::memory_order_release);
-
-        {
-            std::scoped_lock lock{g_commandMutex};
-            g_pendingCommand.store(debugger::DebugCommand::Continue, std::memory_order_release);
-        }
-        g_commandSignal.notify_one();
+        g_tickState.passException = passException != 0;
+        g_tickState.pendingCommand = debugger::DebugCommand::Continue;
 
         return StatusCode::STATUS_OK;
     }
 
     VERTEX_EXPORT StatusCode VERTEX_API vertex_debugger_pause()
     {
-        const ::DebuggerState currentState = g_currentState.load(std::memory_order_acquire);
-
-        if (currentState != VERTEX_DBG_STATE_RUNNING)
-        {
-            return StatusCode::STATUS_ERROR_DEBUGGER_INVALID_STATE;
-        }
-
-        const std::uint32_t attachedPid = g_attachedProcessId.load(std::memory_order_acquire);
-        if (attachedPid == 0)
+        if (g_tickState.attachedProcessId == 0)
         {
             return StatusCode::STATUS_ERROR_DEBUGGER_NOT_ATTACHED;
         }
 
-        g_pauseRequested.store(true, std::memory_order_release);
+        if (g_tickState.hasPendingEvent)
+        {
+            return StatusCode::STATUS_ERROR_DEBUGGER_INVALID_STATE;
+        }
+
+        g_tickState.pauseRequested = true;
 
         if (!DebugBreakProcess(get_native_handle()))
         {
-            g_pauseRequested.store(false, std::memory_order_release);
+            g_tickState.pauseRequested = false;
             return StatusCode::STATUS_ERROR_DEBUGGER_BREAK_FAILED;
         }
 
@@ -269,60 +267,38 @@ extern "C"
 
     VERTEX_EXPORT StatusCode VERTEX_API vertex_debugger_step(const StepMode mode)
     {
-        const ::DebuggerState currentState = g_currentState.load(std::memory_order_acquire);
-
-        if (currentState != VERTEX_DBG_STATE_BREAKPOINT_HIT &&
-            currentState != VERTEX_DBG_STATE_STEPPING &&
-            currentState != VERTEX_DBG_STATE_EXCEPTION &&
-            currentState != VERTEX_DBG_STATE_PAUSED)
+        if (!g_tickState.hasPendingEvent)
         {
             return StatusCode::STATUS_ERROR_DEBUGGER_INVALID_STATE;
         }
 
-        debugger::DebugCommand cmd{};
         switch (mode)
         {
         case VERTEX_STEP_INTO:
-            cmd = debugger::DebugCommand::StepInto;
+            g_tickState.pendingCommand = debugger::DebugCommand::StepInto;
             break;
         case VERTEX_STEP_OVER:
-            cmd = debugger::DebugCommand::StepOver;
+            g_tickState.pendingCommand = debugger::DebugCommand::StepOver;
             break;
         case VERTEX_STEP_OUT:
-            cmd = debugger::DebugCommand::StepOut;
+            g_tickState.pendingCommand = debugger::DebugCommand::StepOut;
             break;
         default:
             return StatusCode::STATUS_ERROR_INVALID_PARAMETER;
         }
-
-        {
-            std::scoped_lock lock{g_commandMutex};
-            g_pendingCommand.store(cmd, std::memory_order_release);
-        }
-        g_commandSignal.notify_one();
 
         return StatusCode::STATUS_OK;
     }
 
     VERTEX_EXPORT StatusCode VERTEX_API vertex_debugger_run_to_address(const std::uint64_t address)
     {
-        const DebuggerState currentState = g_currentState.load(std::memory_order_acquire);
-
-        if (currentState != VERTEX_DBG_STATE_BREAKPOINT_HIT &&
-            currentState != VERTEX_DBG_STATE_STEPPING &&
-            currentState != VERTEX_DBG_STATE_EXCEPTION &&
-            currentState != VERTEX_DBG_STATE_PAUSED)
+        if (!g_tickState.hasPendingEvent)
         {
             return StatusCode::STATUS_ERROR_DEBUGGER_INVALID_STATE;
         }
 
-        g_targetAddress.store(address, std::memory_order_release);
-
-        {
-            std::scoped_lock lock{g_commandMutex};
-            g_pendingCommand.store(debugger::DebugCommand::RunToAddress, std::memory_order_release);
-        }
-        g_commandSignal.notify_one();
+        g_tickState.pendingTargetAddress = address;
+        g_tickState.pendingCommand = debugger::DebugCommand::RunToAddress;
 
         return StatusCode::STATUS_OK;
     }
@@ -340,9 +316,7 @@ extern "C"
             return StatusCode::STATUS_ERROR_THREAD_INVALID_TASK;
         }
 
-        const bool isWow64 = g_isWow64Process.load(std::memory_order_acquire);
-
-        if (isWow64)
+        if (g_tickState.isWow64)
         {
             WOW64_CONTEXT ctx{};
             ctx.ContextFlags = WOW64_CONTEXT_CONTROL;
@@ -381,9 +355,7 @@ extern "C"
             return StatusCode::STATUS_ERROR_THREAD_INVALID_TASK;
         }
 
-        const bool isWow64 = g_isWow64Process.load(std::memory_order_acquire);
-
-        if (isWow64)
+        if (g_tickState.isWow64)
         {
             WOW64_CONTEXT ctx{};
             ctx.ContextFlags = WOW64_CONTEXT_CONTROL;

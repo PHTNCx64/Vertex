@@ -88,18 +88,17 @@ namespace Vertex::View::Debugger
 
     void DisassemblyPanel::set_breakpoints(const std::vector<::Vertex::Debugger::Breakpoint>& breakpoints) const
     {
-        std::vector<std::uint64_t> addresses;
-        addresses.reserve(breakpoints.size());
-        for (const auto& bp : breakpoints)
-        {
-            addresses.push_back(bp.address);
-        }
-        m_disassemblyControl->set_breakpoints(addresses);
+        m_disassemblyControl->set_breakpoints(breakpoints);
     }
 
     void DisassemblyPanel::scroll_to_address(const std::uint64_t address) const
     {
         m_disassemblyControl->scroll_to_address(address);
+    }
+
+    void DisassemblyPanel::set_extension_result(const bool isTop, const ::Vertex::Debugger::ExtensionResult result) const
+    {
+        m_disassemblyControl->set_extension_result(isTop, result);
     }
 
     void DisassemblyPanel::set_navigate_callback(NavigateCallback callback)
@@ -114,14 +113,35 @@ namespace Vertex::View::Debugger
         m_disassemblyControl->set_breakpoint_toggle_callback(std::move(callback));
     }
 
+    void DisassemblyPanel::set_breakpoint_enable_callback(BreakpointEnableCallback callback)
+    {
+        m_disassemblyControl->set_breakpoint_enable_callback(std::move(callback));
+    }
+
+    void DisassemblyPanel::set_breakpoint_remove_callback(BreakpointRemoveCallback callback)
+    {
+        m_disassemblyControl->set_breakpoint_remove_callback(std::move(callback));
+    }
+
+    void DisassemblyPanel::set_breakpoint_edit_condition_callback(BreakpointEditConditionCallback callback)
+    {
+        m_disassemblyControl->set_breakpoint_edit_condition_callback(std::move(callback));
+    }
+
     void DisassemblyPanel::set_run_to_cursor_callback(RunToCursorCallback callback)
     {
-        m_runToCursorCallback = std::move(callback);
+        m_runToCursorCallback = callback;
+        m_disassemblyControl->set_run_to_cursor_callback(std::move(callback));
     }
 
     void DisassemblyPanel::set_scroll_boundary_callback(ScrollBoundaryCallback callback)
     {
         m_disassemblyControl->set_scroll_boundary_callback(std::move(callback));
+    }
+
+    void DisassemblyPanel::set_xref_query_callback(XrefQueryCallback callback)
+    {
+        m_disassemblyControl->set_xref_query_callback(std::move(callback));
     }
 
     std::uint64_t DisassemblyPanel::get_selected_address() const

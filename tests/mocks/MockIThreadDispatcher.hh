@@ -14,6 +14,17 @@ namespace Vertex::Testing::Mocks
                     dispatch, (Thread::ThreadChannel channel, std::packaged_task<StatusCode()>&& task), (override));
         MOCK_METHOD(StatusCode,
                     dispatch_fire_and_forget, (Thread::ThreadChannel channel, std::packaged_task<StatusCode()>&& task), (override));
+        MOCK_METHOD((std::expected<Thread::RecurringTaskHandle, StatusCode>),
+                    schedule_recurring,
+                    (Thread::ThreadChannel channel, Thread::DispatchPriority priority,
+                     Thread::RecurringPolicy policy, std::chrono::milliseconds delay,
+                     std::function<StatusCode()> task,
+                     Thread::RecurringFailurePolicy failurePolicy), (override));
+        MOCK_METHOD(StatusCode, cancel_recurring, (Thread::RecurringTaskHandle handle), (override));
+        MOCK_METHOD((std::expected<std::future<StatusCode>, StatusCode>),
+                    dispatch_with_priority,
+                    (Thread::ThreadChannel channel, Thread::DispatchPriority priority,
+                     std::packaged_task<StatusCode()>&& task), (override));
         MOCK_METHOD(StatusCode, configure, (std::uint64_t featureFlags), (override));
         MOCK_METHOD(StatusCode, start, (), (override));
         MOCK_METHOD(StatusCode, stop, (), (override));

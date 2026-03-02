@@ -8,6 +8,7 @@
 #include <string>
 #include <string_view>
 #include <functional>
+#include <thread>
 #include <vector>
 #include <optional>
 
@@ -15,7 +16,7 @@
 #include <vertex/event/types/processopenevent.hh>
 #include <vertex/model/debuggermodel.hh>
 #include <vertex/debugger/debuggertypes.hh>
-#include <vertex/debugger/debuggerworker.hh>
+#include <vertex/debugger/debuggerengine.hh>
 #include <vertex/runtime/iregistry.hh>
 #include <vertex/log/ilog.hh>
 #include <vertex/utility.hh>
@@ -37,8 +38,8 @@ namespace Vertex::ViewModel
 
         void set_event_callback(std::move_only_function<void(Event::EventId, const Event::VertexEvent&) const> callback);
 
-        void start_worker() const;
-        void stop_worker() const;
+        void start_engine() const;
+        void stop_engine() const;
 
         void attach_debugger() const;
         void detach_debugger() const;
@@ -55,16 +56,23 @@ namespace Vertex::ViewModel
         void navigate_to_address(std::uint64_t address) const;
         void refresh_data() const;
 
-        [[nodiscard]] StatusCode disassemble_at_address(std::uint64_t address) const;
-        [[nodiscard]] StatusCode disassemble_extend_up(std::uint64_t fromAddress) const;
-        [[nodiscard]] StatusCode disassemble_extend_down(std::uint64_t fromAddress) const;
-        [[nodiscard]] StatusCode load_modules_and_disassemble() const;
+        void request_disassembly(std::uint64_t address) const;
+        void request_disassembly_extend_up(std::uint64_t fromAddress) const;
+        void request_disassembly_extend_down(std::uint64_t fromAddress) const;
+
+        void set_extension_result_callback(std::function<void(bool, Debugger::ExtensionResult)> callback);
+
+        void query_xrefs_to(std::uint64_t address, Model::XrefResultCallback callback) const;
+        void query_xrefs_from(std::uint64_t address, Model::XrefResultCallback callback) const;
+        void load_modules_and_disassemble() const;
 
         void ensure_data_loaded() const;
 
-        [[nodiscard]] StatusCode read_registers() const;
+        void request_registers() const;
 
-        [[nodiscard]] StatusCode load_threads() const;
+        void request_call_stack() const;
+
+        void request_threads() const;
 
         void clear_cached_data() const;
 
@@ -73,6 +81,12 @@ namespace Vertex::ViewModel
         void remove_breakpoint(std::uint32_t id) const;
         void remove_breakpoint_at(std::uint64_t address) const;
         void enable_breakpoint(std::uint32_t id, bool enable) const;
+
+        void set_breakpoint_condition(std::uint32_t breakpointId,
+                                      ::BreakpointConditionType conditionType,
+                                      std::string_view expression,
+                                      std::uint32_t hitCountTarget) const;
+        void clear_breakpoint_condition(std::uint32_t breakpointId) const;
 
         void set_watchpoint(std::uint64_t address, std::uint32_t size) const;
         void remove_watchpoint(std::uint32_t id) const;
@@ -98,7 +112,7 @@ namespace Vertex::ViewModel
         void select_module(std::string_view moduleName);
         [[nodiscard]] std::string get_selected_module() const;
 
-        [[nodiscard]] StatusCode load_module_imports_exports(std::string_view moduleName) const;
+        void request_module_imports_exports(std::string_view moduleName) const;
         [[nodiscard]] const std::vector<Debugger::ImportEntry>& get_imports() const;
         [[nodiscard]] const std::vector<Debugger::ExportEntry>& get_exports() const;
 
@@ -120,7 +134,7 @@ namespace Vertex::ViewModel
         void notify_view_update(ViewUpdateFlags flags) const;
         void on_process_opened(const Event::ProcessOpenEvent& event);
         void on_process_closed();
-        void on_debugger_event(const Debugger::DebuggerEvent& evt) const;
+        void on_engine_event(Debugger::DirtyFlags flags, const Debugger::EngineSnapshot& snapshot) const;
 
         std::uint32_t m_selectedStackFrame {};
         std::string m_selectedModule {};
@@ -131,5 +145,7 @@ namespace Vertex::ViewModel
 
         Event::EventBus& m_eventBus;
         Log::ILog& m_logService;
+
+        std::jthread m_initThread {};
     };
 }

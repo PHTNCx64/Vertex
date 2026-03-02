@@ -14,6 +14,8 @@
 extern "C" {
 #endif
 
+#pragma pack(push, 8)
+
     // ===============================================================================================================//
     // DEBUGGER CONSTANTS                                                                                             //
     // ===============================================================================================================//
@@ -507,8 +509,8 @@ extern "C" {
     {
         uint32_t breakpointId;
         uint32_t threadId;
-        uint64_t address;         // Address that was accessed
-        uint64_t accessAddress;   // Instruction that caused the access
+        uint64_t address;         // Watched memory address that was accessed
+        uint64_t accessAddress;   // Instruction pointer at debug exception (next instruction after access on x86)
         WatchpointType type;      // READ, WRITE, or ACCESS
         uint8_t size;             // Size of the access (1, 2, 4, 8 bytes)
     } WatchpointEvent;
@@ -533,9 +535,6 @@ extern "C" {
     typedef void (*VertexOnProcessExited)(int32_t exit_code, void* user_data);
     typedef void (*VertexOnOutputString)(const OutputStringEvent* event, void* user_data);
     typedef void (*VertexOnWatchpointHit)(const WatchpointEvent* event, void* user_data);
-    typedef void (*VertexOnStateChanged)(DebuggerState old_state, DebuggerState new_state, void* user_data);
-    typedef void (*VertexOnAttached)(uint32_t process_id, void* user_data);
-    typedef void (*VertexOnDetached)(uint32_t process_id, void* user_data);
     typedef void (*VertexOnError)(const DebuggerError* error, void* user_data);
 
     typedef struct VertexDebuggerCallbacks
@@ -560,23 +559,14 @@ extern "C" {
         // Debug output
         VertexOnOutputString on_output_string;      // Debug output string received
 
-        // State management
-        VertexOnStateChanged on_state_changed;      // Debugger state changed
-        VertexOnAttached on_attached;               // Successfully attached to process
-        VertexOnDetached on_detached;               // Detached from process
-
         // Error handling
         VertexOnError on_error;                     // Error occurred in debugger
 
         void* user_data;                            // User-defined data pointer passed to callbacks
     } DebuggerCallbacks;
 
-    // Helper macro to initialize callbacks struct with proper size
     #define VERTEX_INIT_DEBUGGER_CALLBACKS(cb) \
-        do { \
-            memset(&(cb), 0, sizeof(DebuggerCallbacks)); \
-            (cb).structSize = sizeof(DebuggerCallbacks); \
-        } while(0)
+        do { (cb) = (DebuggerCallbacks){0}; } while(0)
 
 
     typedef struct VertexWatchpoint
@@ -658,6 +648,8 @@ extern "C" {
         uint32_t basePointerRegId;                   // registerId of BP/FP register
         uint32_t flagsRegId;                         // registerId of FLAGS/NZCV register
     } RegisterAccessSet;
+
+#pragma pack(pop)
 
 #ifdef __cplusplus
 }

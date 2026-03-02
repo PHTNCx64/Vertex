@@ -4,6 +4,7 @@
 //
 #include <vertex/view/debuggerview.hh>
 #include <vertex/view/debugger/disassemblypanel.hh>
+#include <vertex/view/debugger/breakpointconditiondialog.hh>
 #include <vertex/view/debugger/breakpointspanel.hh>
 #include <vertex/view/debugger/watchpointspanel.hh>
 #include <vertex/view/debugger/importexportpanel.hh>
@@ -27,11 +28,10 @@
 
 namespace
 {
-    constexpr bool is_paused_state(const Vertex::Debugger::DebuggerState state)
+    constexpr bool is_inspectable_state(const Vertex::Debugger::DebuggerState state)
     {
         return state == Vertex::Debugger::DebuggerState::Paused ||
                state == Vertex::Debugger::DebuggerState::BreakpointHit ||
-               state == Vertex::Debugger::DebuggerState::Stepping ||
                state == Vertex::Debugger::DebuggerState::Exception;
     }
 }
@@ -57,8 +57,6 @@ namespace Vertex::View
         {
             vertex_event_callback(eventId, event);
         });
-
-        m_viewModel->start_worker();
 
         create_controls();
         create_menu_bar();
@@ -96,10 +94,10 @@ namespace Vertex::View
         m_menuBar = new wxMenuBar();
 
         m_debugMenu = new wxMenu();
-        m_debugMenu->Append(ID_ATTACH, wxString::FromUTF8(m_languageService.fetch_translation("debugger.menu.attach")) + "\tF5", wxString::FromUTF8(m_languageService.fetch_translation("debugger.menu.attachTooltip")));
+        m_debugMenu->Append(ID_ATTACH, wxString::FromUTF8(m_languageService.fetch_translation("debugger.menu.attach")), wxString::FromUTF8(m_languageService.fetch_translation("debugger.menu.attachTooltip")));
         m_debugMenu->Append(ID_DETACH, wxString::FromUTF8(m_languageService.fetch_translation("debugger.menu.detach")), wxString::FromUTF8(m_languageService.fetch_translation("debugger.menu.detachTooltip")));
         m_debugMenu->AppendSeparator();
-        m_debugMenu->Append(ID_CONTINUE, wxString::FromUTF8(m_languageService.fetch_translation("debugger.menu.continue")) + "\tF5", wxString::FromUTF8(m_languageService.fetch_translation("debugger.menu.continueTooltip")));
+        m_debugMenu->Append(ID_CONTINUE, wxString::FromUTF8(m_languageService.fetch_translation("debugger.menu.continue")), wxString::FromUTF8(m_languageService.fetch_translation("debugger.menu.continueTooltip")));
         m_debugMenu->Append(ID_PAUSE, wxString::FromUTF8(m_languageService.fetch_translation("debugger.menu.pause")) + "\tCtrl+P", wxString::FromUTF8(m_languageService.fetch_translation("debugger.menu.pauseTooltip")));
         m_debugMenu->AppendSeparator();
         m_debugMenu->Append(ID_STEP_INTO, wxString::FromUTF8(m_languageService.fetch_translation("debugger.menu.stepInto")) + "\tF11", wxString::FromUTF8(m_languageService.fetch_translation("debugger.menu.stepIntoTooltip")));
@@ -445,6 +443,46 @@ namespace Vertex::View
             m_viewModel->toggle_breakpoint(address);
         });
 
+        m_disassemblyPanel->set_breakpoint_enable_callback([this](std::uint32_t id, bool enable)
+        {
+            m_viewModel->enable_breakpoint(id, enable);
+        });
+
+        m_disassemblyPanel->set_breakpoint_remove_callback([this](std::uint32_t id)
+        {
+            m_viewModel->remove_breakpoint(id);
+        });
+
+        m_disassemblyPanel->set_breakpoint_edit_condition_callback([this]([[maybe_unused]] std::uint32_t id, const ::Vertex::Debugger::Breakpoint& bp)
+        {
+            View::Debugger::BreakpointConditionDialog dlg(this, m_languageService, bp);
+            if (dlg.ShowModal() == wxID_OK)
+            {
+                const auto conditionTypeIndex = dlg.get_condition_type();
+                const auto expression = dlg.get_expression().ToStdString();
+                const auto hitCountTarget = static_cast<std::uint32_t>(dlg.get_hit_count_target());
+
+                ::BreakpointConditionType conditionType{VERTEX_BP_COND_NONE};
+                switch (conditionTypeIndex)
+                {
+                    case 1: conditionType = VERTEX_BP_COND_EXPRESSION; break;
+                    case 2: conditionType = VERTEX_BP_COND_HIT_COUNT_EQUAL; break;
+                    case 3: conditionType = VERTEX_BP_COND_HIT_COUNT_GREATER; break;
+                    case 4: conditionType = VERTEX_BP_COND_HIT_COUNT_MULTIPLE; break;
+                    default: conditionType = VERTEX_BP_COND_NONE; break;
+                }
+
+                if (conditionType == VERTEX_BP_COND_NONE)
+                {
+                    m_viewModel->clear_breakpoint_condition(id);
+                }
+                else
+                {
+                    m_viewModel->set_breakpoint_condition(id, conditionType, expression, hitCountTarget);
+                }
+            }
+        });
+
         m_disassemblyPanel->set_run_to_cursor_callback([this](std::uint64_t address)
         {
             m_viewModel->run_to_cursor(address);
@@ -452,19 +490,35 @@ namespace Vertex::View
 
         m_disassemblyPanel->set_scroll_boundary_callback([this](std::uint64_t boundaryAddress, bool isTop)
         {
-            const auto status = isTop ? m_viewModel->disassemble_extend_up(boundaryAddress)
-                                       : m_viewModel->disassemble_extend_down(boundaryAddress);
-
-            if (status != StatusCode::STATUS_OK)
+            if (isTop)
             {
-                const auto errorKey = isTop ? "debugger.errors.failedExtendDisassemblyUpward"
-                                             : "debugger.errors.failedExtendDisassemblyDownward";
-                const auto errorMsg = wxString::Format(m_languageService.fetch_translation(errorKey).c_str(), boundaryAddress);
-                const auto titleMsg = m_languageService.fetch_translation("debugger.errors.disassemblyError");
-
-                wxMessageBox(wxString::FromUTF8(errorMsg), wxString::FromUTF8(titleMsg), wxOK | wxICON_ERROR, this);
+                m_viewModel->request_disassembly_extend_up(boundaryAddress);
+            }
+            else
+            {
+                m_viewModel->request_disassembly_extend_down(boundaryAddress);
             }
         });
+
+        m_disassemblyPanel->set_xref_query_callback(
+            [this](std::uint64_t address, ::Vertex::Debugger::XrefDirection direction,
+                   Vertex::View::Debugger::DisassemblyControl::XrefResultHandler onResult)
+            {
+                if (direction == ::Vertex::Debugger::XrefDirection::To)
+                {
+                    m_viewModel->query_xrefs_to(address, std::move(onResult));
+                }
+                else
+                {
+                    m_viewModel->query_xrefs_from(address, std::move(onResult));
+                }
+            });
+
+        m_viewModel->set_extension_result_callback(
+            [this](bool isTop, Vertex::Debugger::ExtensionResult result)
+            {
+                m_disassemblyPanel->set_extension_result(isTop, result);
+            });
 
         m_breakpointsPanel->set_goto_callback([this](std::uint64_t address)
         {
@@ -501,12 +555,6 @@ namespace Vertex::View
         m_watchpointsPanel->set_goto_accessor_callback([this](std::uint64_t address)
         {
             m_viewModel->navigate_to_address(address);
-            if (const auto status = m_viewModel->disassemble_at_address(address); status != StatusCode::STATUS_OK)
-            {
-                wxMessageBox(wxString::FromUTF8(wxString::Format(m_languageService.fetch_translation("debugger.errors.failedDisassembleAddress").c_str(), address)),
-                             wxString::FromUTF8(m_languageService.fetch_translation("debugger.errors.disassemblyError")), wxOK | wxICON_ERROR, this);
-            }
-            update_view(ViewUpdateFlags::DEBUGGER_DISASSEMBLY);
         });
 
         m_registersPanel->set_register_callback([](const std::string&, std::uint64_t)
@@ -515,11 +563,7 @@ namespace Vertex::View
 
         m_registersPanel->set_refresh_callback([this]()
         {
-            if (const auto status = m_viewModel->read_registers(); status != StatusCode::STATUS_OK)
-            {
-                wxMessageBox(wxString::FromUTF8(m_languageService.fetch_translation("debugger.errors.failedReadRegisters")),
-                             wxString::FromUTF8(m_languageService.fetch_translation("debugger.errors.registerError")), wxOK | wxICON_ERROR, this);
-            }
+            m_viewModel->request_registers();
         });
 
         m_stackPanel->set_select_frame_callback([this](std::uint32_t frameIndex)
@@ -549,12 +593,7 @@ namespace Vertex::View
         {
             m_importExportPanel->clear_selection();
 
-            if (m_viewModel->load_module_imports_exports(moduleName) == StatusCode::STATUS_OK)
-            {
-                m_importExportPanel->update_imports(m_viewModel->get_imports());
-                m_importExportPanel->update_exports(m_viewModel->get_exports());
-            }
-
+            m_viewModel->request_module_imports_exports(moduleName);
             m_viewModel->select_module(moduleName);
             update_view(ViewUpdateFlags::DEBUGGER_DISASSEMBLY);
         });
@@ -565,6 +604,11 @@ namespace Vertex::View
         Bind(wxEVT_MENU, &DebuggerView::on_attach_clicked, this, ID_ATTACH);
         Bind(wxEVT_MENU, &DebuggerView::on_detach_clicked, this, ID_DETACH);
         Bind(wxEVT_MENU, &DebuggerView::on_continue_clicked, this, ID_CONTINUE);
+        Bind(wxEVT_MENU, &DebuggerView::on_attach_or_continue, this, ID_ATTACH_OR_CONTINUE);
+
+        std::array<wxAcceleratorEntry, 1> accelEntries{};
+        accelEntries[0].Set(wxACCEL_NORMAL, WXK_F5, ID_ATTACH_OR_CONTINUE);
+        SetAcceleratorTable(wxAcceleratorTable(static_cast<int>(accelEntries.size()), accelEntries.data()));
         Bind(wxEVT_MENU, &DebuggerView::on_pause_clicked, this, ID_PAUSE);
         Bind(wxEVT_MENU, &DebuggerView::on_step_into_clicked, this, ID_STEP_INTO);
         Bind(wxEVT_MENU, &DebuggerView::on_step_over_clicked, this, ID_STEP_OVER);
@@ -606,19 +650,29 @@ namespace Vertex::View
             const auto& viewUpdateEvent = static_cast<const Event::ViewUpdateEvent&>(event);
             const auto flags = viewUpdateEvent.get_update_flags();
 
-            CallAfter([this, flags]()
+            m_pendingUpdateFlags = static_cast<ViewUpdateFlags>(
+                std::to_underlying(m_pendingUpdateFlags) | std::to_underlying(flags));
+
+            if (!m_updateScheduled)
             {
-                if (IsShown())
+                m_updateScheduled = true;
+                CallAfter([this]()
                 {
-                    update_view(flags);
-                }
-                else
-                {
-                    m_pendingUpdateFlags = static_cast<ViewUpdateFlags>(
-                        std::to_underlying(m_pendingUpdateFlags) | std::to_underlying(flags));
-                    m_hasPendingUpdate = true;
-                }
-            });
+                    m_updateScheduled = false;
+                    const auto pending = m_pendingUpdateFlags;
+                    m_pendingUpdateFlags = ViewUpdateFlags::NONE;
+
+                    if (IsShown())
+                    {
+                        update_view(pending);
+                    }
+                    else
+                    {
+                        m_hasPendingUpdate = true;
+                        m_pendingUpdateFlags = pending;
+                    }
+                });
+            }
         }
     }
 
@@ -653,40 +707,26 @@ namespace Vertex::View
              state == ::Vertex::Debugger::DebuggerState::Stepping ||
              state == ::Vertex::Debugger::DebuggerState::Exception);
 
-        const auto enteredPausedState = isPaused && !is_paused_state(m_lastState) && is_paused_state(state);
+        const auto enteredPausedState = is_inspectable_state(state) && (!is_inspectable_state(m_lastState) || m_lastState != state);
         m_lastState = state;
 
         const auto currentAddress = m_viewModel->get_current_address();
 
         if (enteredPausedState && currentAddress != 0)
         {
-            if (const auto status = m_viewModel->read_registers(); status != StatusCode::STATUS_OK)
-            {
-                wxMessageBox(wxString::FromUTF8(m_languageService.fetch_translation("debugger.errors.failedReadRegistersPause")),
-                             wxString::FromUTF8(m_languageService.fetch_translation("debugger.errors.registerError")), wxOK | wxICON_ERROR, this);
-            }
-
             const auto& disasm = m_viewModel->get_disassembly();
             const auto addressInRange = currentAddress >= disasm.startAddress &&
                 currentAddress < disasm.endAddress;
 
-            if (!addressInRange)
+            if (!addressInRange && !disasm.lines.empty())
             {
-                if (const auto status = m_viewModel->disassemble_at_address(currentAddress); status != StatusCode::STATUS_OK)
-                {
-                    wxMessageBox(wxString::FromUTF8(wxString::Format(m_languageService.fetch_translation("debugger.errors.failedDisassembleAddress").c_str(), currentAddress)),
-                                 wxString::FromUTF8(m_languageService.fetch_translation("debugger.errors.disassemblyError")), wxOK | wxICON_ERROR, this);
-                }
+                m_viewModel->request_disassembly(currentAddress);
             }
 
-            const auto& updatedDisasm = m_viewModel->get_disassembly();
-            if (!updatedDisasm.lines.empty())
-            {
-                m_disassemblyPanel->update_disassembly(updatedDisasm);
-                m_disassemblyPanel->set_breakpoints(m_viewModel->get_breakpoints());
-                m_disassemblyPanel->highlight_address(currentAddress);
-                m_lastHighlightedAddress = currentAddress;
-            }
+            m_disassemblyPanel->update_disassembly(disasm);
+            m_disassemblyPanel->set_breakpoints(m_viewModel->get_breakpoints());
+            m_disassemblyPanel->highlight_address(currentAddress);
+            m_lastHighlightedAddress = currentAddress;
 
             update_status_bar();
         }
@@ -695,16 +735,13 @@ namespace Vertex::View
         {
             const auto& disasm = m_viewModel->get_disassembly();
 
-            if (!disasm.lines.empty())
-            {
-                m_disassemblyPanel->update_disassembly(disasm);
-                m_disassemblyPanel->set_breakpoints(m_viewModel->get_breakpoints());
+            m_disassemblyPanel->update_disassembly(disasm);
+            m_disassemblyPanel->set_breakpoints(m_viewModel->get_breakpoints());
 
-                if (currentAddress != m_lastHighlightedAddress && currentAddress != 0)
-                {
-                    m_disassemblyPanel->highlight_address(currentAddress);
-                    m_lastHighlightedAddress = currentAddress;
-                }
+            if (currentAddress != m_lastHighlightedAddress && currentAddress != 0)
+            {
+                m_disassemblyPanel->highlight_address(currentAddress);
+                m_lastHighlightedAddress = currentAddress;
             }
         }
 
@@ -744,32 +781,37 @@ namespace Vertex::View
         {
         }
 
-        if (has_flag(flags, ViewUpdateFlags::DEBUGGER_IMPORTS_EXPORTS))
+        if (has_flag(flags, ViewUpdateFlags::DEBUGGER_MODULES))
         {
             const auto& modules = m_viewModel->get_modules();
             if (!modules.empty())
             {
-                m_importExportPanel->update_modules(modules);
+                const auto modulesChanged = m_importExportPanel->update_modules(modules);
 
                 auto selectedModule = m_viewModel->get_selected_module();
                 if (selectedModule.empty())
                 {
                     selectedModule = modules[0].name;
                     m_viewModel->select_module(selectedModule);
+                    m_importExportPanel->set_selected_module(selectedModule);
+                    m_viewModel->request_module_imports_exports(selectedModule);
                 }
-
-                m_importExportPanel->set_selected_module(selectedModule);
-
-                if (m_viewModel->load_module_imports_exports(selectedModule) == StatusCode::STATUS_OK)
+                else if (modulesChanged)
                 {
-                    m_importExportPanel->update_imports(m_viewModel->get_imports());
-                    m_importExportPanel->update_exports(m_viewModel->get_exports());
+                    m_importExportPanel->set_selected_module(selectedModule);
+                    m_viewModel->request_module_imports_exports(selectedModule);
                 }
             }
             else
             {
                 m_importExportPanel->clear();
             }
+        }
+
+        if (has_flag(flags, ViewUpdateFlags::DEBUGGER_IMPORTS_EXPORTS))
+        {
+            m_importExportPanel->update_imports(m_viewModel->get_imports());
+            m_importExportPanel->update_exports(m_viewModel->get_exports());
         }
 
         if (has_flag(flags, ViewUpdateFlags::DEBUGGER_THREADS))
@@ -793,7 +835,7 @@ namespace Vertex::View
         }
     }
 
-    void DebuggerView::update_toolbar_state()
+    void DebuggerView::update_toolbar_state() const
     {
         const auto attached = m_viewModel->is_attached();
         const auto state = m_viewModel->get_state();
@@ -816,10 +858,19 @@ namespace Vertex::View
         m_toolbar->EnableTool(ID_STEP_OVER, canStep);
         m_toolbar->EnableTool(ID_STEP_OUT, canStep);
 
+        if (attached && !m_refreshTimer->IsRunning())
+        {
+            m_refreshTimer->Start(StandardWidgetValues::TIMER_INTERVAL_MS);
+        }
+        else if (!attached && m_refreshTimer->IsRunning())
+        {
+            m_refreshTimer->Stop();
+        }
+
         m_toolbar->Refresh();
     }
 
-    void DebuggerView::update_status_bar()
+    void DebuggerView::update_status_bar() const
     {
         const auto attached = m_viewModel->is_attached();
         const auto state = m_viewModel->get_state();
@@ -927,6 +978,20 @@ namespace Vertex::View
     void DebuggerView::on_continue_clicked([[maybe_unused]] wxCommandEvent& event)
     {
         m_viewModel->continue_execution();
+    }
+
+    void DebuggerView::on_attach_or_continue([[maybe_unused]] wxCommandEvent& event)
+    {
+        if (!m_viewModel->is_attached())
+        {
+            m_viewModel->attach_debugger();
+            update_toolbar_state();
+            update_status_bar();
+        }
+        else
+        {
+            m_viewModel->continue_execution();
+        }
     }
 
     void DebuggerView::on_pause_clicked([[maybe_unused]] wxCommandEvent& event)
@@ -1045,21 +1110,9 @@ namespace Vertex::View
 
     void DebuggerView::on_show(wxShowEvent& event)
     {
-        if (event.IsShown())
+        if (event.IsShown() && m_hasPendingUpdate)
         {
-            if (m_viewModel->get_disassembly().lines.empty())
-            {
-                if (const auto status = m_viewModel->load_modules_and_disassemble(); status != StatusCode::STATUS_OK)
-                {
-                    wxMessageBox(wxString::FromUTF8(m_languageService.fetch_translation("debugger.errors.failedLoadModulesDisassemble")),
-                                 wxString::FromUTF8(m_languageService.fetch_translation("debugger.errors.debuggerError")), wxOK | wxICON_ERROR, this);
-                }
-            }
-
-            m_viewModel->ensure_data_loaded();
-
-            update_view(ViewUpdateFlags::DEBUGGER_ALL);
-
+            update_view(m_pendingUpdateFlags);
             m_pendingUpdateFlags = ViewUpdateFlags::NONE;
             m_hasPendingUpdate = false;
         }
@@ -1080,6 +1133,17 @@ namespace Vertex::View
         Show();
         Raise();
         m_viewModel->set_watchpoint(address, size);
-        update_view(ViewUpdateFlags::DEBUGGER_WATCHPOINTS);
+    }
+
+    bool DebuggerView::is_attached() const
+    {
+        return m_viewModel->is_attached();
+    }
+
+    void DebuggerView::attach_debugger()
+    {
+        m_viewModel->attach_debugger();
+        update_toolbar_state();
+        update_status_bar();
     }
 }

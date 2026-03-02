@@ -132,6 +132,7 @@ namespace Vertex::Scanner
         void cleanup_writer_regions(std::vector<WriterRegionMetadata>& regions) const;
         void cleanup_snapshot_regions(ScanSnapshot& snapshot) const;
         void save_snapshot_for_undo();
+        void reconcile_result_count();
 
         [[nodiscard]] FlatRecordBuffer read_records_from_regions(const std::vector<WriterRegionMetadata>& regions, std::size_t startIndex, std::size_t count, std::size_t valueSize, std::size_t firstValueSize) const;
 
@@ -145,6 +146,7 @@ namespace Vertex::Scanner
         MSVC_SUPPRESS_PADDING_WARNING
 
         alignas(std::hardware_destructive_interference_size) std::atomic<bool> m_scanAbort{};
+        alignas(std::hardware_destructive_interference_size) std::atomic<bool> m_resultsReconciled{true};
         alignas(std::hardware_destructive_interference_size) std::atomic<int> m_activeReaders{};
         alignas(std::hardware_destructive_interference_size) std::atomic<int> m_pendingWriterTasks{};
         alignas(std::hardware_destructive_interference_size) std::atomic<std::uint64_t> m_regionsScanned{};

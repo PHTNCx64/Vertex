@@ -194,16 +194,16 @@ extern "C"
 
         std::size_t index = 0;
 
-        for (const auto& [id, address, type, state, originalByte, hitCount, temporary] : manager.softwareBreakpoints | std::views::values)
+        for (const auto& bp : manager.softwareBreakpoints | std::views::values)
         {
             BreakpointInfo info{};
-            info.id = id;
-            info.address = address;
-            info.type = type;
-            info.state = state;
-            info.hitCount = hitCount;
-            info.temporary = temporary ? 1 : 0;
-            info.originalByte = originalByte;
+            info.id = bp.id;
+            info.address = bp.address;
+            info.type = bp.type;
+            info.state = bp.state;
+            info.hitCount = bp.hitCount;
+            info.temporary = bp.temporary ? 1 : 0;
+            info.originalByte = bp.originalByte;
             info.hwRegisterIndex = 0xFF;
             result[index++] = info;
         }
@@ -226,5 +226,130 @@ extern "C"
         *count = static_cast<std::uint32_t>(totalCount);
 
         return STATUS_OK;
+    }
+
+    VERTEX_EXPORT void VERTEX_API vertex_debugger_free_breakpoints(BreakpointInfo* breakpoints)
+    {
+        std::free(breakpoints);
+    }
+
+    VERTEX_EXPORT void VERTEX_API vertex_debugger_free_watchpoints(WatchpointInfo* watchpoints)
+    {
+        std::free(watchpoints);
+    }
+
+    VERTEX_EXPORT StatusCode VERTEX_API vertex_debugger_set_breakpoint_condition(const std::uint32_t breakpointId,
+                                                                                  const BreakpointCondition* condition)
+    {
+        if (condition == nullptr)
+        {
+            return STATUS_ERROR_INVALID_PARAMETER;
+        }
+
+        if (condition->type == VERTEX_BP_COND_EXPRESSION)
+        {
+            return STATUS_ERROR_NOT_IMPLEMENTED;
+        }
+
+        auto& manager = debugger::get_breakpoint_manager();
+        std::scoped_lock lock{manager.mutex};
+
+        if (auto it = manager.softwareBreakpoints.find(breakpointId); it != manager.softwareBreakpoints.end())
+        {
+            it->second.condition = *condition;
+            return STATUS_OK;
+        }
+
+        if (auto it = manager.hardwareBreakpoints.find(breakpointId); it != manager.hardwareBreakpoints.end())
+        {
+            it->second.condition = *condition;
+            return STATUS_OK;
+        }
+
+        return STATUS_ERROR_BREAKPOINT_NOT_FOUND;
+    }
+
+    VERTEX_EXPORT StatusCode VERTEX_API vertex_debugger_get_breakpoint_condition(const std::uint32_t breakpointId,
+                                                                                  BreakpointCondition* condition)
+    {
+        if (condition == nullptr)
+        {
+            return STATUS_ERROR_INVALID_PARAMETER;
+        }
+
+        auto& manager = debugger::get_breakpoint_manager();
+        std::scoped_lock lock{manager.mutex};
+
+        if (auto it = manager.softwareBreakpoints.find(breakpointId); it != manager.softwareBreakpoints.end())
+        {
+            *condition = it->second.condition;
+            return STATUS_OK;
+        }
+
+        if (auto it = manager.hardwareBreakpoints.find(breakpointId); it != manager.hardwareBreakpoints.end())
+        {
+            *condition = it->second.condition;
+            return STATUS_OK;
+        }
+
+        return STATUS_ERROR_BREAKPOINT_NOT_FOUND;
+    }
+
+    VERTEX_EXPORT StatusCode VERTEX_API vertex_debugger_clear_breakpoint_condition(const std::uint32_t breakpointId)
+    {
+        auto& manager = debugger::get_breakpoint_manager();
+        std::scoped_lock lock{manager.mutex};
+
+        if (auto it = manager.softwareBreakpoints.find(breakpointId); it != manager.softwareBreakpoints.end())
+        {
+            it->second.condition = {};
+            return STATUS_OK;
+        }
+
+        if (auto it = manager.hardwareBreakpoints.find(breakpointId); it != manager.hardwareBreakpoints.end())
+        {
+            it->second.condition = {};
+            return STATUS_OK;
+        }
+
+        return STATUS_ERROR_BREAKPOINT_NOT_FOUND;
+    }
+
+    VERTEX_EXPORT StatusCode VERTEX_API vertex_debugger_set_breakpoint_action([[maybe_unused]] const std::uint32_t breakpointId,
+                                                                               [[maybe_unused]] const BreakpointAction* action)
+    {
+        return STATUS_ERROR_NOT_IMPLEMENTED;
+    }
+
+    VERTEX_EXPORT StatusCode VERTEX_API vertex_debugger_get_breakpoint_action([[maybe_unused]] const std::uint32_t breakpointId,
+                                                                               BreakpointAction* action)
+    {
+        if (action == nullptr)
+        {
+            return STATUS_ERROR_INVALID_PARAMETER;
+        }
+
+        *action = {};
+        return STATUS_OK;
+    }
+
+    VERTEX_EXPORT StatusCode VERTEX_API vertex_debugger_reset_hit_count(const std::uint32_t breakpointId)
+    {
+        auto& manager = debugger::get_breakpoint_manager();
+        std::scoped_lock lock{manager.mutex};
+
+        if (auto it = manager.softwareBreakpoints.find(breakpointId); it != manager.softwareBreakpoints.end())
+        {
+            it->second.hitCount = 0;
+            return STATUS_OK;
+        }
+
+        if (auto it = manager.hardwareBreakpoints.find(breakpointId); it != manager.hardwareBreakpoints.end())
+        {
+            it->second.hitCount = 0;
+            return STATUS_OK;
+        }
+
+        return STATUS_ERROR_BREAKPOINT_NOT_FOUND;
     }
 }

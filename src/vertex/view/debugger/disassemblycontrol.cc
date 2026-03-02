@@ -3,11 +3,18 @@
 // Licensed under GPLv3.0 with Plugin Interface exceptions.
 //
 #include <vertex/view/debugger/disassemblycontrol.hh>
+#include <vertex/utility.hh>
 #include <wx/menu.h>
 #include <wx/clipbrd.h>
+#include <wx/dialog.h>
+#include <wx/listctrl.h>
+#include <wx/sizer.h>
+#include <wx/stattext.h>
+#include <wx/button.h>
 #include <fmt/format.h>
 #include <algorithm>
 #include <array>
+#include <ranges>
 #include <utility>
 
 namespace Vertex::View::Debugger
@@ -212,7 +219,7 @@ namespace Vertex::View::Debugger
             m_dragTargetIndex = get_column_at_x(mouseX);
             if (m_dragTargetIndex < 0)
             {
-                m_dragTargetIndex = COLUMN_COUNT - 1;
+                m_dragTargetIndex = (mouseX < m_leftOffset + m_columnPadding - m_hScrollOffset) ? 0 : COLUMN_COUNT - 1;
             }
 
             Refresh(false);
@@ -461,6 +468,7 @@ namespace Vertex::View::Debugger
     DisassemblyControl::DisassemblyControl(wxWindow* parent, Language::ILanguage& languageService, DisassemblyHeader* header)
         : wxScrolledWindow(parent, wxID_ANY, wxDefaultPosition, wxDefaultSize,
                            wxVSCROLL | wxHSCROLL | wxFULL_REPAINT_ON_RESIZE | wxWANTS_CHARS)
+        , m_loadingAnimTimer(this)
         , m_header(header)
         , m_languageService(languageService)
     {
@@ -498,6 +506,7 @@ namespace Vertex::View::Debugger
         Bind(wxEVT_SCROLLWIN_PAGEDOWN, &DisassemblyControl::on_scroll, this);
         Bind(wxEVT_SCROLLWIN_THUMBTRACK, &DisassemblyControl::on_scroll, this);
         Bind(wxEVT_SCROLLWIN_THUMBRELEASE, &DisassemblyControl::on_scroll, this);
+        Bind(wxEVT_TIMER, &DisassemblyControl::on_loading_anim_timer, this, m_loadingAnimTimer.GetId());
 
         SetScrollRate(m_charWidth, m_lineHeight);
 
@@ -526,19 +535,11 @@ namespace Vertex::View::Debugger
 
     void DisassemblyControl::set_disassembly(const ::Vertex::Debugger::DisassemblyRange& range)
     {
-        const bool dataUnchanged = (range.startAddress == m_range.startAddress &&
-                                    range.endAddress == m_range.endAddress &&
-                                    range.lines.size() == m_range.lines.size());
-
-        if (dataUnchanged)
-        {
-            m_fetchingMore = false;
-            return;
-        }
-
         std::uint64_t preservedAddress{};
         int preservedOffset{};
         bool hasPreservedPosition{};
+
+        const auto selectedAddress = get_selected_address();
 
         if (!m_range.lines.empty())
         {
@@ -555,13 +556,44 @@ namespace Vertex::View::Debugger
             }
         }
 
+        const bool isFullReload = m_range.lines.empty()
+            || range.lines.empty()
+            || (range.startAddress != m_range.startAddress && range.endAddress != m_range.endAddress);
+
         m_range = range;
         m_addressToLine.clear();
         m_fetchingMore = false;
 
+        if (isFullReload)
+        {
+            m_topEdgeState = EdgeState::Idle;
+            m_bottomEdgeState = EdgeState::Idle;
+            m_loadingAnimTimer.Stop();
+        }
+
         for (std::size_t i = 0; i < range.lines.size(); ++i)
         {
             m_addressToLine[range.lines[i].address] = i;
+        }
+
+        if (selectedAddress != 0)
+        {
+            if (const auto it = m_addressToLine.find(selectedAddress); it != m_addressToLine.end())
+            {
+                m_selectedLine = it->second;
+            }
+            else if (!range.lines.empty())
+            {
+                m_selectedLine = std::min(m_selectedLine, range.lines.size() - 1);
+            }
+            else
+            {
+                m_selectedLine = 0;
+            }
+        }
+        else
+        {
+            m_selectedLine = 0;
         }
 
         calculate_arrows();
@@ -588,9 +620,21 @@ namespace Vertex::View::Debugger
         Refresh();
     }
 
-    void DisassemblyControl::set_breakpoints(const std::vector<std::uint64_t>& addresses)
+    void DisassemblyControl::set_breakpoints(const std::vector<::Vertex::Debugger::Breakpoint>& breakpoints)
     {
-        m_breakpointAddresses = {addresses.begin(), addresses.end()};
+        m_breakpointMap.clear();
+        for (const auto& bp : breakpoints)
+        {
+            m_breakpointMap[bp.address] = BreakpointVisualInfo{
+                .id = bp.id,
+                .state = bp.state,
+                .hasCondition = bp.conditionType != VERTEX_BP_COND_NONE,
+                .conditionType = bp.conditionType,
+                .condition = bp.condition,
+                .hitCount = bp.hitCount,
+                .hitCountTarget = bp.hitCountTarget
+            };
+        }
         Refresh();
     }
 
@@ -658,6 +702,26 @@ namespace Vertex::View::Debugger
         m_breakpointToggleCallback = std::move(callback);
     }
 
+    void DisassemblyControl::set_breakpoint_enable_callback(BreakpointEnableCallback callback)
+    {
+        m_breakpointEnableCallback = std::move(callback);
+    }
+
+    void DisassemblyControl::set_breakpoint_remove_callback(BreakpointRemoveCallback callback)
+    {
+        m_breakpointRemoveCallback = std::move(callback);
+    }
+
+    void DisassemblyControl::set_breakpoint_edit_condition_callback(BreakpointEditConditionCallback callback)
+    {
+        m_breakpointEditConditionCallback = std::move(callback);
+    }
+
+    void DisassemblyControl::set_run_to_cursor_callback(RunToCursorCallback callback)
+    {
+        m_runToCursorCallback = std::move(callback);
+    }
+
     void DisassemblyControl::set_selection_change_callback(SelectionChangeCallback callback)
     {
         m_selectionChangeCallback = std::move(callback);
@@ -666,6 +730,156 @@ namespace Vertex::View::Debugger
     void DisassemblyControl::set_scroll_boundary_callback(ScrollBoundaryCallback callback)
     {
         m_scrollBoundaryCallback = std::move(callback);
+    }
+
+    void DisassemblyControl::set_xref_query_callback(XrefQueryCallback callback)
+    {
+        m_xrefQueryCallback = std::move(callback);
+    }
+
+    void DisassemblyControl::set_extension_result(const bool isTop, const ::Vertex::Debugger::ExtensionResult result)
+    {
+        auto& edgeState = isTop ? m_topEdgeState : m_bottomEdgeState;
+
+        switch (result)
+        {
+            case ::Vertex::Debugger::ExtensionResult::Success:
+                edgeState = EdgeState::Idle;
+                break;
+            case ::Vertex::Debugger::ExtensionResult::EndOfRange:
+                edgeState = EdgeState::EndOfRange;
+                break;
+            case ::Vertex::Debugger::ExtensionResult::Error:
+                edgeState = EdgeState::Error;
+                break;
+        }
+
+        m_fetchingMore = false;
+
+        if (m_topEdgeState != EdgeState::Loading && m_bottomEdgeState != EdgeState::Loading)
+        {
+            m_loadingAnimTimer.Stop();
+        }
+
+        Refresh();
+    }
+
+    void DisassemblyControl::render_edge_indicator(wxDC& dc, const bool isTop) const
+    {
+        const auto& edgeState = isTop ? m_topEdgeState : m_bottomEdgeState;
+        if (edgeState == EdgeState::Idle)
+        {
+            return;
+        }
+
+        const int clientWidth = GetClientSize().GetWidth();
+        const int indicatorHeight = FromDIP(DisassemblyIndicatorValues::INDICATOR_HEIGHT);
+
+        int scrollX{};
+        int scrollY{};
+        GetViewStart(&scrollX, &scrollY);
+
+        const int viewportTop = scrollY * m_lineHeight;
+        const int clientHeight = GetClientSize().GetHeight();
+        const int indicatorY = isTop ? viewportTop : (viewportTop + clientHeight - indicatorHeight);
+
+        dc.SetPen(*wxTRANSPARENT_PEN);
+        dc.SetBrush(wxBrush(m_colors.edgeIndicatorBg));
+        dc.DrawRectangle(0, indicatorY, clientWidth + scrollX * m_charWidth, indicatorHeight);
+
+        dc.SetFont(m_codeFont);
+        const int textY = indicatorY + (indicatorHeight - dc.GetCharHeight()) / 2;
+        const int textX = m_gutterWidth + m_arrowGutterWidth + FromDIP(8);
+
+        switch (edgeState)
+        {
+            case EdgeState::Loading:
+            {
+                wxString loadingStr = wxString::FromUTF8(
+                    m_languageService.fetch_translation("debugger.disassembly.loading"));
+                if (loadingStr.empty())
+                {
+                    loadingStr = "Loading";
+                }
+                const int dotCount = (m_loadingAnimFrame % (DisassemblyIndicatorValues::LOADING_DOT_COUNT + 1));
+                for (int i = 0; i < dotCount; ++i)
+                {
+                    loadingStr += ".";
+                }
+                dc.SetTextForeground(m_colors.loadingText);
+                dc.DrawText(loadingStr, textX, textY);
+                break;
+            }
+            case EdgeState::EndOfRange:
+            {
+                wxString endStr = wxString::FromUTF8(
+                    m_languageService.fetch_translation("debugger.disassembly.endOfRange"));
+                if (endStr.empty())
+                {
+                    endStr = "--- End of disassemblable range ---";
+                }
+                dc.SetTextForeground(m_colors.endOfRangeText);
+                dc.DrawText(endStr, textX, textY);
+                break;
+            }
+            case EdgeState::Error:
+            {
+                wxString errorStr = wxString::FromUTF8(
+                    m_languageService.fetch_translation("debugger.disassembly.extensionError"));
+                if (errorStr.empty())
+                {
+                    errorStr = "Failed to load more instructions.";
+                }
+                wxString retryStr = wxString::FromUTF8(
+                    m_languageService.fetch_translation("debugger.disassembly.retryHint"));
+                if (retryStr.empty())
+                {
+                    retryStr = "[Click to retry]";
+                }
+                dc.SetTextForeground(m_colors.errorText);
+                dc.DrawText(errorStr, textX, textY);
+                const int retryX = textX + dc.GetTextExtent(errorStr).GetWidth() + FromDIP(8);
+                dc.SetTextForeground(m_colors.errorRetryText);
+                dc.DrawText(retryStr, retryX, textY);
+                break;
+            }
+            case EdgeState::Idle:
+                break;
+        }
+    }
+
+    void DisassemblyControl::on_loading_anim_timer([[maybe_unused]] wxTimerEvent& event)
+    {
+        ++m_loadingAnimFrame;
+        Refresh();
+    }
+
+    void DisassemblyControl::retry_extension(const bool isTop)
+    {
+        if (!m_scrollBoundaryCallback || m_range.lines.empty())
+        {
+            return;
+        }
+
+        auto& edgeState = isTop ? m_topEdgeState : m_bottomEdgeState;
+        edgeState = EdgeState::Loading;
+        m_fetchingMore = true;
+
+        if (!m_loadingAnimTimer.IsRunning())
+        {
+            m_loadingAnimTimer.Start(DisassemblyIndicatorValues::LOADING_ANIM_INTERVAL_MS);
+        }
+
+        if (isTop)
+        {
+            m_scrollBoundaryCallback(m_range.startAddress, true);
+        }
+        else
+        {
+            m_scrollBoundaryCallback(m_range.endAddress, false);
+        }
+
+        Refresh();
     }
 
     void DisassemblyControl::on_paint([[maybe_unused]] wxPaintEvent& event)
@@ -686,6 +900,21 @@ namespace Vertex::View::Debugger
     {
         SetFocus();
 
+        const int indicatorHeight = FromDIP(DisassemblyIndicatorValues::INDICATOR_HEIGHT);
+        const int clientHeight = GetClientSize().GetHeight();
+
+        if (m_topEdgeState == EdgeState::Error && event.GetY() < indicatorHeight)
+        {
+            retry_extension(true);
+            return;
+        }
+
+        if (m_bottomEdgeState == EdgeState::Error && event.GetY() > clientHeight - indicatorHeight)
+        {
+            retry_extension(false);
+            return;
+        }
+
         int scrollX{};
         int scrollY{};
         GetViewStart(&scrollX, &scrollY);
@@ -695,9 +924,7 @@ namespace Vertex::View::Debugger
 
         if (lineIndex >= 0 && static_cast<std::size_t>(lineIndex) < m_range.lines.size())
         {
-            const int x = event.GetX() + scrollX * m_charWidth;
-
-            if (x < m_gutterWidth && m_breakpointToggleCallback)
+            if (event.GetX() < m_gutterWidth && m_breakpointToggleCallback)
             {
                 m_breakpointToggleCallback(m_range.lines[lineIndex].address);
             }
@@ -747,46 +974,139 @@ namespace Vertex::View::Debugger
             Refresh();
 
             const auto& line = m_range.lines[m_selectedLine];
+            const auto bpIt = m_breakpointMap.find(line.address);
+            const bool hasBp = (bpIt != m_breakpointMap.end());
 
             wxMenu menu;
-            menu.Append(1001, wxString::FromUTF8(m_languageService.fetch_translation("debugger.contextMenu.toggleBreakpoint")));
-            menu.Append(1002, wxString::FromUTF8(m_languageService.fetch_translation("debugger.contextMenu.runToCursor")));
+            menu.Append(MENU_ID_TOGGLE_BREAKPOINT, wxString::FromUTF8(m_languageService.fetch_translation("debugger.contextMenu.toggleBreakpoint")));
+            menu.Append(MENU_ID_RUN_TO_CURSOR, wxString::FromUTF8(m_languageService.fetch_translation("debugger.contextMenu.runToCursor")));
+
+            if (hasBp)
+            {
+                menu.AppendSeparator();
+                const bool isEnabled = (bpIt->second.state == ::Vertex::Debugger::BreakpointState::Enabled);
+                if (isEnabled)
+                {
+                    menu.Append(MENU_ID_ENABLE_BREAKPOINT, wxString::FromUTF8(m_languageService.fetch_translation("debugger.contextMenu.disableBreakpoint")));
+                }
+                else
+                {
+                    menu.Append(MENU_ID_ENABLE_BREAKPOINT, wxString::FromUTF8(m_languageService.fetch_translation("debugger.contextMenu.enableBreakpoint")));
+                }
+                menu.Append(MENU_ID_EDIT_CONDITION, wxString::FromUTF8(m_languageService.fetch_translation("debugger.contextMenu.editCondition")));
+                menu.Append(MENU_ID_REMOVE_BREAKPOINT, wxString::FromUTF8(m_languageService.fetch_translation("debugger.contextMenu.removeBreakpoint")));
+            }
+
             menu.AppendSeparator();
 
             if (line.branchTarget.has_value())
             {
-                menu.Append(1003, wxString::FromUTF8(wxString::Format(m_languageService.fetch_translation("debugger.contextMenu.followJump").c_str(), line.branchTarget.value())));
-                menu.AppendSeparator();
+                menu.Append(MENU_ID_FOLLOW_JUMP, wxString::FromUTF8(wxString::Format(m_languageService.fetch_translation("debugger.contextMenu.followJump").c_str(), line.branchTarget.value())));
             }
 
-            menu.Append(1004, wxString::FromUTF8(m_languageService.fetch_translation("debugger.contextMenu.copyAddress")));
-            menu.Append(1005, wxString::FromUTF8(m_languageService.fetch_translation("debugger.contextMenu.copyLine")));
+            menu.Append(MENU_ID_XREFS_TO, wxString::FromUTF8(m_languageService.fetch_translation("debugger.contextMenu.xrefsTo")));
+            menu.Append(MENU_ID_XREFS_FROM, wxString::FromUTF8(m_languageService.fetch_translation("debugger.contextMenu.xrefsFrom")));
+            menu.AppendSeparator();
+
+            menu.Append(MENU_ID_COPY_ADDRESS, wxString::FromUTF8(m_languageService.fetch_translation("debugger.contextMenu.copyAddress")));
+            menu.Append(MENU_ID_COPY_LINE, wxString::FromUTF8(m_languageService.fetch_translation("debugger.contextMenu.copyLine")));
 
             const int selection = GetPopupMenuSelectionFromUser(menu, event.GetPosition());
             switch (selection)
             {
-                case 1001:
+                case MENU_ID_TOGGLE_BREAKPOINT:
                     if (m_breakpointToggleCallback)
                     {
                         m_breakpointToggleCallback(line.address);
                     }
                     break;
-                case 1002:
+                case MENU_ID_RUN_TO_CURSOR:
+                    if (m_runToCursorCallback)
+                    {
+                        m_runToCursorCallback(line.address);
+                    }
                     break;
-                case 1003:
+                case MENU_ID_ENABLE_BREAKPOINT:
+                    if (hasBp && m_breakpointEnableCallback)
+                    {
+                        const bool isEnabled = (bpIt->second.state == ::Vertex::Debugger::BreakpointState::Enabled);
+                        m_breakpointEnableCallback(bpIt->second.id, !isEnabled);
+                    }
+                    break;
+                case MENU_ID_EDIT_CONDITION:
+                    if (hasBp && m_breakpointEditConditionCallback)
+                    {
+                        ::Vertex::Debugger::Breakpoint bp{};
+                        bp.id = bpIt->second.id;
+                        bp.address = line.address;
+                        bp.state = bpIt->second.state;
+                        bp.conditionType = bpIt->second.conditionType;
+                        bp.condition = bpIt->second.condition;
+                        bp.hitCount = bpIt->second.hitCount;
+                        bp.hitCountTarget = bpIt->second.hitCountTarget;
+                        m_breakpointEditConditionCallback(bpIt->second.id, bp);
+                    }
+                    break;
+                case MENU_ID_REMOVE_BREAKPOINT:
+                    if (hasBp && m_breakpointRemoveCallback)
+                    {
+                        m_breakpointRemoveCallback(bpIt->second.id);
+                    }
+                    break;
+                case MENU_ID_FOLLOW_JUMP:
                     if (line.branchTarget.has_value() && m_navigateCallback)
                     {
                         m_navigateCallback(line.branchTarget.value());
                     }
                     break;
-                case 1004:
+                case MENU_ID_XREFS_TO:
+                {
+                    if (m_xrefQueryCallback)
+                    {
+                        m_xrefQueryCallback(line.address, ::Vertex::Debugger::XrefDirection::To,
+                            [this, weak = std::weak_ptr<std::monostate>{m_lifetimeSentinel}]
+                            (std::vector<::Vertex::Debugger::XrefEntry> xrefs)
+                            {
+                                if (weak.expired()) { return; }
+                                show_xrefs_dialog(xrefs, ::Vertex::Debugger::XrefDirection::To);
+                            });
+                    }
+                    break;
+                }
+                case MENU_ID_XREFS_FROM:
+                {
+                    if (m_xrefQueryCallback)
+                    {
+                        m_xrefQueryCallback(line.address, ::Vertex::Debugger::XrefDirection::From,
+                            [this, weak = std::weak_ptr<std::monostate>{m_lifetimeSentinel}]
+                            (std::vector<::Vertex::Debugger::XrefEntry> xrefs)
+                            {
+                                if (weak.expired()) { return; }
+                                show_xrefs_dialog(xrefs, ::Vertex::Debugger::XrefDirection::From);
+                            });
+                    }
+                    break;
+                }
+                case MENU_ID_COPY_ADDRESS:
                     if (wxTheClipboard->Open())
                     {
-                        wxTheClipboard->SetData(new wxTextDataObject(fmt::format("{:X}", line.address)));
+                        auto addrText = fmt::format("{:X}", line.address);
+                        if (!line.symbolName.empty())
+                        {
+                            if (!line.moduleName.empty())
+                            {
+                                addrText += fmt::format(" {}!{}", line.moduleName, line.symbolName);
+                            }
+                            else
+                            {
+                                addrText += fmt::format(" {}", line.symbolName);
+                            }
+                        }
+                        wxTheClipboard->SetData(new wxTextDataObject(addrText));
                         wxTheClipboard->Close();
                     }
                     break;
-                case 1005:
+                case MENU_ID_COPY_LINE:
                     if (wxTheClipboard->Open())
                     {
                         std::string bytesStr;
@@ -794,8 +1114,30 @@ namespace Vertex::View::Debugger
                         {
                             bytesStr += fmt::format("{:02X} ", byte);
                         }
-                        const auto fullLine = fmt::format("{:X}  {}  {} {}",
-                            line.address, bytesStr, line.mnemonic, line.operands);
+                        auto fullLine = fmt::format("{:X}", line.address);
+                        if (!line.moduleName.empty())
+                        {
+                            if (!line.sectionName.empty())
+                            {
+                                fullLine += fmt::format(" [{}:{}]", line.moduleName, line.sectionName);
+                            }
+                            else
+                            {
+                                fullLine += fmt::format(" [{}]", line.moduleName);
+                            }
+                        }
+                        fullLine += fmt::format("  {}  {} {}", bytesStr, line.mnemonic, line.operands);
+                        if (!line.comment.empty())
+                        {
+                            if (line.isFunctionEntry)
+                            {
+                                fullLine += fmt::format("  <{}>", line.comment);
+                            }
+                            else
+                            {
+                                fullLine += fmt::format("  ; {}", line.comment);
+                            }
+                        }
                         wxTheClipboard->SetData(new wxTextDataObject(fullLine));
                         wxTheClipboard->Close();
                     }
@@ -815,7 +1157,15 @@ namespace Vertex::View::Debugger
             return;
         }
 
-        const int lines = rotation / delta * 3;
+        m_wheelAccumulator += rotation;
+        const int steps = m_wheelAccumulator / delta;
+        if (steps == 0)
+        {
+            return;
+        }
+        m_wheelAccumulator -= steps * delta;
+
+        const int lines = steps * 3;
 
         int scrollX{};
         int scrollY{};
@@ -984,15 +1334,66 @@ namespace Vertex::View::Debugger
         const int visibleLines = get_visible_line_count();
         const auto totalLines = static_cast<int>(m_range.lines.size());
 
-        if (scrollY <= SCROLL_BOUNDARY_THRESHOLD && m_range.startAddress > 0)
+        const bool nearTop = scrollY <= SCROLL_BOUNDARY_THRESHOLD;
+        const bool nearBottom = scrollY + visibleLines >= totalLines - SCROLL_BOUNDARY_THRESHOLD;
+        const bool scrollingDown = scrollY > m_previousScrollY;
+        m_previousScrollY = scrollY;
+
+        if (nearTop && m_range.startAddress == 0 && m_topEdgeState != EdgeState::EndOfRange)
         {
-            m_fetchingMore = true;
-            m_scrollBoundaryCallback(m_range.startAddress, true);
+            m_topEdgeState = EdgeState::EndOfRange;
+            Refresh();
         }
-        else if (scrollY + visibleLines >= totalLines - SCROLL_BOUNDARY_THRESHOLD)
+
+        const bool canExtendTop = nearTop && m_range.startAddress > 0
+            && m_topEdgeState != EdgeState::EndOfRange && m_topEdgeState != EdgeState::Loading;
+        const bool canExtendBottom = nearBottom
+            && m_bottomEdgeState != EdgeState::EndOfRange && m_bottomEdgeState != EdgeState::Loading;
+
+        if (canExtendTop && canExtendBottom)
         {
             m_fetchingMore = true;
+            if (scrollingDown)
+            {
+                m_bottomEdgeState = EdgeState::Loading;
+                if (!m_loadingAnimTimer.IsRunning())
+                {
+                    m_loadingAnimTimer.Start(DisassemblyIndicatorValues::LOADING_ANIM_INTERVAL_MS);
+                }
+                m_scrollBoundaryCallback(m_range.endAddress, false);
+            }
+            else
+            {
+                m_topEdgeState = EdgeState::Loading;
+                if (!m_loadingAnimTimer.IsRunning())
+                {
+                    m_loadingAnimTimer.Start(DisassemblyIndicatorValues::LOADING_ANIM_INTERVAL_MS);
+                }
+                m_scrollBoundaryCallback(m_range.startAddress, true);
+            }
+            Refresh();
+        }
+        else if (canExtendTop)
+        {
+            m_fetchingMore = true;
+            m_topEdgeState = EdgeState::Loading;
+            if (!m_loadingAnimTimer.IsRunning())
+            {
+                m_loadingAnimTimer.Start(DisassemblyIndicatorValues::LOADING_ANIM_INTERVAL_MS);
+            }
+            m_scrollBoundaryCallback(m_range.startAddress, true);
+            Refresh();
+        }
+        else if (canExtendBottom)
+        {
+            m_fetchingMore = true;
+            m_bottomEdgeState = EdgeState::Loading;
+            if (!m_loadingAnimTimer.IsRunning())
+            {
+                m_loadingAnimTimer.Start(DisassemblyIndicatorValues::LOADING_ANIM_INTERVAL_MS);
+            }
             m_scrollBoundaryCallback(m_range.endAddress, false);
+            Refresh();
         }
     }
 
@@ -1018,6 +1419,9 @@ namespace Vertex::View::Debugger
 
         render_arrow_gutter(dc, startLine, endLine);
         render_lines(dc, startLine, endLine);
+
+        render_edge_indicator(dc, true);
+        render_edge_indicator(dc, false);
     }
 
     void DisassemblyControl::render_background(wxDC& dc) const
@@ -1077,10 +1481,35 @@ namespace Vertex::View::Debugger
         switch (column)
         {
             case DisassemblyColumn::Address:
-                dc.SetTextForeground(m_colors.address);
+            {
                 dc.SetFont(m_codeFont);
-                dc.DrawText(fmt::format("{:016X}", line.address), x, y);
+                const auto addrText = fmt::format("{:016X}", line.address);
+                if (line.isFunctionEntry && !line.symbolName.empty())
+                {
+                    dc.SetTextForeground(m_colors.symbolLabel);
+                }
+                else
+                {
+                    dc.SetTextForeground(m_colors.address);
+                }
+                dc.DrawText(addrText, x, y);
+
+                if (!line.moduleName.empty())
+                {
+                    const auto addrExtent = dc.GetTextExtent(addrText);
+                    dc.SetTextForeground(m_colors.moduleContext);
+                    if (!line.sectionName.empty())
+                    {
+                        dc.DrawText(fmt::format("{}:{}", line.moduleName, line.sectionName),
+                            x + addrExtent.GetWidth() + m_charWidth, y);
+                    }
+                    else
+                    {
+                        dc.DrawText(line.moduleName, x + addrExtent.GetWidth() + m_charWidth, y);
+                    }
+                }
                 break;
+            }
 
             case DisassemblyColumn::Bytes:
             {
@@ -1148,13 +1577,34 @@ namespace Vertex::View::Debugger
                 break;
 
             case DisassemblyColumn::Comment:
+            {
                 if (!line.comment.empty())
                 {
                     dc.SetFont(m_codeFont);
-                    dc.SetTextForeground(m_colors.comment);
-                    dc.DrawText("; " + line.comment, x, y);
+                    if (line.isFunctionEntry)
+                    {
+                        dc.SetTextForeground(m_colors.symbolLabel);
+                        dc.SetFont(m_codeFontBold);
+                        dc.DrawText(fmt::format("<{}>", line.comment), x, y);
+                    }
+                    else if (!line.targetSymbolName.empty())
+                    {
+                        dc.SetTextForeground(m_colors.symbolLabel);
+                        dc.DrawText("; " + line.comment, x, y);
+                    }
+                    else if (line.comment.starts_with("["))
+                    {
+                        dc.SetTextForeground(m_colors.moduleContext);
+                        dc.DrawText("; " + line.comment, x, y);
+                    }
+                    else
+                    {
+                        dc.SetTextForeground(m_colors.comment);
+                        dc.DrawText("; " + line.comment, x, y);
+                    }
                 }
                 break;
+            }
 
             case DisassemblyColumn::COUNT:
                 std::unreachable();
@@ -1169,11 +1619,25 @@ namespace Vertex::View::Debugger
 
         const bool isSelected = (lineIndex == m_selectedLine);
         const bool isCurrent = (line.address == m_currentInstructionAddress);
-        const bool hasBreakpoint = m_breakpointAddresses.contains(line.address);
+        const auto bpIt = m_breakpointMap.find(line.address);
+        const bool hasBreakpoint = (bpIt != m_breakpointMap.end());
 
         if (hasBreakpoint)
         {
-            bgColor = m_colors.breakpointLine;
+            switch (bpIt->second.state)
+            {
+                case ::Vertex::Debugger::BreakpointState::Disabled:
+                    bgColor = m_colors.breakpointLineDisabled;
+                    break;
+                case ::Vertex::Debugger::BreakpointState::Pending:
+                    bgColor = m_colors.breakpointLinePending;
+                    break;
+                case ::Vertex::Debugger::BreakpointState::Enabled:
+                case ::Vertex::Debugger::BreakpointState::Error:
+                default:
+                    bgColor = m_colors.breakpointLine;
+                    break;
+            }
         }
         else if (isCurrent)
         {
@@ -1192,10 +1656,16 @@ namespace Vertex::View::Debugger
         dc.SetBrush(wxBrush(bgColor));
         dc.DrawRectangle(m_gutterWidth + m_arrowGutterWidth, y, GetVirtualSize().GetWidth(), m_lineHeight);
 
+        if (line.isFunctionEntry && lineIndex > 0)
+        {
+            dc.SetPen(wxPen(m_colors.functionEntryLine, 1, wxPENSTYLE_DOT));
+            dc.DrawLine(m_gutterWidth + m_arrowGutterWidth, y, GetVirtualSize().GetWidth(), y);
+        }
+
         constexpr int gutterX = 0;
         if (hasBreakpoint)
         {
-            render_breakpoint_marker(dc, gutterX + m_gutterWidth / 2, y + m_lineHeight / 2);
+            render_breakpoint_marker(dc, gutterX + m_gutterWidth / 2, y + m_lineHeight / 2, bpIt->second);
         }
         if (isCurrent)
         {
@@ -1248,12 +1718,79 @@ namespace Vertex::View::Debugger
         }
     }
 
-    void DisassemblyControl::render_breakpoint_marker(wxDC& dc, int x, int y) const
+    void DisassemblyControl::render_breakpoint_marker(wxDC& dc, int x, int y, const BreakpointVisualInfo& info) const
     {
         const int radius = FromDIP(6);
-        dc.SetPen(*wxTRANSPARENT_PEN);
-        dc.SetBrush(wxBrush(m_colors.breakpointMarker));
-        dc.DrawCircle(x, y, radius);
+        const bool isConditional = info.hasCondition;
+
+        auto draw_diamond = [&](int cx, int cy, int r)
+        {
+            std::array<wxPoint, 4> points = {{
+                {cx, cy - r},
+                {cx + r, cy},
+                {cx, cy + r},
+                {cx - r, cy}
+            }};
+            dc.DrawPolygon(static_cast<int>(points.size()), points.data());
+        };
+
+        switch (info.state)
+        {
+            case ::Vertex::Debugger::BreakpointState::Enabled:
+            {
+                dc.SetPen(*wxTRANSPARENT_PEN);
+                dc.SetBrush(wxBrush(m_colors.breakpointMarker));
+                if (isConditional)
+                {
+                    draw_diamond(x, y, radius);
+                }
+                else
+                {
+                    dc.DrawCircle(x, y, radius);
+                }
+                break;
+            }
+            case ::Vertex::Debugger::BreakpointState::Disabled:
+            {
+                dc.SetPen(wxPen(m_colors.breakpointMarkerDisabled, FromDIP(2)));
+                dc.SetBrush(*wxTRANSPARENT_BRUSH);
+                if (isConditional)
+                {
+                    draw_diamond(x, y, radius);
+                }
+                else
+                {
+                    dc.DrawCircle(x, y, radius);
+                }
+                break;
+            }
+            case ::Vertex::Debugger::BreakpointState::Pending:
+            {
+                dc.SetPen(*wxTRANSPARENT_PEN);
+                dc.SetBrush(wxBrush(m_colors.breakpointMarkerPending));
+                if (isConditional)
+                {
+                    draw_diamond(x, y, radius);
+                }
+                else
+                {
+                    dc.DrawCircle(x, y, radius);
+                }
+                break;
+            }
+            case ::Vertex::Debugger::BreakpointState::Error:
+            {
+                dc.SetPen(*wxTRANSPARENT_PEN);
+                dc.SetBrush(wxBrush(m_colors.breakpointMarker));
+                dc.DrawCircle(x, y, radius);
+
+                dc.SetPen(wxPen(*wxWHITE, FromDIP(2)));
+                const int xSize = radius / 2;
+                dc.DrawLine(x - xSize, y - xSize, x + xSize + 1, y + xSize + 1);
+                dc.DrawLine(x - xSize, y + xSize, x + xSize + 1, y - xSize - 1);
+                break;
+            }
+        }
     }
 
     void DisassemblyControl::render_current_instruction_marker(wxDC& dc, int x, int y) const
@@ -1339,6 +1876,31 @@ namespace Vertex::View::Debugger
                     usedRanges[level].emplace_back(minLine, maxLine);
                     break;
                 }
+            }
+        }
+
+        for (auto& line : m_range.lines)
+        {
+            line.isJumpTarget = false;
+            line.isCallTarget = false;
+        }
+
+        for (const auto& arrow : m_arrows)
+        {
+            if (arrow.targetOutOfBounds)
+            {
+                continue;
+            }
+
+            auto& targetLine = m_range.lines[arrow.targetLineIndex];
+
+            if (arrow.branchType == ::Vertex::Debugger::BranchType::Call)
+            {
+                targetLine.isCallTarget = true;
+            }
+            else
+            {
+                targetLine.isJumpTarget = true;
             }
         }
 
@@ -1517,7 +2079,7 @@ namespace Vertex::View::Debugger
         int totalWidth{};
         if (m_header)
         {
-            totalWidth = m_gutterWidth + m_arrowGutterWidth + m_header->get_total_width();
+            totalWidth = m_header->get_total_width();
         }
         else
         {
@@ -1535,6 +2097,148 @@ namespace Vertex::View::Debugger
             int scrollY{};
             GetViewStart(&scrollX, &scrollY);
             m_header->set_horizontal_scroll_offset(scrollX * m_charWidth);
+        }
+    }
+
+    void DisassemblyControl::show_xrefs_dialog(
+        const std::vector<::Vertex::Debugger::XrefEntry>& xrefs,
+        const ::Vertex::Debugger::XrefDirection direction)
+    {
+        const auto titleKey = direction == ::Vertex::Debugger::XrefDirection::To
+            ? "debugger.xrefs.dialogTitleTo"
+            : "debugger.xrefs.dialogTitleFrom";
+
+        wxDialog dialog(
+            this,
+            wxID_ANY,
+            wxString::FromUTF8(m_languageService.fetch_translation(titleKey)),
+            wxDefaultPosition,
+            FromDIP(wxSize(XrefDialogValues::DIALOG_WIDTH, XrefDialogValues::DIALOG_HEIGHT)),
+            wxDEFAULT_DIALOG_STYLE | wxRESIZE_BORDER
+        );
+
+        auto* sizer = new wxBoxSizer(wxVERTICAL);
+
+        if (xrefs.empty())
+        {
+            auto* noResultsLabel = new wxStaticText(
+                &dialog, wxID_ANY,
+                wxString::FromUTF8(m_languageService.fetch_translation("debugger.xrefs.noResults")));
+            sizer->Add(noResultsLabel, 0, wxALL | wxALIGN_CENTER, StandardWidgetValues::BORDER_TWICE);
+            sizer->Add(dialog.CreateStdDialogButtonSizer(wxOK), 0, wxEXPAND | wxALL, StandardWidgetValues::STANDARD_BORDER);
+            dialog.SetSizer(sizer);
+            dialog.ShowModal();
+            return;
+        }
+
+        auto* listCtrl = new wxListView(
+            &dialog, wxID_ANY, wxDefaultPosition, wxDefaultSize,
+            wxLC_REPORT | wxLC_SINGLE_SEL);
+
+        listCtrl->AppendColumn(
+            wxString::FromUTF8(m_languageService.fetch_translation("debugger.xrefs.columnType")),
+            wxLIST_FORMAT_LEFT, FromDIP(XrefDialogValues::COLUMN_WIDTH_TYPE));
+        listCtrl->AppendColumn(
+            wxString::FromUTF8(m_languageService.fetch_translation("debugger.xrefs.columnAddress")),
+            wxLIST_FORMAT_LEFT, FromDIP(XrefDialogValues::COLUMN_WIDTH_ADDRESS));
+        listCtrl->AppendColumn(
+            wxString::FromUTF8(m_languageService.fetch_translation("debugger.xrefs.columnSymbol")),
+            wxLIST_FORMAT_LEFT, FromDIP(XrefDialogValues::COLUMN_WIDTH_SYMBOL));
+
+        const auto typeCallStr = wxString::FromUTF8(m_languageService.fetch_translation("debugger.xrefs.typeCall"));
+        const auto typeJumpStr = wxString::FromUTF8(m_languageService.fetch_translation("debugger.xrefs.typeJump"));
+        const auto typeCondJumpStr = wxString::FromUTF8(m_languageService.fetch_translation("debugger.xrefs.typeCondJump"));
+        const auto typeLoopStr = wxString::FromUTF8(m_languageService.fetch_translation("debugger.xrefs.typeLoop"));
+
+        for (std::size_t i{}; i < xrefs.size(); ++i)
+        {
+            const auto& xref = xrefs[i];
+
+            wxString typeStr;
+            switch (xref.type)
+            {
+                case ::Vertex::Debugger::XrefType::Call:
+                    typeStr = typeCallStr;
+                    break;
+                case ::Vertex::Debugger::XrefType::UnconditionalJump:
+                    typeStr = typeJumpStr;
+                    break;
+                case ::Vertex::Debugger::XrefType::ConditionalJump:
+                    typeStr = typeCondJumpStr;
+                    break;
+                case ::Vertex::Debugger::XrefType::Loop:
+                    typeStr = typeLoopStr;
+                    break;
+            }
+
+            const auto idx = listCtrl->InsertItem(static_cast<long>(i), typeStr);
+
+            const auto displayAddress = direction == ::Vertex::Debugger::XrefDirection::To
+                ? xref.address
+                : xref.targetAddress;
+
+            listCtrl->SetItem(idx, 1, wxString::Format("0x%llX", displayAddress));
+            listCtrl->SetItem(idx, 2, wxString::FromUTF8(xref.symbolName));
+            listCtrl->SetItemData(idx, static_cast<long>(i));
+        }
+
+        std::uint64_t navigateTarget{};
+
+        const auto resolve_navigate_target = [listCtrl, &xrefs, direction](const long itemIndex) -> std::optional<std::uint64_t>
+        {
+            if (itemIndex < 0)
+            {
+                return std::nullopt;
+            }
+
+            const auto dataIdx = static_cast<std::size_t>(listCtrl->GetItemData(itemIndex));
+            if (dataIdx >= xrefs.size())
+            {
+                return std::nullopt;
+            }
+
+            return direction == ::Vertex::Debugger::XrefDirection::To
+                ? xrefs[dataIdx].address
+                : xrefs[dataIdx].targetAddress;
+        };
+
+        listCtrl->Bind(wxEVT_LIST_ITEM_ACTIVATED,
+            [&navigateTarget, &dialog, resolve_navigate_target](wxListEvent& evt)
+            {
+                if (const auto target = resolve_navigate_target(evt.GetIndex()); target.has_value())
+                {
+                    navigateTarget = target.value();
+                    dialog.EndModal(wxID_OK);
+                }
+            });
+
+        auto* goButton = new wxButton(&dialog, wxID_OK,
+            wxString::FromUTF8(m_languageService.fetch_translation("debugger.xrefs.navigate")));
+        auto* cancelButton = new wxButton(&dialog, wxID_CANCEL);
+
+        auto* buttonSizer = new wxBoxSizer(wxHORIZONTAL);
+        buttonSizer->AddStretchSpacer();
+        buttonSizer->Add(goButton, 0, wxRIGHT, StandardWidgetValues::STANDARD_BORDER);
+        buttonSizer->Add(cancelButton, 0);
+
+        sizer->Add(listCtrl, 1, wxEXPAND | wxALL, StandardWidgetValues::STANDARD_BORDER);
+        sizer->Add(buttonSizer, 0, wxEXPAND | wxALL, StandardWidgetValues::STANDARD_BORDER);
+
+        dialog.SetSizer(sizer);
+
+        goButton->Bind(wxEVT_BUTTON,
+            [listCtrl, &navigateTarget, &dialog, resolve_navigate_target](wxCommandEvent&)
+            {
+                if (const auto target = resolve_navigate_target(listCtrl->GetFirstSelected()); target.has_value())
+                {
+                    navigateTarget = target.value();
+                    dialog.EndModal(wxID_OK);
+                }
+            });
+
+        if (dialog.ShowModal() == wxID_OK && navigateTarget != 0 && m_navigateCallback)
+        {
+            m_navigateCallback(navigateTarget);
         }
     }
 

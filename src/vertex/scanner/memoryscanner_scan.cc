@@ -201,7 +201,11 @@ namespace Vertex::Scanner
 
                         if (batchResult.matchesFound >= BATCH_THRESHOLD)
                         {
-                            write_results_direct(batchResult, writerIndex);
+                            if (write_results_direct(batchResult, writerIndex) != StatusCode::STATUS_OK)
+                            {
+                                m_scanAbort.store(true, std::memory_order_release);
+                                break;
+                            }
                             batchResult.clear();
                         }
                     }
@@ -211,9 +215,12 @@ namespace Vertex::Scanner
             m_regionsScanned.fetch_add(1, std::memory_order_relaxed);
         }
 
-        if (batchResult.matchesFound > 0)
+        if (batchResult.matchesFound > 0 && !m_scanAbort.load(std::memory_order_acquire))
         {
-            write_results_direct(batchResult, writerIndex);
+            if (write_results_direct(batchResult, writerIndex) != StatusCode::STATUS_OK)
+            {
+                m_scanAbort.store(true, std::memory_order_release);
+            }
         }
 
         const int remainingReaders = m_activeReaders.fetch_sub(1, std::memory_order_acq_rel) - 1;
@@ -329,7 +336,11 @@ namespace Vertex::Scanner
 
                             if (batchResult.matchesFound >= WRITE_THRESHOLD)
                             {
-                                write_results_direct(batchResult, writerIndex);
+                                if (write_results_direct(batchResult, writerIndex) != StatusCode::STATUS_OK)
+                                {
+                                    m_scanAbort.store(true, std::memory_order_release);
+                                    break;
+                                }
                                 batchResult.clear();
                             }
                         }
@@ -364,7 +375,11 @@ namespace Vertex::Scanner
 
                         if (batchResult.matchesFound >= WRITE_THRESHOLD)
                         {
-                            write_results_direct(batchResult, writerIndex);
+                            if (write_results_direct(batchResult, writerIndex) != StatusCode::STATUS_OK)
+                            {
+                                m_scanAbort.store(true, std::memory_order_release);
+                                break;
+                            }
                             batchResult.clear();
                         }
                     }
@@ -374,9 +389,12 @@ namespace Vertex::Scanner
             }
         }
 
-        if (batchResult.matchesFound > 0)
+        if (batchResult.matchesFound > 0 && !m_scanAbort.load(std::memory_order_acquire))
         {
-            write_results_direct(batchResult, writerIndex);
+            if (write_results_direct(batchResult, writerIndex) != StatusCode::STATUS_OK)
+            {
+                m_scanAbort.store(true, std::memory_order_release);
+            }
         }
 
         if (m_activeReaders.fetch_sub(1, std::memory_order_acq_rel) == 1)

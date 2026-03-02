@@ -54,6 +54,9 @@ namespace Vertex::View
         void navigate_to_address(std::uint64_t address);
         void set_watchpoint(std::uint64_t address, std::uint32_t size);
 
+        [[nodiscard]] bool is_attached() const;
+        void attach_debugger();
+
     private:
         enum MenuIds
         {
@@ -62,6 +65,7 @@ namespace Vertex::View
             ID_RESTART,
             ID_CONTINUE,
             ID_PAUSE,
+            ID_ATTACH_OR_CONTINUE,
             ID_STEP_INTO,
             ID_STEP_OVER,
             ID_STEP_OUT,
@@ -103,13 +107,14 @@ namespace Vertex::View
 
         void vertex_event_callback(Event::EventId eventId, const Event::VertexEvent& event);
         void update_view(ViewUpdateFlags flags = ViewUpdateFlags::DEBUGGER_ALL);
-        void update_toolbar_state();
-        void update_status_bar();
+        void update_toolbar_state() const;
+        void update_status_bar() const;
         [[nodiscard]] bool toggle_view();
 
         void on_attach_clicked(wxCommandEvent& event);
         void on_detach_clicked(wxCommandEvent& event);
         void on_continue_clicked(wxCommandEvent& event);
+        void on_attach_or_continue(wxCommandEvent& event);
         void on_pause_clicked(wxCommandEvent& event);
         void on_step_into_clicked(wxCommandEvent& event);
         void on_step_over_clicked(wxCommandEvent& event);
@@ -160,6 +165,7 @@ namespace Vertex::View
 
         ViewUpdateFlags m_pendingUpdateFlags{ViewUpdateFlags::NONE};
         bool m_hasPendingUpdate{};
+        bool m_updateScheduled{};
 
         std::uint64_t m_lastHighlightedAddress{};
 

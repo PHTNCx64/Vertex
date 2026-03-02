@@ -113,6 +113,17 @@ namespace Vertex::Scanner
 
         for (const auto& writerMeta : m_writerRegions)
         {
+            if (!writerMeta.store.is_valid())
+            {
+                continue;
+            }
+
+            const auto* regionBase = static_cast<const char*>(writerMeta.store.base());
+            if (regionBase == nullptr)
+            {
+                continue;
+            }
+
             const std::size_t writerResultCount = writerMeta.atomics->resultCount.load(std::memory_order_acquire);
 
             if (cumulativeResults + writerResultCount <= startIndex)
@@ -126,13 +137,6 @@ namespace Vertex::Scanner
 
             if (resultsInThisRegion == 0)
                 break;
-
-            const auto* regionBase = static_cast<const char*>(writerMeta.store.base());
-            if (regionBase == nullptr)
-            {
-                cumulativeResults += writerResultCount;
-                continue;
-            }
 
             const std::size_t byteOffset = localStartIndex * recordSize;
             auto readPtr = regionBase + byteOffset;

@@ -25,62 +25,84 @@ namespace Vertex::ViewModel
         subscribe_to_events();
 
         m_model->set_event_handler(
-          [this](const Debugger::DebuggerEvent& evt)
+          [this](Debugger::DirtyFlags flags, const Debugger::EngineSnapshot& snapshot)
           {
-              on_debugger_event(evt);
+              on_engine_event(flags, snapshot);
           });
     }
 
     DebuggerViewModel::~DebuggerViewModel()
     {
-        stop_worker();
+        if (m_initThread.joinable())
+        {
+            m_initThread.join();
+        }
+        stop_engine();
         unsubscribe_from_events();
     }
 
-    void DebuggerViewModel::start_worker() const
+    void DebuggerViewModel::start_engine() const
     {
-        if (const auto status = m_model->start_worker(); status != StatusCode::STATUS_OK) [[unlikely]]
+        if (const auto status = m_model->start_engine(); status != StatusCode::STATUS_OK) [[unlikely]]
         {
-            m_logService.log_error(fmt::format("DebuggerViewModel: failed to start worker (status={})", static_cast<int>(status)));
+            m_logService.log_error(fmt::format("DebuggerViewModel: failed to start engine (status={})", static_cast<int>(status)));
         }
     }
 
-    void DebuggerViewModel::stop_worker() const
+    void DebuggerViewModel::stop_engine() const
     {
-        if (const auto status = m_model->stop_worker(); status != StatusCode::STATUS_OK) [[unlikely]]
+        if (const auto status = m_model->stop_engine(); status != StatusCode::STATUS_OK) [[unlikely]]
         {
-            m_logService.log_error(fmt::format("DebuggerViewModel: failed to stop worker (status={})", static_cast<int>(status)));
+            m_logService.log_error(fmt::format("DebuggerViewModel: failed to stop engine (status={})", static_cast<int>(status)));
         }
     }
 
-    void DebuggerViewModel::on_debugger_event(const Debugger::DebuggerEvent& evt) const
+    void DebuggerViewModel::on_engine_event(Debugger::DirtyFlags flags, [[maybe_unused]] const Debugger::EngineSnapshot& snapshot) const
     {
-        std::visit(
-          [this]<class T0>([[maybe_unused]] T0&& arg)
-          {
-              using T = std::decay_t<T0>;
+        ViewUpdateFlags viewFlags{};
 
-              if constexpr (std::is_same_v<T, Debugger::EvtStateChanged>)
-              {
-                  notify_view_update(ViewUpdateFlags::DEBUGGER_ALL);
-              }
-              else if constexpr (std::is_same_v<T, Debugger::EvtAttachFailed>)
-              {
-                  notify_view_update(ViewUpdateFlags::DEBUGGER_STATE);
-              }
-              else if constexpr (std::is_same_v<T, Debugger::EvtError>)
-              {
-                  notify_view_update(ViewUpdateFlags::DEBUGGER_STATE);
-              }
-              else if constexpr (std::is_same_v<T, Debugger::EvtWatchpointHit>)
-              {
-                   notify_view_update(ViewUpdateFlags::DEBUGGER_WATCHPOINTS);
-              }
-              else if constexpr (std::is_same_v<T, Debugger::EvtLog>)
-              {
-              }
-          },
-          evt);
+        if ((flags & Debugger::DirtyFlags::State) != Debugger::DirtyFlags::None)
+        {
+            viewFlags = viewFlags | ViewUpdateFlags::DEBUGGER_STATE;
+        }
+        if ((flags & Debugger::DirtyFlags::Registers) != Debugger::DirtyFlags::None)
+        {
+            viewFlags = viewFlags | ViewUpdateFlags::DEBUGGER_REGISTERS;
+        }
+        if ((flags & Debugger::DirtyFlags::Threads) != Debugger::DirtyFlags::None)
+        {
+            viewFlags = viewFlags | ViewUpdateFlags::DEBUGGER_THREADS;
+        }
+        if ((flags & Debugger::DirtyFlags::CallStack) != Debugger::DirtyFlags::None)
+        {
+            viewFlags = viewFlags | ViewUpdateFlags::DEBUGGER_STACK;
+        }
+        if ((flags & Debugger::DirtyFlags::Modules) != Debugger::DirtyFlags::None)
+        {
+            viewFlags = viewFlags | ViewUpdateFlags::DEBUGGER_MODULES;
+        }
+        if ((flags & Debugger::DirtyFlags::ImportsExports) != Debugger::DirtyFlags::None)
+        {
+            viewFlags = viewFlags | ViewUpdateFlags::DEBUGGER_IMPORTS_EXPORTS;
+        }
+        if ((flags & Debugger::DirtyFlags::Disassembly) != Debugger::DirtyFlags::None)
+        {
+            viewFlags = viewFlags | ViewUpdateFlags::DEBUGGER_DISASSEMBLY;
+        }
+        if ((flags & Debugger::DirtyFlags::Breakpoints) != Debugger::DirtyFlags::None)
+        {
+            viewFlags = viewFlags | ViewUpdateFlags::DEBUGGER_BREAKPOINTS
+                                  | ViewUpdateFlags::DEBUGGER_DISASSEMBLY;
+        }
+        if ((flags & Debugger::DirtyFlags::Watchpoints) != Debugger::DirtyFlags::None)
+        {
+            viewFlags = viewFlags | ViewUpdateFlags::DEBUGGER_WATCHPOINTS;
+        }
+
+        if (viewFlags != ViewUpdateFlags{})
+        {
+            notify_view_update(viewFlags);
+        }
     }
 
     void DebuggerViewModel::subscribe_to_events()
@@ -97,7 +119,7 @@ namespace Vertex::ViewModel
         m_eventBus.subscribe<Event::ViewEvent>(m_viewModelName, Event::APPLICATION_SHUTDOWN_EVENT,
                                                [this](const Event::ViewEvent&)
                                                {
-                                                   stop_worker();
+                                                   stop_engine();
                                                });
 
         m_eventBus.subscribe<Event::ProcessOpenEvent>(m_viewModelName, Event::PROCESS_OPEN_EVENT,
@@ -131,27 +153,27 @@ namespace Vertex::ViewModel
         m_selectedModule.clear();
         m_selectedStackFrame = 0;
 
-        start_worker();
+        start_engine();
 
-        if (const auto status = load_modules_and_disassemble(); status != StatusCode::STATUS_OK)
-        {
-            m_logService.log_error(fmt::format("DebuggerViewModel: failed to load modules and disassemble on process open (status={})", static_cast<int>(status)));
-        }
+        std::jthread prevThread{};
+        std::swap(prevThread, m_initThread);
 
-        if (const auto status = read_registers(); status != StatusCode::STATUS_OK)
-        {
-            m_logService.log_error(fmt::format("DebuggerViewModel: failed to read registers on process open (status={})", static_cast<int>(status)));
-        }
+        m_initThread = std::jthread(
+            [this, prev = std::move(prevThread)]() mutable
+            {
+                if (prev.joinable())
+                {
+                    prev.join();
+                }
 
-        if (const auto status = load_threads(); status != StatusCode::STATUS_OK)
-        {
-            m_logService.log_error(fmt::format("DebuggerViewModel: failed to load threads on process open (status={})", static_cast<int>(status)));
-        }
+                load_modules_and_disassemble();
+            });
     }
 
     void DebuggerViewModel::on_process_closed()
     {
         detach_debugger();
+        stop_engine();
         clear_cached_data();
         m_selectedModule.clear();
         m_selectedStackFrame = 0;
@@ -182,109 +204,81 @@ namespace Vertex::ViewModel
 
     void DebuggerViewModel::refresh_data() const { m_model->refresh_data(); }
 
-    StatusCode DebuggerViewModel::disassemble_at_address(const std::uint64_t address) const
+    void DebuggerViewModel::request_disassembly(const std::uint64_t address) const
     {
-        const StatusCode status = m_model->disassemble_at_address(address);
-        if (status == StatusCode::STATUS_OK) [[likely]]
-        {
-            notify_view_update(ViewUpdateFlags::DEBUGGER_DISASSEMBLY);
-        }
-        return status;
+        m_model->request_disassembly(address);
     }
 
-    StatusCode DebuggerViewModel::disassemble_extend_up(const std::uint64_t fromAddress) const
+    void DebuggerViewModel::request_disassembly_extend_up(const std::uint64_t fromAddress) const
     {
-        const StatusCode status = m_model->disassemble_extend_up(fromAddress);
-        notify_view_update(ViewUpdateFlags::DEBUGGER_DISASSEMBLY);
-        return status;
+        m_model->request_disassembly_extend_up(fromAddress);
     }
 
-    StatusCode DebuggerViewModel::disassemble_extend_down(const std::uint64_t fromAddress) const
+    void DebuggerViewModel::request_disassembly_extend_down(const std::uint64_t fromAddress) const
     {
-        const StatusCode status = m_model->disassemble_extend_down(fromAddress);
-        notify_view_update(ViewUpdateFlags::DEBUGGER_DISASSEMBLY);
-        return status;
+        m_model->request_disassembly_extend_down(fromAddress);
     }
 
-    StatusCode DebuggerViewModel::load_modules_and_disassemble() const
+    void DebuggerViewModel::set_extension_result_callback(std::function<void(bool, Debugger::ExtensionResult)> callback)
     {
-        StatusCode status = m_model->load_modules();
-        if (status != StatusCode::STATUS_OK) [[unlikely]]
-        {
-            return status;
-        }
-
-        notify_view_update(ViewUpdateFlags::DEBUGGER_IMPORTS_EXPORTS);
-
-        const auto& modules = m_model->get_cached_modules();
-        if (modules.empty()) [[unlikely]]
-        {
-            return StatusCode::STATUS_ERROR_GENERAL;
-        }
-
-        const std::uint64_t entryPoint = modules[0].baseAddress;
-
-        status = m_model->disassemble_at_address(entryPoint);
-        if (status == StatusCode::STATUS_OK) [[likely]]
-        {
-            notify_view_update(ViewUpdateFlags::DEBUGGER_DISASSEMBLY);
-        }
-
-        return status;
+        m_model->set_extension_result_handler(std::move(callback));
     }
 
-    StatusCode DebuggerViewModel::read_registers() const
+    void DebuggerViewModel::query_xrefs_to(const std::uint64_t address, Model::XrefResultCallback callback) const
     {
-        const StatusCode status = m_model->read_registers();
-        if (status == StatusCode::STATUS_OK) [[likely]]
-        {
-            notify_view_update(ViewUpdateFlags::DEBUGGER_REGISTERS);
-        }
-        return status;
+        m_model->query_xrefs_to(address, std::move(callback));
     }
 
-    StatusCode DebuggerViewModel::load_threads() const
+    void DebuggerViewModel::query_xrefs_from(const std::uint64_t address, Model::XrefResultCallback callback) const
     {
-        const StatusCode status = m_model->load_threads();
-        if (status == StatusCode::STATUS_OK) [[likely]]
-        {
-            notify_view_update(ViewUpdateFlags::DEBUGGER_THREADS);
-        }
-        return status;
+        m_model->query_xrefs_from(address, std::move(callback));
+    }
+
+    void DebuggerViewModel::load_modules_and_disassemble() const
+    {
+        m_model->request_modules();
+    }
+
+    void DebuggerViewModel::request_registers() const
+    {
+        m_model->request_registers();
+    }
+
+    void DebuggerViewModel::request_call_stack() const
+    {
+        m_model->request_call_stack();
+    }
+
+    void DebuggerViewModel::request_threads() const
+    {
+        m_model->request_threads();
     }
 
     void DebuggerViewModel::ensure_data_loaded() const
     {
         if (get_modules().empty())
         {
-            if (const auto status = load_modules_and_disassemble(); status != StatusCode::STATUS_OK)
-            {
-                m_logService.log_error(fmt::format("DebuggerViewModel: failed to load modules and disassemble (status={})", static_cast<int>(status)));
-            }
+            load_modules_and_disassemble();
         }
         else if (get_disassembly().lines.empty() && !get_modules().empty())
         {
             const auto& modules = get_modules();
-            if (const auto status = disassemble_at_address(modules[0].baseAddress); status != StatusCode::STATUS_OK)
-            {
-                m_logService.log_error(fmt::format("DebuggerViewModel: failed to disassemble at base address (status={})", static_cast<int>(status)));
-            }
+            request_disassembly(modules[0].baseAddress);
         }
 
         if (get_registers().generalPurpose.empty())
         {
-            if (const auto status = read_registers(); status != StatusCode::STATUS_OK)
-            {
-                m_logService.log_error(fmt::format("DebuggerViewModel: failed to read registers (status={})", static_cast<int>(status)));
-            }
+            request_registers();
         }
 
         if (get_threads().empty())
         {
-            if (const auto status = load_threads(); status != StatusCode::STATUS_OK)
-            {
-                m_logService.log_error(fmt::format("DebuggerViewModel: failed to load threads (status={})", static_cast<int>(status)));
-            }
+            request_threads();
+        }
+
+        if (get_call_stack().frames.empty() && is_attached())
+        {
+            request_call_stack();
         }
     }
 
@@ -303,13 +297,25 @@ namespace Vertex::ViewModel
 
     void DebuggerViewModel::enable_breakpoint(const std::uint32_t id, const bool enable) const { m_model->enable_breakpoint(id, enable); }
 
+    void DebuggerViewModel::set_breakpoint_condition(const std::uint32_t breakpointId,
+                                                      const ::BreakpointConditionType conditionType,
+                                                      const std::string_view expression,
+                                                      const std::uint32_t hitCountTarget) const
+    {
+        m_model->set_breakpoint_condition(breakpointId, conditionType, expression, hitCountTarget);
+    }
+
+    void DebuggerViewModel::clear_breakpoint_condition(const std::uint32_t breakpointId) const
+    {
+        m_model->clear_breakpoint_condition(breakpointId);
+    }
+
     void DebuggerViewModel::set_watchpoint(const std::uint64_t address, const std::uint32_t size) const
     {
         if (const auto status = m_model->set_watchpoint(address, size); status != StatusCode::STATUS_OK)
         {
             m_logService.log_error(fmt::format("DebuggerViewModel: failed to set watchpoint at 0x{:X} (status={})", address, static_cast<int>(status)));
         }
-        notify_view_update(ViewUpdateFlags::DEBUGGER_WATCHPOINTS);
     }
 
     void DebuggerViewModel::remove_watchpoint(const std::uint32_t id) const
@@ -318,7 +324,6 @@ namespace Vertex::ViewModel
         {
             m_logService.log_error(fmt::format("DebuggerViewModel: failed to remove watchpoint {} (status={})", id, static_cast<int>(status)));
         }
-        notify_view_update(ViewUpdateFlags::DEBUGGER_WATCHPOINTS);
     }
 
     void DebuggerViewModel::enable_watchpoint(const std::uint32_t id, const bool enable) const
@@ -327,7 +332,6 @@ namespace Vertex::ViewModel
         {
             m_logService.log_error(fmt::format("DebuggerViewModel: failed to {} watchpoint {} (status={})", enable ? "enable" : "disable", id, static_cast<int>(status)));
         }
-        notify_view_update(ViewUpdateFlags::DEBUGGER_WATCHPOINTS);
     }
 
     const std::vector<Debugger::Watchpoint>& DebuggerViewModel::get_watchpoints() const { return m_model->get_cached_watchpoints(); }
@@ -354,8 +358,7 @@ namespace Vertex::ViewModel
 
     const Debugger::ExceptionData& DebuggerViewModel::get_exception_info() const
     {
-        static Debugger::ExceptionData empty{};
-        return empty;
+        return m_model->get_cached_exception();
     }
 
     void DebuggerViewModel::select_stack_frame(const std::uint32_t frameIndex)
@@ -385,18 +388,14 @@ namespace Vertex::ViewModel
         if (it != modules.end()) [[likely]]
         {
             navigate_to_address(it->baseAddress);
-            if (const auto status = disassemble_at_address(it->baseAddress); status != StatusCode::STATUS_OK) [[unlikely]]
-            {
-                m_logService.log_error(fmt::format("DebuggerViewModel: failed to disassemble at module base 0x{:X} (status={})", it->baseAddress, static_cast<int>(status)));
-            }
         }
     }
 
     std::string DebuggerViewModel::get_selected_module() const { return m_selectedModule; }
 
-    StatusCode DebuggerViewModel::load_module_imports_exports(const std::string_view moduleName) const
+    void DebuggerViewModel::request_module_imports_exports(const std::string_view moduleName) const
     {
-        return m_model->load_module_imports_exports(moduleName);
+        m_model->request_module_imports_exports(moduleName);
     }
 
     const std::vector<Debugger::ImportEntry>& DebuggerViewModel::get_imports() const

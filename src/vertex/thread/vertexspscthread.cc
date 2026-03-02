@@ -152,11 +152,22 @@ namespace Vertex::Thread
             m_isBusy.store(true, std::memory_order_relaxed);
             m_pendingTasks.fetch_sub(1, std::memory_order_relaxed);
 
+            std::future<StatusCode> future {};
+            bool hasFuture {};
+
             try
             {
-                std::future<StatusCode> future{task.get_future()};
+                future = task.get_future();
+                hasFuture = true;
+            }
+            catch (const std::future_error&)
+            {
+            }
 
+            try
+            {
                 task();
+                if (hasFuture)
                 {
                     std::scoped_lock lock{m_futureMutex};
                     m_lastFuture = std::move(future);

@@ -80,14 +80,23 @@ extern "C"
         }
 
         ProcessInternal::ModuleImportCache newCache{};
+        auto publish_cache = [&](ProcessInternal::ModuleImportCache&& builtCache)
+        {
+            std::scoped_lock lock{cache.cacheMutex};
+            auto [it, inserted] = cache.importCache.try_emplace(baseAddress);
+            if (inserted)
+            {
+                it->second.imports.swap(builtCache.imports);
+                it->second.stringStorage.swap(builtCache.stringStorage);
+            }
+            *imports = it->second.imports.empty() ? nullptr : it->second.imports.data();
+            *count = static_cast<uint32_t>(it->second.imports.size());
+            return StatusCode::STATUS_OK;
+        };
 
         if (importRva == 0)
         {
-            std::scoped_lock lock{cache.cacheMutex};
-            cache.importCache[baseAddress] = std::move(newCache);
-            *imports = nullptr;
-            *count = 0;
-            return StatusCode::STATUS_OK;
+            return publish_cache(std::move(newCache));
         }
 
         uint64_t importDescAddr = baseAddress + importRva;
@@ -226,12 +235,6 @@ extern "C"
             importDescAddr += sizeof(IMAGE_IMPORT_DESCRIPTOR);
         }
 
-        std::scoped_lock lock{cache.cacheMutex};
-        cache.importCache[baseAddress] = std::move(newCache);
-        auto& cached = cache.importCache[baseAddress];
-        *imports = cached.imports.empty() ? nullptr : cached.imports.data();
-        *count = static_cast<uint32_t>(cached.imports.size());
-
-        return StatusCode::STATUS_OK;
+        return publish_cache(std::move(newCache));
     }
 }

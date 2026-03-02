@@ -7,7 +7,9 @@
 #include <vertex/thread/ithreaddispatcher.hh>
 #include <vertex/thread/vertexspscthread.hh>
 #include <vertex/thread/vertexmpscthread.hh>
+#include <vertex/thread/vertexprioritythread.hh>
 
+#include <atomic>
 #include <memory>
 #include <mutex>
 #include <unordered_map>
@@ -37,6 +39,21 @@ namespace Vertex::Thread
         [[nodiscard]] StatusCode
         dispatch_fire_and_forget(ThreadChannel channel, std::packaged_task<StatusCode()>&& task) override;
 
+        [[nodiscard]] std::expected<RecurringTaskHandle, StatusCode>
+        schedule_recurring(ThreadChannel channel,
+                           DispatchPriority priority,
+                           RecurringPolicy policy,
+                           std::chrono::milliseconds delay,
+                           std::function<StatusCode()> task,
+                           RecurringFailurePolicy failurePolicy = RecurringFailurePolicy::Continue) override;
+
+        [[nodiscard]] StatusCode cancel_recurring(RecurringTaskHandle handle) override;
+
+        [[nodiscard]] std::expected<std::future<StatusCode>, StatusCode>
+        dispatch_with_priority(ThreadChannel channel,
+                               DispatchPriority priority,
+                               std::packaged_task<StatusCode()>&& task) override;
+
         [[nodiscard]] StatusCode configure(std::uint64_t featureFlags) override;
         [[nodiscard]] StatusCode start() override;
         [[nodiscard]] StatusCode stop() override;
@@ -57,6 +74,11 @@ namespace Vertex::Thread
         void destroy_shared_thread();
 
         [[nodiscard]] std::expected<std::future<StatusCode>, StatusCode>
+        dispatch_locked(ThreadChannel channel, std::packaged_task<StatusCode()>&& task);
+
+        [[nodiscard]] bool is_dependent_mode() const noexcept;
+
+        [[nodiscard]] std::expected<std::future<StatusCode>, StatusCode>
         dispatch_to_mpsc(std::packaged_task<StatusCode()>&& task) const;
 
         [[nodiscard]] std::expected<std::future<StatusCode>, StatusCode>
@@ -67,10 +89,12 @@ namespace Vertex::Thread
 
         std::unique_ptr<VertexMPSCThread> m_sharedThread {};
         std::unordered_map<ThreadChannel, std::unique_ptr<VertexSPSCThread>> m_dedicatedThreads {};
-        std::unique_ptr<VertexSPSCThread> m_dedicatedDebuggerThread {};
+        std::unique_ptr<VertexPriorityThread> m_debuggerPriorityThread {};
 
         std::unordered_map<ThreadChannel, std::vector<std::unique_ptr<VertexSPSCThread>>> m_workerPools {};
         std::unordered_map<ThreadChannel, std::size_t> m_workerPoolLogicalSizes {};
+
+        std::atomic<std::uint64_t> m_epoch {};
 
         mutable std::mutex m_mutex {};
     };

@@ -14,6 +14,8 @@
 extern "C" {
 #endif
 
+#pragma pack(push, 8)
+
 // ===============================================================================================================//
 // PROCESS CONSTANTS                                                                                              //
 // ===============================================================================================================//
@@ -100,6 +102,8 @@ typedef struct VertexModuleExport
     void* relocationTable;
     int32_t characteristics;
 } ModuleExport;
+
+#pragma pack(pop)
 
 #ifdef __cplusplus
 }

@@ -13,6 +13,7 @@
 #include <Windows.h>
 
 #include <algorithm>
+#include <deque>
 #include <mutex>
 #include <optional>
 #include <string>
@@ -28,23 +29,45 @@ namespace ProcessInternal
     struct ModuleImportCache final
     {
         std::vector<ModuleImport> imports{};
-        std::vector<std::string> stringStorage{};
+        std::deque<std::string> stringStorage{};
     };
 
     struct ModuleExportCache final
     {
         std::vector<ModuleExport> exports{};
-        std::vector<std::string> stringStorage{};
+        std::deque<std::string> stringStorage{};
+    };
+
+    struct SectionEntry final
+    {
+        char name[IMAGE_SIZEOF_SHORT_NAME + 1]{};
+        std::uint64_t virtualAddress{};
+        std::uint64_t virtualSize{};
+    };
+
+    struct ModuleSectionCache final
+    {
+        std::vector<SectionEntry> sections{};
     };
 
     struct ModuleCache final
     {
         std::unordered_map<std::uint64_t, ModuleImportCache> importCache{};
         std::unordered_map<std::uint64_t, ModuleExportCache> exportCache{};
+        std::unordered_map<std::uint64_t, ModuleSectionCache> sectionCache{};
         std::mutex cacheMutex;
     };
 
     ModuleCache& get_module_cache();
+
+    struct ResolvedModule final
+    {
+        std::uint64_t baseAddress{};
+        std::vector<SectionEntry> sections{};
+    };
+
+    std::optional<ResolvedModule> resolve_module_sections(std::uint64_t address);
+    const char* find_section_for_rva(const std::vector<SectionEntry>& sections, std::uint64_t rva);
     ProcessInformation* opened_process_info();
     StatusCode invalidate_handle();
 

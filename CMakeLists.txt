@@ -305,6 +305,8 @@ if(BUILD_TESTING)
             include/sdk/feature.h
             include/vertex/thread/vertexmpscthread.hh
             src/vertex/thread/vertexmpscthread.cc
+            include/vertex/thread/vertexprioritythread.hh
+            src/vertex/thread/vertexprioritythread.cc
             include/vertex/thread/threaddispatcher.hh
             src/vertex/thread/threaddispatcher.cc)
     if(BUILD_VERTEXDECI3RT)
@@ -314,7 +316,9 @@ if(BUILD_TESTING)
     list(FILTER VERTEX_TEST_SOURCES EXCLUDE REGEX ".*/view/.*")
     list(FILTER VERTEX_TEST_SOURCES EXCLUDE REGEX ".*/viewmodel/.*")
     list(APPEND VERTEX_TEST_SOURCES
-            ${CMAKE_SOURCE_DIR}/src/vertex/viewmodel/settingsviewmodel.cc)
+            ${CMAKE_SOURCE_DIR}/src/vertex/viewmodel/settingsviewmodel.cc
+            ${CMAKE_SOURCE_DIR}/src/vertex/view/debugger/disassemblycontrol.cc
+            ${CMAKE_SOURCE_DIR}/src/vertex/view/debugger/registerspanel.cc)
     list(FILTER VERTEX_TEST_SOURCES EXCLUDE REGEX ".*/customwidgets/.*")
     list(FILTER VERTEX_TEST_SOURCES EXCLUDE REGEX ".*/gui/.*")
     list(FILTER VERTEX_TEST_SOURCES EXCLUDE REGEX ".*/factory\\.cc$")
@@ -390,5 +394,4 @@ add_custom_command(TARGET Vertex POST_BUILD
 add_custom_command(TARGET Vertex POST_BUILD
         COMMAND ${CMAKE_COMMAND} -Dsrc="${CMAKE_SOURCE_DIR}/resources/languages" -Ddst="${OUTPUT_DIR}/Language" -P "${RESOURCE_COPY_SCRIPT}"
 )
-
 

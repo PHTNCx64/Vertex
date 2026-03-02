@@ -21,8 +21,12 @@ namespace Vertex::View::Debugger
     public:
         using NavigateCallback = std::function<void(std::uint64_t address)>;
         using BreakpointToggleCallback = std::function<void(std::uint64_t address)>;
+        using BreakpointEnableCallback = std::function<void(std::uint32_t id, bool enable)>;
+        using BreakpointRemoveCallback = std::function<void(std::uint32_t id)>;
+        using BreakpointEditConditionCallback = std::function<void(std::uint32_t id, const ::Vertex::Debugger::Breakpoint& bp)>;
         using RunToCursorCallback = std::function<void(std::uint64_t address)>;
         using ScrollBoundaryCallback = std::function<void(std::uint64_t boundaryAddress, bool isTop)>;
+        using XrefQueryCallback = DisassemblyControl::XrefQueryCallback;
 
         DisassemblyPanel(
             wxWindow* parent,
@@ -34,11 +38,16 @@ namespace Vertex::View::Debugger
         void highlight_address(std::uint64_t address) const;
         void set_breakpoints(const std::vector<::Vertex::Debugger::Breakpoint>& breakpoints) const;
         void scroll_to_address(std::uint64_t address) const;
+        void set_extension_result(bool isTop, ::Vertex::Debugger::ExtensionResult result) const;
 
         void set_navigate_callback(NavigateCallback callback);
         void set_breakpoint_toggle_callback(BreakpointToggleCallback callback);
+        void set_breakpoint_enable_callback(BreakpointEnableCallback callback);
+        void set_breakpoint_remove_callback(BreakpointRemoveCallback callback);
+        void set_breakpoint_edit_condition_callback(BreakpointEditConditionCallback callback);
         void set_run_to_cursor_callback(RunToCursorCallback callback);
         void set_scroll_boundary_callback(ScrollBoundaryCallback callback);
+        void set_xref_query_callback(XrefQueryCallback callback);
 
         [[nodiscard]] std::uint64_t get_selected_address() const;
         [[nodiscard]] DisassemblyHeader* get_header() const { return m_disassemblyHeader; }

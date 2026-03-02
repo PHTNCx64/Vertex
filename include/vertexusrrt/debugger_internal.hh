@@ -24,20 +24,22 @@ namespace debugger
     constexpr std::uint8_t INT3_OPCODE = 0xCC;
     constexpr std::size_t MAX_INSTRUCTION_SIZE = 15;
 
-    struct TempBreakpoint
+    struct TempBreakpoint final
     {
         std::uint64_t address{};
         std::uint8_t originalByte{};
         bool active{false};
     };
 
-    struct BreakpointStepOver
+    struct BreakpointStepOver final
     {
         std::uint64_t address{};
+        DebugCommand pendingCommand{DebugCommand::None};
+        std::optional<std::uint64_t> precomputedTarget{};
         bool active{false};
     };
 
-    struct WatchpointStepOver
+    struct WatchpointStepOver final
     {
         std::uint32_t watchpointId{};
         std::uint8_t registerIndex{};
@@ -45,7 +47,7 @@ namespace debugger
         bool active{false};
     };
 
-    struct ThreadHandleCache
+    struct ThreadHandleCache final
     {
         std::mutex mutex{};
         std::unordered_map<DWORD, HANDLE> handles{};
@@ -57,7 +59,7 @@ namespace debugger
     [[nodiscard]] HANDLE get_cached_thread_handle(DWORD threadId);
     void clear_thread_handle_cache();
 
-    extern BreakpointStepOver g_breakpointStepOver;
+    extern std::unordered_map<DWORD, BreakpointStepOver> g_breakpointStepOvers;
     extern std::mutex g_breakpointStepOverMutex;
 
     extern std::unordered_map<DWORD, WatchpointStepOver> g_watchpointStepOvers;
@@ -84,33 +86,35 @@ namespace debugger
     [[nodiscard]] std::optional<std::uint64_t> get_step_over_target(DWORD threadId, bool isWow64);
     [[nodiscard]] std::optional<std::uint64_t> get_step_out_target(DWORD threadId, bool isWow64);
 
-    [[nodiscard]] DWORD process_continue_command(const DebugLoopContext& ctx);
-    [[nodiscard]] DWORD process_step_into_command(const DebugLoopContext& ctx, DWORD threadId, bool isWow64);
-    [[nodiscard]] DWORD process_step_over_command(const DebugLoopContext& ctx, DWORD threadId, bool isWow64);
-    [[nodiscard]] DWORD process_step_out_command(const DebugLoopContext& ctx, DWORD threadId, bool isWow64);
-    [[nodiscard]] DWORD process_run_to_address_command(const DebugLoopContext& ctx);
+    [[nodiscard]] DWORD process_continue_command(TickState& state);
+    [[nodiscard]] DWORD process_step_into_command(TickState& state, DWORD threadId);
+    [[nodiscard]] DWORD process_step_over_command(TickState& state, DWORD threadId);
+    [[nodiscard]] DWORD process_step_out_command(TickState& state, DWORD threadId);
+    [[nodiscard]] DWORD process_run_to_address_command(TickState& state);
 
-    [[nodiscard]] DWORD handle_exception_breakpoint(const DebugLoopContext& ctx, const DEBUG_EVENT& event,
-                                       const std::stop_token& stopToken, bool& shouldWaitForCommand);
-    [[nodiscard]] DWORD handle_exception_single_step(const DebugLoopContext& ctx, const DEBUG_EVENT& event,
-                                        const std::stop_token& stopToken, bool& shouldWaitForCommand);
-    [[nodiscard]] DWORD handle_exception_general(const DebugLoopContext& ctx, const DEBUG_EVENT& event,
-                                    const std::stop_token& stopToken, bool& shouldWaitForCommand);
+    [[nodiscard]] TickEventResult handle_exception_breakpoint(TickState& state, const DEBUG_EVENT& event);
+    [[nodiscard]] TickEventResult handle_exception_single_step(TickState& state, const DEBUG_EVENT& event);
+    [[nodiscard]] TickEventResult handle_exception_general(TickState& state, const DEBUG_EVENT& event);
 
-    [[nodiscard]] DWORD handle_create_process(const DebugLoopContext& ctx, const DEBUG_EVENT& event);
-    [[nodiscard]] DWORD handle_exit_process(const DebugLoopContext& ctx, const DEBUG_EVENT& event);
-    [[nodiscard]] DWORD handle_create_thread(const DebugLoopContext& ctx, const DEBUG_EVENT& event);
-    [[nodiscard]] DWORD handle_exit_thread(const DebugLoopContext& ctx, const DEBUG_EVENT& event);
-    [[nodiscard]] DWORD handle_load_dll(const DebugLoopContext& ctx, const DEBUG_EVENT& event);
-    [[nodiscard]] DWORD handle_unload_dll(const DebugLoopContext& ctx, const DEBUG_EVENT& event);
-    [[nodiscard]] DWORD handle_output_string(const DebugLoopContext& ctx, const DEBUG_EVENT& event);
+    [[nodiscard]] TickEventResult handle_create_process(TickState& state, const DEBUG_EVENT& event);
+    [[nodiscard]] TickEventResult handle_exit_process(TickState& state, const DEBUG_EVENT& event);
+    [[nodiscard]] TickEventResult handle_create_thread(TickState& state, const DEBUG_EVENT& event);
+    [[nodiscard]] TickEventResult handle_exit_thread(TickState& state, const DEBUG_EVENT& event);
+    [[nodiscard]] TickEventResult handle_load_dll(TickState& state, const DEBUG_EVENT& event);
+    [[nodiscard]] TickEventResult handle_unload_dll(TickState& state, const DEBUG_EVENT& event);
+    [[nodiscard]] TickEventResult handle_output_string(TickState& state, const DEBUG_EVENT& event);
 
-    [[nodiscard]] DebugCommand wait_for_command(const DebugLoopContext& ctx, const std::stop_token& stopToken);
+    [[nodiscard]] StatusCode fill_exception_info(ExceptionInfo* out);
+    [[nodiscard]] ExceptionCode map_windows_exception_code(DWORD code);
+
+    [[nodiscard]] StatusCode tick_debug_loop(TickState& state, std::uint32_t timeoutMs);
+    [[nodiscard]] DWORD execute_resume(TickState& state);
 
     [[nodiscard]] StatusCode set_software_breakpoint(std::uint64_t address, std::uint32_t* breakpointId);
     [[nodiscard]] StatusCode remove_software_breakpoint(std::uint32_t breakpointId);
     [[nodiscard]] StatusCode enable_software_breakpoint(std::uint32_t breakpointId, bool enable);
-    [[nodiscard]] bool is_user_breakpoint_hit(std::uint64_t address, std::uint32_t* breakpointId);
+    [[nodiscard]] bool is_user_breakpoint_hit(std::uint64_t address, std::uint32_t* breakpointId,
+                                              ::BreakpointCondition* outCondition = nullptr, std::uint32_t* outHitCount = nullptr);
     [[nodiscard]] StatusCode restore_breakpoint_byte(std::uint64_t address);
     [[nodiscard]] StatusCode reapply_breakpoint_byte(std::uint64_t address);
 
@@ -118,6 +122,9 @@ namespace debugger
     [[nodiscard]] StatusCode remove_hardware_breakpoint(std::uint32_t breakpointId);
     [[nodiscard]] StatusCode enable_hardware_breakpoint(std::uint32_t breakpointId, bool enable);
     [[nodiscard]] bool is_hardware_breakpoint_hit(std::uint64_t address, std::uint32_t* breakpointId);
+    [[nodiscard]] bool is_hardware_breakpoint_hit_by_dr6(std::uint64_t dr6Value, std::uint32_t* breakpointId, std::uint64_t* hitAddress,
+                                                         ::BreakpointCondition* outCondition = nullptr, std::uint32_t* outHitCount = nullptr);
+    [[nodiscard]] StatusCode apply_hw_breakpoint_to_all_threads(std::uint32_t breakpointId);
 
     [[nodiscard]] StatusCode set_watchpoint(std::uint64_t address, std::uint32_t size, ::WatchpointType type, std::uint32_t* watchpointId);
     [[nodiscard]] StatusCode remove_watchpoint(std::uint32_t watchpointId);
@@ -132,12 +139,16 @@ namespace debugger
     [[nodiscard]] StatusCode re_enable_watchpoint_on_all_threads(std::uint32_t watchpointId);
     [[nodiscard]] StatusCode clear_hw_register_on_all_threads(std::uint8_t registerIndex);
 
-    void set_breakpoint_step_over(std::uint64_t address);
-    void clear_breakpoint_step_over();
-    [[nodiscard]] bool is_stepping_over_breakpoint(std::uint64_t* address);
+    void set_breakpoint_step_over(std::uint64_t address, DWORD threadId, DebugCommand pendingCommand = DebugCommand::Continue,
+                                   std::optional<std::uint64_t> precomputedTarget = std::nullopt);
+    void clear_breakpoint_step_over(DWORD threadId);
+    void clear_all_breakpoint_step_overs();
+    [[nodiscard]] bool is_stepping_over_breakpoint(DWORD threadId, std::uint64_t* address, DebugCommand* pendingCommand = nullptr,
+                                                    std::optional<std::uint64_t>* precomputedTarget = nullptr);
 
     void set_watchpoint_step_over(std::uint32_t watchpointId, std::uint8_t registerIndex, DWORD threadId);
     void clear_watchpoint_step_over(DWORD threadId);
+    void clear_all_watchpoint_step_overs();
     [[nodiscard]] bool is_stepping_over_watchpoint(DWORD threadId, std::uint32_t* watchpointId);
 
     [[nodiscard]] bool set_trap_flag(HANDLE threadHandle, bool isWow64, bool enable);

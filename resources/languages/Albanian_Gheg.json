@@ -332,14 +332,37 @@
       "runToCursor": "Ekzekuto deri te Kursori\tF4",
       "followJump": "Ndiq kërcimin te {:X}",
       "copyAddress": "Kopjo Adresën",
-      "copyLine": "Kopjo Linjën"
+      "copyLine": "Kopjo Linjën",
+      "xrefsTo": "Referenca në këtë Adresë",
+      "xrefsFrom": "Referenca nga ky Funksion",
+      "enableBreakpoint": "Enable Breakpoint",
+      "disableBreakpoint": "Disable Breakpoint",
+      "editCondition": "Edit Condition...",
+      "removeBreakpoint": "Remove Breakpoint"
+    },
+    "xrefs": {
+      "dialogTitleTo": "Referenca kryq në",
+      "dialogTitleFrom": "Referenca kryq nga",
+      "columnType": "Tipi",
+      "columnAddress": "Adresa",
+      "columnSymbol": "Simboli",
+      "typeCall": "Thirrje",
+      "typeJump": "Kërcim",
+      "typeCondJump": "Kërcim Kush.",
+      "typeLoop": "Cikël",
+      "noResults": "Nuk u gjetën referenca kryq.",
+      "navigate": "Shko te"
     },
     "disassembly": {
       "columnAddress": "Adresa",
       "columnBytes": "Bajtat",
       "columnMnemonic": "Mnemonikë",
       "columnOperands": "Operandët",
-      "columnComment": "Komenti"
+      "columnComment": "Komenti",
+      "loading": "Tue u ngarkue",
+      "endOfRange": "--- Fundi i zonës së disasemblueshme ---",
+      "extensionError": "Nuk u ngarkuen instruksionet e tjera.",
+      "retryHint": "[Kliko me riprovue]"
     },
     "registers": {
       "columnRegister": "Regjistri",
@@ -385,7 +408,22 @@
       "enable": "Aktivizo",
       "disable": "Çaktivizo",
       "remove": "Hek",
-      "removeAll": "Hek të Gjitha"
+      "removeAll": "Hek të Gjitha",
+      "conditionNotImplemented": "Conditional breakpoints are not yet supported by the runtime. The condition has been saved but will not be evaluated.",
+      "conditionDialogTitle": "Edit Breakpoint Condition",
+      "conditionType": "Condition Type:",
+      "conditionNone": "None",
+      "conditionExpression": "Expression",
+      "conditionHitCountEqual": "Hit Count =",
+      "conditionHitCountGreater": "Hit Count >",
+      "conditionHitCountMultiple": "Hit Count Multiple Of",
+      "expressionLabel": "Expression:",
+      "hitCountTargetLabel": "Hit Count Target:",
+      "currentHitCountLabel": "Current Hit Count:",
+      "actionsLabel": "Actions",
+      "logMessage": "Log Message",
+      "continueExecution": "Continue Execution",
+      "notImplementedWarning": "Conditions are not yet available in the runtime."
     },
     "watchpoints": {
       "columnId": "ID",

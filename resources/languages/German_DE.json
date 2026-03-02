@@ -322,14 +322,37 @@
       "runToCursor": "Bis zum Cursor ausführen\tF4",
       "followJump": "Sprung zu {:X} folgen",
       "copyAddress": "Adresse kopieren",
-      "copyLine": "Zeile kopieren"
+      "copyLine": "Zeile kopieren",
+      "xrefsTo": "Querverweise zu dieser Adresse",
+      "xrefsFrom": "Querverweise von dieser Funktion",
+      "enableBreakpoint": "Enable Breakpoint",
+      "disableBreakpoint": "Disable Breakpoint",
+      "editCondition": "Edit Condition...",
+      "removeBreakpoint": "Remove Breakpoint"
+    },
+    "xrefs": {
+      "dialogTitleTo": "Querverweise zu",
+      "dialogTitleFrom": "Querverweise von",
+      "columnType": "Typ",
+      "columnAddress": "Adresse",
+      "columnSymbol": "Symbol",
+      "typeCall": "Aufruf",
+      "typeJump": "Sprung",
+      "typeCondJump": "Bed. Sprung",
+      "typeLoop": "Schleife",
+      "noResults": "Keine Querverweise gefunden.",
+      "navigate": "Gehe zu"
     },
     "disassembly": {
       "columnAddress": "Adresse",
       "columnBytes": "Bytes",
       "columnMnemonic": "Mnemonic",
       "columnOperands": "Operanden",
-      "columnComment": "Kommentar"
+      "columnComment": "Kommentar",
+      "loading": "Wird geladen",
+      "endOfRange": "--- Ende des disassemblierbaren Bereichs ---",
+      "extensionError": "Weitere Anweisungen konnten nicht geladen werden.",
+      "retryHint": "[Klicken zum Wiederholen]"
     },
     "registers": {
       "columnRegister": "Register",
@@ -375,7 +398,22 @@
       "enable": "Aktivieren",
       "disable": "Deaktivieren",
       "remove": "Entfernen",
-      "removeAll": "Alle entfernen"
+      "removeAll": "Alle entfernen",
+      "conditionNotImplemented": "Conditional breakpoints are not yet supported by the runtime. The condition has been saved but will not be evaluated.",
+      "conditionDialogTitle": "Edit Breakpoint Condition",
+      "conditionType": "Condition Type:",
+      "conditionNone": "None",
+      "conditionExpression": "Expression",
+      "conditionHitCountEqual": "Hit Count =",
+      "conditionHitCountGreater": "Hit Count >",
+      "conditionHitCountMultiple": "Hit Count Multiple Of",
+      "expressionLabel": "Expression:",
+      "hitCountTargetLabel": "Hit Count Target:",
+      "currentHitCountLabel": "Current Hit Count:",
+      "actionsLabel": "Actions",
+      "logMessage": "Log Message",
+      "continueExecution": "Continue Execution",
+      "notImplementedWarning": "Conditions are not yet available in the runtime."
     },
     "watchpoints": {
       "columnId": "ID",
