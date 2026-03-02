@@ -4,6 +4,8 @@
 //
 #include <vertexusrrt/debugloopcontext.hh>
 
+#include <mutex>
+
 namespace debugger
 {
     namespace
@@ -14,5 +16,16 @@ namespace debugger
     BreakpointManager& get_breakpoint_manager()
     {
         return g_breakpointManager;
+    }
+
+    void reset_breakpoint_manager()
+    {
+        std::scoped_lock lock{g_breakpointManager.mutex};
+        g_breakpointManager.softwareBreakpoints.clear();
+        g_breakpointManager.hardwareBreakpoints.clear();
+        g_breakpointManager.watchpoints.clear();
+        g_breakpointManager.nextBreakpointId.store(1, std::memory_order_relaxed);
+        g_breakpointManager.nextWatchpointId.store(1, std::memory_order_relaxed);
+        g_breakpointManager.hwRegisterUsed.fill(false);
     }
 }

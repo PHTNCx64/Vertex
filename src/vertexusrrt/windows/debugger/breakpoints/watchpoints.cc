@@ -121,15 +121,36 @@ namespace debugger
     StatusCode enable_watchpoint(const std::uint32_t watchpointId, const bool enable)
     {
         auto& manager = get_breakpoint_manager();
-        std::scoped_lock lock{manager.mutex};
-
-        const auto it = manager.watchpoints.find(watchpointId);
-        if (it == manager.watchpoints.end())
+        std::uint8_t registerIndex{};
+        bool wasEnabled = false;
         {
-            return STATUS_ERROR_BREAKPOINT_NOT_FOUND;
+            std::scoped_lock lock{manager.mutex};
+
+            const auto it = manager.watchpoints.find(watchpointId);
+            if (it == manager.watchpoints.end())
+            {
+                return STATUS_ERROR_BREAKPOINT_NOT_FOUND;
+            }
+
+            wasEnabled = it->second.enabled;
+            it->second.enabled = enable;
+            registerIndex = it->second.registerIndex;
+            if (!enable)
+            {
+                it->second.temporarilyDisabled = false;
+            }
         }
 
-        it->second.enabled = enable;
+        if (enable && !wasEnabled)
+        {
+            return apply_watchpoint_to_all_threads(watchpointId);
+        }
+
+        if (!enable && wasEnabled)
+        {
+            return clear_hw_register_on_all_threads(registerIndex);
+        }
+
         return STATUS_OK;
     }
 

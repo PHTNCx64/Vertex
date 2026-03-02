@@ -779,4 +779,32 @@ namespace Vertex::View
             m_savedAddressesPanel->set_find_access_callback(std::move(callback));
         }
     }
+
+    void MainView::set_debugger_callbacks(DebuggerAttachedCheck isAttached, DebuggerAttachAction attach)
+    {
+        m_isDebuggerAttached = std::move(isAttached);
+        m_attachDebugger = std::move(attach);
+    }
+
+    bool MainView::ensure_debugger_attached()
+    {
+        if (m_isDebuggerAttached && m_isDebuggerAttached())
+        {
+            return true;
+        }
+
+        const auto result = wxMessageBox(
+            wxString::FromUTF8(m_languageService.fetch_translation("mainWindow.debugger.attachPrompt")),
+            wxString::FromUTF8(m_languageService.fetch_translation("mainWindow.debugger.attachTitle")),
+            wxYES_NO | wxICON_QUESTION
+        );
+
+        if (result == wxYES && m_attachDebugger)
+        {
+            m_attachDebugger();
+            return true;
+        }
+
+        return false;
+    }
 } // namespace Vertex::View

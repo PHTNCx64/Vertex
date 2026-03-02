@@ -209,63 +209,83 @@ namespace debugger
             return STATUS_ERROR_BREAKPOINT_ADDRESS_MISALIGNED;
         }
 
-        auto& manager = get_breakpoint_manager();
-        std::scoped_lock lock{manager.mutex};
-
-        const auto registerIndex = allocate_hw_register();
-        if (!registerIndex.has_value())
+        std::uint32_t id = 0;
         {
-            return STATUS_ERROR_BREAKPOINT_LIMIT_REACHED;
+            auto& manager = get_breakpoint_manager();
+            std::scoped_lock lock{manager.mutex};
+
+            const auto registerIndex = allocate_hw_register();
+            if (!registerIndex.has_value())
+            {
+                return STATUS_ERROR_BREAKPOINT_LIMIT_REACHED;
+            }
+
+            id = manager.nextBreakpointId.fetch_add(1, std::memory_order_relaxed);
+
+            HardwareBreakpointData bp{};
+            bp.id = id;
+            bp.address = address;
+            bp.type = type;
+            bp.state = VERTEX_BP_STATE_ENABLED;
+            bp.size = size;
+            bp.registerIndex = registerIndex.value();
+            bp.hitCount = 0;
+
+            manager.hardwareBreakpoints.emplace(id, bp);
         }
 
-        const std::uint32_t id = manager.nextBreakpointId.fetch_add(1, std::memory_order_relaxed);
-
-        HardwareBreakpointData bp{};
-        bp.id = id;
-        bp.address = address;
-        bp.type = type;
-        bp.state = VERTEX_BP_STATE_ENABLED;
-        bp.size = size;
-        bp.registerIndex = registerIndex.value();
-        bp.hitCount = 0;
-
-        manager.hardwareBreakpoints.emplace(id, bp);
         *breakpointId = id;
+        std::ignore = apply_hw_breakpoint_to_all_threads(id);
 
         return STATUS_OK;
     }
 
     StatusCode remove_hardware_breakpoint(const std::uint32_t breakpointId)
     {
-        auto& manager = get_breakpoint_manager();
-        std::scoped_lock lock{manager.mutex};
-
-        const auto it = manager.hardwareBreakpoints.find(breakpointId);
-        if (it == manager.hardwareBreakpoints.end())
+        std::uint8_t registerIndex{};
         {
-            return STATUS_ERROR_BREAKPOINT_NOT_FOUND;
+            auto& manager = get_breakpoint_manager();
+            std::scoped_lock lock{manager.mutex};
+
+            const auto it = manager.hardwareBreakpoints.find(breakpointId);
+            if (it == manager.hardwareBreakpoints.end())
+            {
+                return STATUS_ERROR_BREAKPOINT_NOT_FOUND;
+            }
+
+            registerIndex = it->second.registerIndex;
+            free_hw_register(registerIndex);
+            manager.hardwareBreakpoints.erase(it);
         }
 
-        const auto registerIndex = it->second.registerIndex;
-        free_hw_register(registerIndex);
-        manager.hardwareBreakpoints.erase(it);
+        std::ignore = clear_hw_register_on_all_threads(registerIndex);
 
         return STATUS_OK;
     }
 
     StatusCode enable_hardware_breakpoint(const std::uint32_t breakpointId, const bool enable)
     {
-        auto& manager = get_breakpoint_manager();
-        std::scoped_lock lock{manager.mutex};
-
-        const auto it = manager.hardwareBreakpoints.find(breakpointId);
-        if (it == manager.hardwareBreakpoints.end())
+        std::uint8_t registerIndex{};
         {
-            return STATUS_ERROR_BREAKPOINT_NOT_FOUND;
+            auto& manager = get_breakpoint_manager();
+            std::scoped_lock lock{manager.mutex};
+
+            const auto it = manager.hardwareBreakpoints.find(breakpointId);
+            if (it == manager.hardwareBreakpoints.end())
+            {
+                return STATUS_ERROR_BREAKPOINT_NOT_FOUND;
+            }
+
+            it->second.state = enable ? VERTEX_BP_STATE_ENABLED : VERTEX_BP_STATE_DISABLED;
+            registerIndex = it->second.registerIndex;
         }
 
-        it->second.state = enable ? VERTEX_BP_STATE_ENABLED : VERTEX_BP_STATE_DISABLED;
-        return STATUS_OK;
+        if (enable)
+        {
+            return apply_hw_breakpoint_to_all_threads(breakpointId);
+        }
+
+        return clear_hw_register_on_all_threads(registerIndex);
     }
 
     StatusCode apply_all_hw_breakpoints_to_thread(const std::uint32_t threadId)
@@ -329,6 +349,52 @@ namespace debugger
         return STATUS_OK;
     }
 
+    StatusCode apply_hw_breakpoint_to_all_threads(const std::uint32_t breakpointId)
+    {
+        auto& manager = get_breakpoint_manager();
+        std::scoped_lock lock{manager.mutex};
+
+        const auto it = manager.hardwareBreakpoints.find(breakpointId);
+        if (it == manager.hardwareBreakpoints.end())
+        {
+            return STATUS_ERROR_BREAKPOINT_NOT_FOUND;
+        }
+
+        const auto& bp = it->second;
+        if (bp.state != VERTEX_BP_STATE_ENABLED)
+        {
+            return STATUS_OK;
+        }
+
+        const bool isWow64 = get_process_architecture() == ProcessArchitecture::X86;
+
+        auto& cache = get_thread_handle_cache();
+        std::scoped_lock cacheLock{cache.mutex};
+
+        for (const auto& [threadId, threadHandle] : cache.handles)
+        {
+            if (suspend_thread(threadHandle) == static_cast<DWORD>(-1))
+            {
+                continue;
+            }
+
+            const bool applied = isWow64
+                ? apply_hw_breakpoint_to_thread_wow64(threadHandle, bp.registerIndex, bp.address, bp.type, bp.size)
+                : apply_hw_breakpoint_to_thread_native(threadHandle, bp.registerIndex, bp.address, bp.type, bp.size);
+
+            if (!applied)
+            {
+                auto logMsg = std::format("[Vertex] apply_hw_breakpoint: failed for thread {} error={}\n",
+                                         threadId, GetLastError());
+                OutputDebugStringA(logMsg.c_str());
+            }
+
+            resume_thread(threadHandle);
+        }
+
+        return STATUS_OK;
+    }
+
     bool is_hardware_breakpoint_hit(const std::uint64_t address, std::uint32_t* breakpointId)
     {
         auto& manager = get_breakpoint_manager();
@@ -344,6 +410,46 @@ namespace debugger
                     *breakpointId = id;
                 }
                 return true;
+            }
+        }
+
+        return false;
+    }
+
+    bool is_hardware_breakpoint_hit_by_dr6(const std::uint64_t dr6Value, std::uint32_t* breakpointId, std::uint64_t* hitAddress,
+                                           ::BreakpointCondition* outCondition, std::uint32_t* outHitCount)
+    {
+        auto& manager = get_breakpoint_manager();
+        std::scoped_lock lock{manager.mutex};
+
+        for (std::uint8_t regIndex = 0; regIndex < 4; ++regIndex)
+        {
+            if (dr6Value & (1ULL << regIndex))
+            {
+                for (auto& [id, bp] : manager.hardwareBreakpoints)
+                {
+                    if (bp.registerIndex == regIndex && bp.state == VERTEX_BP_STATE_ENABLED)
+                    {
+                        bp.hitCount++;
+                        if (breakpointId != nullptr)
+                        {
+                            *breakpointId = id;
+                        }
+                        if (hitAddress != nullptr)
+                        {
+                            *hitAddress = bp.address;
+                        }
+                        if (outCondition != nullptr)
+                        {
+                            *outCondition = bp.condition;
+                        }
+                        if (outHitCount != nullptr)
+                        {
+                            *outHitCount = bp.hitCount;
+                        }
+                        return true;
+                    }
+                }
             }
         }
 

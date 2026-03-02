@@ -35,9 +35,14 @@ namespace Vertex::View
             Gui::IIconManager& iconManager
         );
 
+        using DebuggerAttachedCheck = std::function<bool()>;
+        using DebuggerAttachAction = std::function<void()>;
+
         void set_pointer_scan_callback(CustomWidgets::SavedAddressesControl::PointerScanCallback callback) const;
         void set_view_in_disassembly_callback(CustomWidgets::SavedAddressesControl::ViewInDisassemblyCallback callback) const;
         void set_find_access_callback(CustomWidgets::SavedAddressesControl::FindAccessCallback callback) const;
+        void set_debugger_callbacks(DebuggerAttachedCheck isAttached, DebuggerAttachAction attach);
+        [[nodiscard]] bool ensure_debugger_attached();
 
     private:
         enum class ControlStatus
@@ -157,6 +162,9 @@ namespace Vertex::View
         std::unique_ptr<ViewModel::MainViewModel> m_viewModel{};
         Language::ILanguage& m_languageService;
         Gui::IIconManager& m_iconManager;
+
+        DebuggerAttachedCheck m_isDebuggerAttached{};
+        DebuggerAttachAction m_attachDebugger{};
 
         ResettableCallOnce m_timerReset{};
     };

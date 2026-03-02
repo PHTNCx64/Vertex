@@ -114,6 +114,14 @@ typedef enum VertexStatusCode : int32_t
     STATUS_ERROR_TIMEOUT,
     STATUS_ERROR_QUEUE_FULL,
 
+    // Debugger tick result codes
+    STATUS_DEBUG_TICK_NO_EVENT,
+    STATUS_DEBUG_TICK_PROCESSED,
+    STATUS_DEBUG_TICK_PAUSED,
+    STATUS_DEBUG_TICK_PROCESS_EXITED,
+    STATUS_DEBUG_TICK_DETACHED,
+    STATUS_DEBUG_TICK_ERROR,
+
 } StatusCode;
 
 #ifdef __cplusplus

@@ -82,17 +82,26 @@ extern "C"
         }
 
         ProcessInternal::ModuleExportCache newCache{};
+        auto publish_cache = [&](ProcessInternal::ModuleExportCache&& builtCache)
+        {
+            std::scoped_lock lock{cache.cacheMutex};
+            auto [it, inserted] = cache.exportCache.try_emplace(baseAddress);
+            if (inserted)
+            {
+                it->second.exports.swap(builtCache.exports);
+                it->second.stringStorage.swap(builtCache.stringStorage);
+            }
+            *exports = it->second.exports.empty() ? nullptr : it->second.exports.data();
+            *count = static_cast<uint32_t>(it->second.exports.size());
+            return StatusCode::STATUS_OK;
+        };
 
         newCache.stringStorage.emplace_back(module->moduleName);
         const char* moduleName = newCache.stringStorage.back().c_str();
 
         if (exportRva == 0)
         {
-            std::scoped_lock lock{cache.cacheMutex};
-            cache.exportCache[baseAddress] = std::move(newCache);
-            *exports = nullptr;
-            *count = 0;
-            return StatusCode::STATUS_OK;
+            return publish_cache(std::move(newCache));
         }
 
         IMAGE_EXPORT_DIRECTORY exportDir{};
@@ -106,11 +115,7 @@ extern "C"
 
         if (numFunctions == 0)
         {
-            std::scoped_lock lock{cache.cacheMutex};
-            cache.exportCache[baseAddress] = std::move(newCache);
-            *exports = nullptr;
-            *count = 0;
-            return StatusCode::STATUS_OK;
+            return publish_cache(std::move(newCache));
         }
 
         std::vector<DWORD> functionRvas(numFunctions);
@@ -197,12 +202,6 @@ extern "C"
             newCache.exports.push_back(exp);
         }
 
-        std::scoped_lock lock{cache.cacheMutex};
-        cache.exportCache[baseAddress] = std::move(newCache);
-        auto& cached = cache.exportCache[baseAddress];
-        *exports = cached.exports.empty() ? nullptr : cached.exports.data();
-        *count = static_cast<uint32_t>(cached.exports.size());
-
-        return StatusCode::STATUS_OK;
+        return publish_cache(std::move(newCache));
     }
 }

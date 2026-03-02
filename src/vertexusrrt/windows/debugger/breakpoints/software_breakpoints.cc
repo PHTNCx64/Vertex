@@ -116,23 +116,24 @@ namespace debugger
         return STATUS_OK;
     }
 
-    std::optional<SoftwareBreakpointData*> find_software_breakpoint_by_address(const std::uint64_t address)
+    std::optional<SoftwareBreakpointData> find_software_breakpoint_by_address(const std::uint64_t address)
     {
         auto& manager = get_breakpoint_manager();
         std::scoped_lock lock{manager.mutex};
 
-        for (auto& bp : manager.softwareBreakpoints | std::views::values)
+        for (const auto& bp : manager.softwareBreakpoints | std::views::values)
         {
             if (bp.address == address && bp.state == VERTEX_BP_STATE_ENABLED)
             {
-                return &bp;
+                return bp;
             }
         }
 
         return std::nullopt;
     }
 
-    bool is_user_breakpoint_hit(const std::uint64_t address, std::uint32_t* breakpointId)
+    bool is_user_breakpoint_hit(const std::uint64_t address, std::uint32_t* breakpointId,
+                                ::BreakpointCondition* outCondition, std::uint32_t* outHitCount)
     {
         auto& manager = get_breakpoint_manager();
         std::scoped_lock lock{manager.mutex};
@@ -145,6 +146,14 @@ namespace debugger
                 if (breakpointId != nullptr)
                 {
                     *breakpointId = id;
+                }
+                if (outCondition != nullptr)
+                {
+                    *outCondition = bp.condition;
+                }
+                if (outHitCount != nullptr)
+                {
+                    *outHitCount = bp.hitCount;
                 }
                 return true;
             }

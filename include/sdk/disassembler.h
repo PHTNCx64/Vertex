@@ -11,6 +11,8 @@
 extern "C" {
 #endif
 
+#pragma pack(push, 8)
+
 // ===============================================================================================================//
 // DISASSEMBLER CONSTANTS                                                                                         //
 // ===============================================================================================================//
@@ -164,6 +166,8 @@ typedef struct VertexXReference
     char toSymbol[VERTEX_MAX_SYMBOL_LENGTH];
     uint32_t xrefType;
 } XReference;
+
+#pragma pack(pop)
 
 #ifdef __cplusplus
 }

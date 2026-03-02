@@ -44,6 +44,19 @@ namespace Vertex
         constexpr int GRID_COLUMNS = 2;
     }
 
+    namespace DisassemblyIndicatorValues
+    {
+        constexpr int LOADING_ANIM_INTERVAL_MS = 300;
+        constexpr int LOADING_DOT_COUNT = 3;
+        constexpr int INDICATOR_HEIGHT = 24;
+    }
+
+    namespace BreakpointConditionDialogValues
+    {
+        constexpr int DIALOG_WIDTH = 400;
+        constexpr int DIALOG_HEIGHT = 350;
+    }
+
     namespace ApplicationAppearance
     {
         constexpr int SYSTEM = 0;
@@ -86,9 +99,10 @@ namespace Vertex
         DEBUGGER_STATE = 1 << 16,
         DEBUGGER_THREADS = 1 << 17,
         DEBUGGER_WATCHPOINTS = 1 << 18,
+        DEBUGGER_MODULES = 1 << 19,
         DEBUGGER_ALL = DEBUGGER_DISASSEMBLY | DEBUGGER_BREAKPOINTS | DEBUGGER_REGISTERS |
                        DEBUGGER_STACK | DEBUGGER_MEMORY | DEBUGGER_IMPORTS_EXPORTS | DEBUGGER_STATE |
-                       DEBUGGER_THREADS | DEBUGGER_WATCHPOINTS
+                       DEBUGGER_THREADS | DEBUGGER_WATCHPOINTS | DEBUGGER_MODULES
     };
 
     [[nodiscard]] inline ViewUpdateFlags operator|(ViewUpdateFlags a, ViewUpdateFlags b)
@@ -123,6 +137,15 @@ namespace Vertex
             ID_ANALYTICS,
             ID_INJECTOR,
         };
+    }
+
+    namespace XrefDialogValues
+    {
+        constexpr int DIALOG_WIDTH = 500;
+        constexpr int DIALOG_HEIGHT = 350;
+        constexpr int COLUMN_WIDTH_TYPE = 120;
+        constexpr int COLUMN_WIDTH_ADDRESS = 150;
+        constexpr int COLUMN_WIDTH_SYMBOL = 200;
     }
 
     namespace FileTypes

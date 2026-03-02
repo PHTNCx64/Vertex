@@ -28,9 +28,8 @@ EXPORTS
     vertex_process_get_module_exports
     vertex_debugger_attach
     vertex_debugger_detach
-    vertex_debugger_run
-    vertex_debugger_request_stop
-    vertex_debugger_get_state
+    vertex_debugger_set_callbacks
+    vertex_debugger_tick
     vertex_debugger_continue
     vertex_debugger_pause
     vertex_debugger_step
@@ -39,9 +38,20 @@ EXPORTS
     vertex_debugger_remove_breakpoint
     vertex_debugger_enable_breakpoint
     vertex_debugger_get_breakpoints
+    vertex_debugger_free_breakpoints
     vertex_debugger_set_watchpoint
     vertex_debugger_enable_watchpoint
     vertex_debugger_remove_watchpoint
+    vertex_debugger_get_watchpoints
+    vertex_debugger_get_watchpoint_hit_count
+    vertex_debugger_reset_watchpoint_hit_count
+    vertex_debugger_free_watchpoints
+    vertex_debugger_set_breakpoint_condition
+    vertex_debugger_get_breakpoint_condition
+    vertex_debugger_clear_breakpoint_condition
+    vertex_debugger_set_breakpoint_action
+    vertex_debugger_get_breakpoint_action
+    vertex_debugger_reset_hit_count
     vertex_debugger_get_threads
     vertex_debugger_get_current_thread
     vertex_debugger_thread_priority_value_to_string

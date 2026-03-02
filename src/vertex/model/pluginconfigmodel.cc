@@ -54,7 +54,7 @@ namespace Vertex::Model
             return StatusCode::STATUS_ERROR_GENERAL_NOT_FOUND;
         }
 
-        auto result = m_uiRegistry.set_value(panelId, fieldId, value);
+        const auto result = m_uiRegistry.set_value(panelId, fieldId, value);
         if (result != StatusCode::STATUS_OK)
         {
             return result;

@@ -8,11 +8,13 @@
 #include <wx/dcbuffer.h>
 #include <wx/font.h>
 #include <wx/panel.h>
+#include <wx/timer.h>
 
 #include <vector>
 #include <array>
+#include <memory>
+#include <variant>
 #include <unordered_map>
-#include <unordered_set>
 #include <functional>
 #include <optional>
 
@@ -21,6 +23,17 @@
 
 namespace Vertex::View::Debugger
 {
+    struct BreakpointVisualInfo final
+    {
+        std::uint32_t id{};
+        ::Vertex::Debugger::BreakpointState state{::Vertex::Debugger::BreakpointState::Enabled};
+        bool hasCondition{};
+        ::BreakpointConditionType conditionType{VERTEX_BP_COND_NONE};
+        std::string condition{};
+        std::uint32_t hitCount{};
+        std::uint32_t hitCountTarget{};
+    };
+
     enum class DisassemblyColumn : int
     {
         Address = 0,
@@ -126,8 +139,15 @@ namespace Vertex::View::Debugger
     public:
         using NavigateCallback = std::function<void(std::uint64_t address)>;
         using BreakpointToggleCallback = std::function<void(std::uint64_t address)>;
+        using BreakpointEnableCallback = std::function<void(std::uint32_t id, bool enable)>;
+        using BreakpointRemoveCallback = std::function<void(std::uint32_t id)>;
+        using BreakpointEditConditionCallback = std::function<void(std::uint32_t id, const ::Vertex::Debugger::Breakpoint& bp)>;
+        using RunToCursorCallback = std::function<void(std::uint64_t address)>;
         using SelectionChangeCallback = std::function<void(std::uint64_t address)>;
         using ScrollBoundaryCallback = std::function<void(std::uint64_t boundaryAddress, bool isTop)>;
+        using XrefResultHandler = std::function<void(std::vector<::Vertex::Debugger::XrefEntry>)>;
+        using XrefQueryCallback = std::function<void(std::uint64_t address,
+            ::Vertex::Debugger::XrefDirection direction, XrefResultHandler onResult)>;
 
         explicit DisassemblyControl(wxWindow* parent, Language::ILanguage& languageService, DisassemblyHeader* header = nullptr);
         ~DisassemblyControl() override = default;
@@ -139,17 +159,37 @@ namespace Vertex::View::Debugger
 
         void set_disassembly(const ::Vertex::Debugger::DisassemblyRange& range);
         void set_current_instruction(std::uint64_t address);
-        void set_breakpoints(const std::vector<std::uint64_t>& addresses);
+        void set_breakpoints(const std::vector<::Vertex::Debugger::Breakpoint>& breakpoints);
         void scroll_to_address(std::uint64_t address);
         void select_address(std::uint64_t address);
 
         [[nodiscard]] std::uint64_t get_selected_address() const;
         [[nodiscard]] std::optional<std::size_t> get_line_at_address(std::uint64_t address) const;
 
+        enum class EdgeState : std::uint8_t
+        {
+            Idle = 0,
+            Loading,
+            EndOfRange,
+            Error
+        };
+
         void set_navigate_callback(NavigateCallback callback);
         void set_breakpoint_toggle_callback(BreakpointToggleCallback callback);
+        void set_breakpoint_enable_callback(BreakpointEnableCallback callback);
+        void set_breakpoint_remove_callback(BreakpointRemoveCallback callback);
+        void set_breakpoint_edit_condition_callback(BreakpointEditConditionCallback callback);
+        void set_run_to_cursor_callback(RunToCursorCallback callback);
         void set_selection_change_callback(SelectionChangeCallback callback);
         void set_scroll_boundary_callback(ScrollBoundaryCallback callback);
+        void set_xref_query_callback(XrefQueryCallback callback);
+
+        void set_extension_result(bool isTop, ::Vertex::Debugger::ExtensionResult result);
+
+        [[nodiscard]] EdgeState get_top_edge_state() const { return m_topEdgeState; }
+        [[nodiscard]] EdgeState get_bottom_edge_state() const { return m_bottomEdgeState; }
+        [[nodiscard]] bool is_fetching_more() const { return m_fetchingMore; }
+        [[nodiscard]] bool is_loading_timer_running() const { return m_loadingAnimTimer.IsRunning(); }
 
     private:
         void on_paint(wxPaintEvent& event);
@@ -163,13 +203,16 @@ namespace Vertex::View::Debugger
         void on_scroll(wxScrollWinEvent& event);
 
         void check_scroll_boundaries();
+        void render_edge_indicator(wxDC& dc, bool isTop) const;
+        void on_loading_anim_timer(wxTimerEvent& event);
+        void retry_extension(bool isTop);
 
         void render(wxDC& dc) const;
         void render_background(wxDC& dc) const;
         void render_arrow_gutter(wxDC& dc, int startLine, int endLine) const;
         void render_lines(wxDC& dc, int startLine, int endLine) const;
         void render_line(wxDC& dc, std::size_t lineIndex, int y) const;
-        void render_breakpoint_marker(wxDC& dc, int x, int y) const;
+        void render_breakpoint_marker(wxDC& dc, int x, int y, const BreakpointVisualInfo& info) const;
         void render_current_instruction_marker(wxDC& dc, int x, int y) const;
 
         struct ArrowInfo
@@ -196,6 +239,9 @@ namespace Vertex::View::Debugger
         void render_column_content(wxDC& dc, const ::Vertex::Debugger::DisassemblyLine& line,
                                    DisassemblyColumn column, int x, int y) const;
 
+        void show_xrefs_dialog(const std::vector<::Vertex::Debugger::XrefEntry>& xrefs,
+                               ::Vertex::Debugger::XrefDirection direction);
+
         int m_lineHeight{};
         int m_charWidth{};
         int m_gutterWidth{};
@@ -209,6 +255,17 @@ namespace Vertex::View::Debugger
         static constexpr int ARROW_SPACING = 8;
         static constexpr int MAX_ARROW_NESTING = 6;
         static constexpr int SCROLL_BOUNDARY_THRESHOLD = 5;
+
+        static constexpr int MENU_ID_TOGGLE_BREAKPOINT = 1001;
+        static constexpr int MENU_ID_RUN_TO_CURSOR = 1002;
+        static constexpr int MENU_ID_FOLLOW_JUMP = 1003;
+        static constexpr int MENU_ID_COPY_ADDRESS = 1004;
+        static constexpr int MENU_ID_COPY_LINE = 1005;
+        static constexpr int MENU_ID_XREFS_TO = 1006;
+        static constexpr int MENU_ID_XREFS_FROM = 1007;
+        static constexpr int MENU_ID_ENABLE_BREAKPOINT = 1008;
+        static constexpr int MENU_ID_REMOVE_BREAKPOINT = 1009;
+        static constexpr int MENU_ID_EDIT_CONDITION = 1010;
 
         struct Colors
         {
@@ -231,6 +288,9 @@ namespace Vertex::View::Debugger
             wxColour operandImm{0xB5, 0xCE, 0xA8};
             wxColour operandMem{0xD7, 0xBA, 0x7D};
             wxColour comment{0x6A, 0x99, 0x55};
+            wxColour symbolLabel{0x4E, 0xC9, 0xB0};
+            wxColour moduleContext{0x80, 0x80, 0x80};
+            wxColour functionEntryLine{0x3E, 0x3E, 0x3E};
 
             wxColour arrowUnconditional{0x56, 0x9C, 0xD6};
             wxColour arrowConditional{0xC5, 0x86, 0xC0};
@@ -238,15 +298,25 @@ namespace Vertex::View::Debugger
             wxColour arrowLoop{0xD7, 0xBA, 0x7D};
 
             wxColour breakpointMarker{0xE5, 0x1A, 0x1A};
+            wxColour breakpointMarkerDisabled{0xE5, 0x1A, 0x1A};
+            wxColour breakpointMarkerPending{0xD4, 0xA0, 0x17};
+            wxColour breakpointLineDisabled{0x3A, 0x2A, 0x2A};
+            wxColour breakpointLinePending{0x3A, 0x35, 0x1F};
             wxColour currentMarker{0xFF, 0xD7, 0x00};
 
             wxColour gutter{0x2D, 0x2D, 0x2D};
             wxColour gutterBorder{0x3E, 0x3E, 0x3E};
+
+            wxColour loadingText{0x56, 0x9C, 0xD6};
+            wxColour endOfRangeText{0x6A, 0x99, 0x55};
+            wxColour errorText{0xE5, 0x1A, 0x1A};
+            wxColour errorRetryText{0x56, 0x9C, 0xD6};
+            wxColour edgeIndicatorBg{0x1A, 0x1A, 0x2E};
         } m_colors;
 
         ::Vertex::Debugger::DisassemblyRange m_range{};
         std::unordered_map<std::uint64_t, std::size_t> m_addressToLine{};
-        std::unordered_set<std::uint64_t> m_breakpointAddresses{};
+        std::unordered_map<std::uint64_t, BreakpointVisualInfo> m_breakpointMap{};
         std::vector<ArrowInfo> m_arrows{};
 
         std::size_t m_selectedLine{};
@@ -257,10 +327,24 @@ namespace Vertex::View::Debugger
 
         NavigateCallback m_navigateCallback{};
         BreakpointToggleCallback m_breakpointToggleCallback{};
+        BreakpointEnableCallback m_breakpointEnableCallback{};
+        BreakpointRemoveCallback m_breakpointRemoveCallback{};
+        BreakpointEditConditionCallback m_breakpointEditConditionCallback{};
+        RunToCursorCallback m_runToCursorCallback{};
         SelectionChangeCallback m_selectionChangeCallback{};
         ScrollBoundaryCallback m_scrollBoundaryCallback{};
+        XrefQueryCallback m_xrefQueryCallback{};
 
         bool m_fetchingMore{};
+        int m_wheelAccumulator{};
+        int m_previousScrollY{};
+
+        EdgeState m_topEdgeState{};
+        EdgeState m_bottomEdgeState{};
+        wxTimer m_loadingAnimTimer;
+        int m_loadingAnimFrame{};
+
+        std::shared_ptr<std::monostate> m_lifetimeSentinel{std::make_shared<std::monostate>()};
 
         DisassemblyHeader* m_header{};
         Language::ILanguage& m_languageService;

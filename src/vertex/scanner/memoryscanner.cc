@@ -118,6 +118,7 @@ namespace Vertex::Scanner
         m_resultsCount.store(0, std::memory_order_relaxed);
         m_activeReaders.store(0, std::memory_order_relaxed);
         m_pendingWriterTasks.store(0, std::memory_order_relaxed);
+        m_resultsReconciled.store(true, std::memory_order_relaxed);
 
         const int configuredThreads = m_settingsService.get_int("memoryScan.readerThreads");
         const int readerThreads = m_dispatcher.is_single_threaded() ? 1 : configuredThreads;
@@ -189,6 +190,7 @@ namespace Vertex::Scanner
             m_resultsCount.store(0, std::memory_order_relaxed);
             m_activeReaders.store(0, std::memory_order_relaxed);
             m_pendingWriterTasks.store(0, std::memory_order_relaxed);
+            m_resultsReconciled.store(true, std::memory_order_relaxed);
             return StatusCode::STATUS_OK;
         }
 
@@ -197,6 +199,7 @@ namespace Vertex::Scanner
         m_resultsCount.store(0, std::memory_order_relaxed);
         m_activeReaders.store(0, std::memory_order_relaxed);
         m_pendingWriterTasks.store(0, std::memory_order_relaxed);
+        m_resultsReconciled.store(true, std::memory_order_relaxed);
 
         m_scanConfig = configuration;
 
@@ -276,6 +279,9 @@ namespace Vertex::Scanner
             m_activeReaders.fetch_add(1, std::memory_order_release);
         }
 
+        m_resultsReconciled.store(false, std::memory_order_release);
+        StatusCode finalizeResult = StatusCode::STATUS_OK;
+
         for (std::size_t i = 0; i < readerCount; ++i)
         {
             m_pendingWriterTasks.fetch_add(1, std::memory_order_release);
@@ -285,8 +291,16 @@ namespace Vertex::Scanner
               {
                   const StatusCode finalizeStatus = m_writerRegions[i].store.finalize();
 
+                  if (finalizeStatus != StatusCode::STATUS_OK)
+                  {
+                      m_logService.log_error(fmt::format("[Scanner] Store finalize failed for writer {} (status: {})", i, static_cast<int>(finalizeStatus)));
+                      m_scanAbort.store(true, std::memory_order_release);
+                  }
+
                   if (m_pendingWriterTasks.fetch_sub(1, std::memory_order_acq_rel) == 1)
                   {
+                      reconcile_result_count();
+                      m_resultsReconciled.store(true, std::memory_order_release);
                       std::scoped_lock notifyLock(m_mainThreadMutex);
                       m_mainThreadWaitCondition.notify_one();
                   }
@@ -297,10 +311,18 @@ namespace Vertex::Scanner
 
             if (status != StatusCode::STATUS_OK)
             {
-                m_logService.log_warn(fmt::format("[Scanner] Finalize task for thread {} could not be enqueued (status: {})", i, static_cast<int>(status)));
+                m_logService.log_error(fmt::format("[Scanner] Finalize task for writer {} could not be enqueued (status: {})", i, static_cast<int>(status)));
+                m_scanAbort.store(true, std::memory_order_release);
+
+                if (finalizeResult == StatusCode::STATUS_OK)
+                {
+                    finalizeResult = status;
+                }
 
                 if (m_pendingWriterTasks.fetch_sub(1, std::memory_order_acq_rel) == 1)
                 {
+                    reconcile_result_count();
+                    m_resultsReconciled.store(true, std::memory_order_release);
                     std::scoped_lock notifyLock(m_mainThreadMutex);
                     m_mainThreadWaitCondition.notify_one();
                 }
@@ -323,7 +345,7 @@ namespace Vertex::Scanner
             }
         }
 
-        return StatusCode::STATUS_OK;
+        return finalizeResult;
     }
 
     StatusCode MemoryScanner::undo_scan()
@@ -371,7 +393,7 @@ namespace Vertex::Scanner
         const int activeReaders = m_activeReaders.load(std::memory_order_acquire);
         const int pendingWriters = m_pendingWriterTasks.load(std::memory_order_acquire);
 
-        return (activeReaders == 0) && (pendingWriters == 0);
+        return (activeReaders == 0) && (pendingWriters == 0) && m_resultsReconciled.load(std::memory_order_acquire);
     }
 
     bool MemoryScanner::can_undo() const
@@ -384,7 +406,8 @@ namespace Vertex::Scanner
     {
         const int activeReaders = m_activeReaders.load(std::memory_order_acquire);
         const int pendingWriters = m_pendingWriterTasks.load(std::memory_order_acquire);
-        return (activeReaders > 0 || pendingWriters > 0) ? StatusCode::STATUS_ERROR_THREAD_IS_BUSY : StatusCode::STATUS_OK;
+        const bool reconciled = m_resultsReconciled.load(std::memory_order_acquire);
+        return (activeReaders > 0 || pendingWriters > 0 || !reconciled) ? StatusCode::STATUS_ERROR_THREAD_IS_BUSY : StatusCode::STATUS_OK;
     }
 
     void MemoryScanner::wait_for_scan_completion()
@@ -395,6 +418,22 @@ namespace Vertex::Scanner
                                            {
                                                return is_scan_complete();
                                            });
+        lock.unlock();
+        reconcile_result_count();
+    }
+
+    void MemoryScanner::reconcile_result_count()
+    {
+        std::shared_lock regionsLock(m_writerRegionsMutex);
+        std::uint64_t validCount{};
+        for (const auto& writerMeta : m_writerRegions)
+        {
+            if (writerMeta.store.is_valid())
+            {
+                validCount += writerMeta.atomics->resultCount.load(std::memory_order_acquire);
+            }
+        }
+        m_resultsCount.store(validCount, std::memory_order_release);
     }
 
     std::uint64_t MemoryScanner::get_regions_scanned() const noexcept { return m_regionsScanned.load(std::memory_order_relaxed); }
@@ -481,6 +520,9 @@ namespace Vertex::Scanner
             m_activeReaders.fetch_add(1, std::memory_order_release);
         }
 
+        m_resultsReconciled.store(false, std::memory_order_release);
+        StatusCode finalizeResult = StatusCode::STATUS_OK;
+
         for (std::size_t i = 0; i < m_workerCount; ++i)
         {
             m_pendingWriterTasks.fetch_add(1, std::memory_order_release);
@@ -490,8 +532,16 @@ namespace Vertex::Scanner
               {
                   const StatusCode finalizeStatus = m_writerRegions[i].store.finalize();
 
+                  if (finalizeStatus != StatusCode::STATUS_OK)
+                  {
+                      m_logService.log_error(fmt::format("[Scanner] Store finalize failed for writer {} (status: {})", i, static_cast<int>(finalizeStatus)));
+                      m_scanAbort.store(true, std::memory_order_release);
+                  }
+
                   if (m_pendingWriterTasks.fetch_sub(1, std::memory_order_acq_rel) == 1)
                   {
+                      reconcile_result_count();
+                      m_resultsReconciled.store(true, std::memory_order_release);
                       std::scoped_lock notifyLock(m_mainThreadMutex);
                       m_mainThreadWaitCondition.notify_one();
                   }
@@ -502,10 +552,18 @@ namespace Vertex::Scanner
 
             if (status != StatusCode::STATUS_OK)
             {
-                m_logService.log_warn(fmt::format("[Scanner] Finalize task for thread {} could not be enqueued (status: {})", i, static_cast<int>(status)));
+                m_logService.log_error(fmt::format("[Scanner] Finalize task for writer {} could not be enqueued (status: {})", i, static_cast<int>(status)));
+                m_scanAbort.store(true, std::memory_order_release);
+
+                if (finalizeResult == StatusCode::STATUS_OK)
+                {
+                    finalizeResult = status;
+                }
 
                 if (m_pendingWriterTasks.fetch_sub(1, std::memory_order_acq_rel) == 1)
                 {
+                    reconcile_result_count();
+                    m_resultsReconciled.store(true, std::memory_order_release);
                     std::scoped_lock notifyLock(m_mainThreadMutex);
                     m_mainThreadWaitCondition.notify_one();
                 }
@@ -528,7 +586,7 @@ namespace Vertex::Scanner
             }
         }
 
-        return StatusCode::STATUS_OK;
+        return finalizeResult;
     }
 
 } // namespace Vertex::Scanner

@@ -5,11 +5,11 @@
 #include <vertexusrrt/debugger_internal.hh>
 #include <vertexusrrt/disassembler.hh>
 #include <vertexusrrt/native_handle.hh>
+#include <sdk/api.h>
 
 #include <Windows.h>
 
 #include <array>
-#include <chrono>
 
 extern native_handle& get_native_handle();
 
@@ -75,7 +75,7 @@ namespace debugger
     TempBreakpoint g_tempBreakpoint{};
     std::mutex g_tempBreakpointMutex{};
 
-    BreakpointStepOver g_breakpointStepOver{};
+    std::unordered_map<DWORD, BreakpointStepOver> g_breakpointStepOvers{};
     std::mutex g_breakpointStepOverMutex{};
 
     bool is_paused_state(const DebuggerState state)
@@ -239,28 +239,12 @@ namespace debugger
 
     bool read_process_memory(const std::uint64_t address, void* buffer, const std::size_t size)
     {
-        const native_handle& processHandle = get_native_handle();
-        if (processHandle == INVALID_HANDLE_VALUE || processHandle == nullptr)
-        {
-            return false;
-        }
-
-        SIZE_T bytesRead = 0;
-        return ReadProcessMemory(processHandle, reinterpret_cast<LPCVOID>(address),
-                                buffer, size, &bytesRead) && bytesRead == size;
+        return vertex_memory_read_process(address, size, static_cast<char*>(buffer)) == STATUS_OK;
     }
 
     bool write_process_memory(const std::uint64_t address, const void* buffer, const std::size_t size)
     {
-        const native_handle& processHandle = get_native_handle();
-        if (processHandle == INVALID_HANDLE_VALUE || processHandle == nullptr)
-        {
-            return false;
-        }
-
-        SIZE_T bytesWritten = 0;
-        return WriteProcessMemory(processHandle, reinterpret_cast<LPVOID>(address),
-                                 buffer, size, &bytesWritten) && bytesWritten == size;
+        return vertex_memory_write_process(address, size, static_cast<const char*>(buffer)) == STATUS_OK;
     }
 
     bool set_trap_flag(const HANDLE threadHandle, const bool isWow64, const bool enable)
@@ -451,47 +435,53 @@ namespace debugger
         return returnAddress;
     }
 
-    DebugCommand wait_for_command(const DebugLoopContext& ctx, const std::stop_token& stopToken)
+    void set_breakpoint_step_over(const std::uint64_t address, const DWORD threadId, const DebugCommand pendingCommand,
+                                   const std::optional<std::uint64_t> precomputedTarget)
     {
-        std::unique_lock lock{*ctx.commandMutex};
+        std::scoped_lock lock{g_breakpointStepOverMutex};
+        g_breakpointStepOvers[threadId] = BreakpointStepOver{
+            .address = address,
+            .pendingCommand = pendingCommand,
+            .precomputedTarget = precomputedTarget,
+            .active = true
+        };
+    }
 
-        ctx.commandSignal->wait(lock, [&] {
-            return stopToken.stop_requested() ||
-                   ctx.stopRequested->load(std::memory_order_acquire) ||
-                   ctx.pendingCommand->load(std::memory_order_acquire) != DebugCommand::None;
-        });
+    void clear_breakpoint_step_over(const DWORD threadId)
+    {
+        std::scoped_lock lock{g_breakpointStepOverMutex};
+        g_breakpointStepOvers.erase(threadId);
+    }
 
-        if (stopToken.stop_requested() || ctx.stopRequested->load(std::memory_order_acquire))
+    void clear_all_breakpoint_step_overs()
+    {
+        std::scoped_lock lock{g_breakpointStepOverMutex};
+        g_breakpointStepOvers.clear();
+    }
+
+    bool is_stepping_over_breakpoint(const DWORD threadId, std::uint64_t* address, DebugCommand* pendingCommand,
+                                      std::optional<std::uint64_t>* precomputedTarget)
+    {
+        std::scoped_lock lock{g_breakpointStepOverMutex};
+        const auto it = g_breakpointStepOvers.find(threadId);
+        if (it == g_breakpointStepOvers.end())
         {
-            return DebugCommand::Continue;
+            return false;
         }
 
-        const auto cmd = ctx.pendingCommand->exchange(DebugCommand::None, std::memory_order_acq_rel);
-        return cmd;
-    }
-
-    void set_breakpoint_step_over(const std::uint64_t address)
-    {
-        std::scoped_lock lock{g_breakpointStepOverMutex};
-        g_breakpointStepOver.address = address;
-        g_breakpointStepOver.active = true;
-    }
-
-    void clear_breakpoint_step_over()
-    {
-        std::scoped_lock lock{g_breakpointStepOverMutex};
-        g_breakpointStepOver.address = 0;
-        g_breakpointStepOver.active = false;
-    }
-
-    bool is_stepping_over_breakpoint(std::uint64_t* address)
-    {
-        std::scoped_lock lock{g_breakpointStepOverMutex};
-        if (g_breakpointStepOver.active && address != nullptr)
+        if (address != nullptr)
         {
-            *address = g_breakpointStepOver.address;
+            *address = it->second.address;
         }
-        return g_breakpointStepOver.active;
+        if (pendingCommand != nullptr)
+        {
+            *pendingCommand = it->second.pendingCommand;
+        }
+        if (precomputedTarget != nullptr)
+        {
+            *precomputedTarget = it->second.precomputedTarget;
+        }
+        return true;
     }
 
     std::unordered_map<DWORD, WatchpointStepOver> g_watchpointStepOvers{};
@@ -512,6 +502,12 @@ namespace debugger
     {
         std::scoped_lock lock{g_watchpointStepOverMutex};
         g_watchpointStepOvers.erase(threadId);
+    }
+
+    void clear_all_watchpoint_step_overs()
+    {
+        std::scoped_lock lock{g_watchpointStepOverMutex};
+        g_watchpointStepOvers.clear();
     }
 
     bool is_stepping_over_watchpoint(const DWORD threadId, std::uint32_t* watchpointId)

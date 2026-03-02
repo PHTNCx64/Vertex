@@ -4,6 +4,8 @@
 //
 #pragma once
 
+#include <sdk/debugger.h>
+
 #include <string>
 #include <vector>
 #include <optional>
@@ -39,6 +41,29 @@ namespace Vertex::Debugger
         Interrupt
     };
 
+    enum class XrefType : std::uint8_t
+    {
+        Call = 0,
+        UnconditionalJump,
+        ConditionalJump,
+        Loop
+    };
+
+    enum class XrefDirection : std::uint8_t
+    {
+        To = 0,
+        From
+    };
+
+    struct XrefEntry final
+    {
+        std::uint64_t address {};
+        std::uint64_t targetAddress {};
+        XrefType type {XrefType::Call};
+        std::string symbolName {};
+        std::string moduleName {};
+    };
+
     struct DisassemblyLine final
     {
         std::uint64_t address {};
@@ -46,10 +71,16 @@ namespace Vertex::Debugger
         std::string mnemonic {};
         std::string operands {};
         std::string comment {};
+        std::string symbolName {};
+        std::string moduleName {};
+        std::string sectionName {};
+        std::string targetSymbolName {};
+        std::uint64_t functionStart {};
         bool isCurrentInstruction {};
         bool hasBreakpoint {};
         bool isJumpTarget {};
         bool isCallTarget {};
+        bool isFunctionEntry {};
         std::optional<std::uint64_t> branchTarget {};
         BranchType branchType {BranchType::None};
     };
@@ -59,6 +90,13 @@ namespace Vertex::Debugger
         std::uint64_t startAddress {};
         std::uint64_t endAddress {};
         std::vector<DisassemblyLine> lines {};
+    };
+
+    enum class ExtensionResult : std::uint8_t
+    {
+        Success = 0,
+        EndOfRange,
+        Error
     };
 
     enum class BreakpointType : std::uint8_t
@@ -87,6 +125,8 @@ namespace Vertex::Debugger
         std::string moduleName {};
         std::uint32_t hitCount {};
         bool temporary {};
+        ::BreakpointConditionType conditionType {VERTEX_BP_COND_NONE};
+        std::uint32_t hitCountTarget {};
     };
 
     enum class WatchpointType : std::uint8_t

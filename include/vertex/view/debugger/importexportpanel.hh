@@ -27,7 +27,7 @@ namespace Vertex::View::Debugger
 
         ImportExportPanel(wxWindow* parent, Language::ILanguage& languageService);
 
-        void update_modules(const std::vector<::Vertex::Debugger::ModuleInfo>& modules);
+        [[nodiscard]] bool update_modules(const std::vector<::Vertex::Debugger::ModuleInfo>& modules);
         void update_imports(const std::vector<::Vertex::Debugger::ImportEntry>& imports);
         void update_exports(const std::vector<::Vertex::Debugger::ExportEntry>& exports);
         void set_selected_module(std::string_view moduleName);

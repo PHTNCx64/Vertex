@@ -69,9 +69,19 @@ namespace Vertex::View::Debugger
         m_exportsList->Bind(wxEVT_LIST_ITEM_ACTIVATED, &ImportExportPanel::on_export_activated, this);
     }
 
-    void ImportExportPanel::update_modules(const std::vector<::Vertex::Debugger::ModuleInfo>& modules)
+    bool ImportExportPanel::update_modules(const std::vector<::Vertex::Debugger::ModuleInfo>& modules)
     {
+        const auto unchanged = modules.size() == m_modules.size() &&
+            std::ranges::equal(modules, m_modules, {}, &::Vertex::Debugger::ModuleInfo::name,
+                               &::Vertex::Debugger::ModuleInfo::name);
+        if (unchanged)
+        {
+            return false;
+        }
+
         m_modules = modules;
+
+        m_moduleComboBox->Freeze();
         m_moduleComboBox->Clear();
 
         std::ranges::for_each(modules,
@@ -84,11 +94,26 @@ namespace Vertex::View::Debugger
         {
             m_moduleComboBox->SetSelection(0);
         }
+        m_moduleComboBox->Thaw();
+        return true;
     }
 
     void ImportExportPanel::update_imports(const std::vector<::Vertex::Debugger::ImportEntry>& imports)
     {
+        const auto unchanged = imports.size() == m_imports.size() &&
+            std::ranges::equal(imports, m_imports,
+                               [](const auto& a, const auto& b)
+                               {
+                                   return a.address == b.address && a.functionName == b.functionName;
+                               });
+        if (unchanged)
+        {
+            return;
+        }
+
         m_imports = imports;
+
+        m_importsList->Freeze();
         m_importsList->DeleteAllItems();
 
         for (const auto& [i, imp] : imports | std::views::enumerate)
@@ -97,11 +122,25 @@ namespace Vertex::View::Debugger
             m_importsList->SetItem(idx, 1, fmt::format("{:X}", imp.address));
             m_importsList->SetItem(idx, 2, imp.moduleName);
         }
+        m_importsList->Thaw();
     }
 
     void ImportExportPanel::update_exports(const std::vector<::Vertex::Debugger::ExportEntry>& exports)
     {
+        const auto unchanged = exports.size() == m_exports.size() &&
+            std::ranges::equal(exports, m_exports,
+                               [](const auto& a, const auto& b)
+                               {
+                                   return a.address == b.address && a.functionName == b.functionName;
+                               });
+        if (unchanged)
+        {
+            return;
+        }
+
         m_exports = exports;
+
+        m_exportsList->Freeze();
         m_exportsList->DeleteAllItems();
 
         for (const auto& [i, exp] : exports | std::views::enumerate)
@@ -110,6 +149,7 @@ namespace Vertex::View::Debugger
             m_exportsList->SetItem(idx, 1, fmt::format("{:X}", exp.address));
             m_exportsList->SetItem(idx, 2, std::to_string(exp.ordinal));
         }
+        m_exportsList->Thaw();
     }
 
     void ImportExportPanel::set_selected_module(const std::string_view moduleName)

@@ -19,11 +19,19 @@ namespace Vertex::Thread
         m_workerPoolLogicalSizes.clear();
         destroy_dedicated_threads();
         destroy_shared_thread();
+        m_debuggerPriorityThread.reset();
     }
 
     StatusCode ThreadDispatcher::configure(const std::uint64_t featureFlags)
     {
         std::scoped_lock lock{m_mutex};
+
+        const auto newEpoch = m_epoch.fetch_add(1, std::memory_order_relaxed) + 1;
+
+        if (m_debuggerPriorityThread)
+        {
+            m_debuggerPriorityThread->invalidate_epoch(newEpoch);
+        }
 
         m_debuggerIndependent = !(featureFlags & VERTEX_FEATURE_DEBUGGER_DEPENDENT);
 
@@ -32,11 +40,24 @@ namespace Vertex::Thread
             m_mode = DispatchMode::SingleThreaded;
 
             destroy_dedicated_threads();
-            create_shared_thread();
 
-            if (m_debuggerIndependent && !m_dedicatedDebuggerThread)
+            if (m_debuggerIndependent)
             {
-                m_dedicatedDebuggerThread = std::make_unique<VertexSPSCThread>();
+                create_shared_thread();
+
+                if (!m_debuggerPriorityThread)
+                {
+                    m_debuggerPriorityThread = std::make_unique<VertexPriorityThread>();
+                }
+            }
+            else
+            {
+                destroy_shared_thread();
+
+                if (!m_debuggerPriorityThread)
+                {
+                    m_debuggerPriorityThread = std::make_unique<VertexPriorityThread>();
+                }
             }
         }
         else
@@ -44,8 +65,12 @@ namespace Vertex::Thread
             m_mode = DispatchMode::MultiThreaded;
 
             destroy_shared_thread();
-            m_dedicatedDebuggerThread.reset();
             create_dedicated_threads();
+
+            if (!m_debuggerPriorityThread)
+            {
+                m_debuggerPriorityThread = std::make_unique<VertexPriorityThread>();
+            }
         }
 
         return StatusCode::STATUS_OK;
@@ -57,7 +82,7 @@ namespace Vertex::Thread
 
         if (m_mode == DispatchMode::SingleThreaded)
         {
-            if (!m_sharedThread)
+            if (m_debuggerIndependent && !m_sharedThread)
             {
                 create_shared_thread();
             }
@@ -77,11 +102,14 @@ namespace Vertex::Thread
     {
         std::scoped_lock lock{m_mutex};
 
+        m_epoch.fetch_add(1, std::memory_order_relaxed);
+
+        m_debuggerPriorityThread.reset();
+
         m_workerPools.clear();
         m_workerPoolLogicalSizes.clear();
         destroy_dedicated_threads();
         destroy_shared_thread();
-        m_dedicatedDebuggerThread.reset();
 
         return StatusCode::STATUS_OK;
     }
@@ -90,21 +118,7 @@ namespace Vertex::Thread
     ThreadDispatcher::dispatch(const ThreadChannel channel, std::packaged_task<StatusCode()>&& task)
     {
         std::scoped_lock lock{m_mutex};
-
-        if (channel == ThreadChannel::Debugger && m_debuggerIndependent)
-        {
-            if (m_dedicatedDebuggerThread)
-            {
-                return dispatch_to_spsc(channel, std::move(task));
-            }
-        }
-
-        if (m_mode == DispatchMode::SingleThreaded)
-        {
-            return dispatch_to_mpsc(std::move(task));
-        }
-
-        return dispatch_to_spsc(channel, std::move(task));
+        return dispatch_locked(channel, std::move(task));
     }
 
     StatusCode
@@ -118,6 +132,53 @@ namespace Vertex::Thread
         return StatusCode::STATUS_OK;
     }
 
+    std::expected<RecurringTaskHandle, StatusCode>
+    ThreadDispatcher::schedule_recurring(const ThreadChannel channel,
+                                         const DispatchPriority priority,
+                                         const RecurringPolicy policy,
+                                         const std::chrono::milliseconds delay,
+                                         std::function<StatusCode()> task,
+                                         const RecurringFailurePolicy failurePolicy)
+    {
+        std::scoped_lock lock{m_mutex};
+
+        if (channel == ThreadChannel::Debugger && m_debuggerPriorityThread)
+        {
+            const auto epoch = m_epoch.load(std::memory_order_relaxed);
+            return m_debuggerPriorityThread->add_recurring(
+                priority, policy, delay, std::move(task), failurePolicy, epoch);
+        }
+
+        return std::unexpected(StatusCode::STATUS_ERROR_NOT_IMPLEMENTED);
+    }
+
+    StatusCode ThreadDispatcher::cancel_recurring(const RecurringTaskHandle handle)
+    {
+        std::scoped_lock lock{m_mutex};
+
+        if (m_debuggerPriorityThread)
+        {
+            return m_debuggerPriorityThread->remove_recurring(handle);
+        }
+
+        return StatusCode::STATUS_ERROR_INVALID_PARAMETER;
+    }
+
+    std::expected<std::future<StatusCode>, StatusCode>
+    ThreadDispatcher::dispatch_with_priority(const ThreadChannel channel,
+                                              const DispatchPriority priority,
+                                              std::packaged_task<StatusCode()>&& task)
+    {
+        std::scoped_lock lock{m_mutex};
+
+        if (channel == ThreadChannel::Debugger && m_debuggerPriorityThread)
+        {
+            return m_debuggerPriorityThread->enqueue(priority, std::move(task));
+        }
+
+        return dispatch_locked(channel, std::move(task));
+    }
+
     bool ThreadDispatcher::is_single_threaded() const noexcept
     {
         return m_mode == DispatchMode::SingleThreaded;
@@ -127,9 +188,18 @@ namespace Vertex::Thread
     {
         std::scoped_lock lock{m_mutex};
 
-        if (channel == ThreadChannel::Debugger && m_debuggerIndependent && m_dedicatedDebuggerThread)
+        if (channel == ThreadChannel::Debugger && m_debuggerPriorityThread)
         {
-            return m_dedicatedDebuggerThread->is_busy() == StatusCode::STATUS_ERROR_THREAD_IS_BUSY;
+            return m_debuggerPriorityThread->is_busy();
+        }
+
+        if (is_dependent_mode())
+        {
+            if (m_debuggerPriorityThread)
+            {
+                return m_debuggerPriorityThread->is_busy();
+            }
+            return false;
         }
 
         if (m_mode == DispatchMode::SingleThreaded)
@@ -154,9 +224,18 @@ namespace Vertex::Thread
     {
         std::scoped_lock lock{m_mutex};
 
-        if (channel == ThreadChannel::Debugger && m_debuggerIndependent && m_dedicatedDebuggerThread)
+        if (channel == ThreadChannel::Debugger && m_debuggerPriorityThread)
         {
-            return m_dedicatedDebuggerThread->get_pending_tasks();
+            return m_debuggerPriorityThread->pending_tasks();
+        }
+
+        if (is_dependent_mode())
+        {
+            if (m_debuggerPriorityThread)
+            {
+                return m_debuggerPriorityThread->pending_tasks();
+            }
+            return 0;
         }
 
         if (m_mode == DispatchMode::SingleThreaded)
@@ -177,13 +256,42 @@ namespace Vertex::Thread
         return 0;
     }
 
+    std::expected<std::future<StatusCode>, StatusCode>
+    ThreadDispatcher::dispatch_locked(const ThreadChannel channel, std::packaged_task<StatusCode()>&& task)
+    {
+        if (channel == ThreadChannel::Debugger && m_debuggerPriorityThread)
+        {
+            return m_debuggerPriorityThread->enqueue(DispatchPriority::Normal, std::move(task));
+        }
+
+        if (is_dependent_mode())
+        {
+            if (m_debuggerPriorityThread)
+            {
+                return m_debuggerPriorityThread->enqueue(DispatchPriority::Normal, std::move(task));
+            }
+            return std::unexpected(StatusCode::STATUS_ERROR_THREAD_IS_NOT_RUNNING);
+        }
+
+        if (m_mode == DispatchMode::SingleThreaded)
+        {
+            return dispatch_to_mpsc(std::move(task));
+        }
+
+        return dispatch_to_spsc(channel, std::move(task));
+    }
+
+    bool ThreadDispatcher::is_dependent_mode() const noexcept
+    {
+        return m_mode == DispatchMode::SingleThreaded && !m_debuggerIndependent;
+    }
+
     void ThreadDispatcher::create_dedicated_threads()
     {
         if (m_dedicatedThreads.empty())
         {
             m_dedicatedThreads[ThreadChannel::Freeze] = std::make_unique<VertexSPSCThread>();
             m_dedicatedThreads[ThreadChannel::ProcessList] = std::make_unique<VertexSPSCThread>();
-            m_dedicatedThreads[ThreadChannel::Debugger] = std::make_unique<VertexSPSCThread>();
             m_dedicatedThreads[ThreadChannel::Scanner] = std::make_unique<VertexSPSCThread>();
         }
     }
@@ -220,37 +328,29 @@ namespace Vertex::Thread
     std::expected<std::future<StatusCode>, StatusCode>
     ThreadDispatcher::dispatch_to_spsc(const ThreadChannel channel, std::packaged_task<StatusCode()>&& task)
     {
-        auto resultFuture = task.get_future();
+        auto innerFuture = task.get_future().share();
 
         std::packaged_task<StatusCode()> wrapper(
-            [inner = std::move(task)]() mutable -> StatusCode
+            [inner = std::move(task), innerFuture]() mutable -> StatusCode
             {
                 inner();
-                return StatusCode::STATUS_OK;
+                return innerFuture.get();
             });
 
-        VertexSPSCThread* target{};
+        auto callerFuture = wrapper.get_future();
 
-        if (channel == ThreadChannel::Debugger && m_debuggerIndependent && m_dedicatedDebuggerThread)
+        const auto it = m_dedicatedThreads.find(channel);
+        if (it == m_dedicatedThreads.end() || !it->second)
         {
-            target = m_dedicatedDebuggerThread.get();
-        }
-        else
-        {
-            const auto it = m_dedicatedThreads.find(channel);
-            if (it == m_dedicatedThreads.end() || !it->second)
-            {
-                return std::unexpected(StatusCode::STATUS_ERROR_THREAD_IS_NOT_RUNNING);
-            }
-            target = it->second.get();
+            return std::unexpected(StatusCode::STATUS_ERROR_THREAD_IS_NOT_RUNNING);
         }
 
-        const StatusCode status = target->enqueue_task(std::move(wrapper));
+        const StatusCode status = it->second->enqueue_task(std::move(wrapper));
         if (status != StatusCode::STATUS_OK)
         {
             return std::unexpected(status);
         }
-        return resultFuture;
+        return callerFuture;
     }
 
     StatusCode ThreadDispatcher::create_worker_pool(const ThreadChannel channel, const std::size_t workerCount)
@@ -299,6 +399,12 @@ namespace Vertex::Thread
 
         if (m_mode == DispatchMode::SingleThreaded)
         {
+            if (is_dependent_mode() && m_debuggerPriorityThread)
+            {
+                return m_debuggerPriorityThread->enqueue_fire_and_forget(
+                    DispatchPriority::Normal, std::move(task));
+            }
+
             if (!m_sharedThread)
             {
                 return StatusCode::STATUS_ERROR_THREAD_IS_NOT_RUNNING;
@@ -325,44 +431,27 @@ namespace Vertex::Thread
         }
 
         auto& preferred = pool[workerIndex];
-        if (preferred && preferred->is_running())
+        if (!preferred || !preferred->is_running())
         {
-            const StatusCode status = preferred->enqueue_task(std::move(task));
-            if (status == StatusCode::STATUS_OK)
-            {
-                return StatusCode::STATUS_OK;
-            }
-
-            if (status == StatusCode::STATUS_ERROR_THREAD_IS_NOT_RUNNING)
-            {
-                const StatusCode restartStatus = preferred->start();
-                if (restartStatus == StatusCode::STATUS_OK)
-                {
-                    const StatusCode retryStatus = preferred->enqueue_task(std::move(task));
-                    if (retryStatus == StatusCode::STATUS_OK)
-                    {
-                        return StatusCode::STATUS_OK;
-                    }
-                }
-            }
+            return StatusCode::STATUS_ERROR_THREAD_IS_NOT_RUNNING;
         }
 
-        for (std::size_t i = 0; i < pool.size(); ++i)
+        const StatusCode status = preferred->enqueue_task(std::move(task));
+        if (status == StatusCode::STATUS_OK)
         {
-            if (i == workerIndex)
-            {
-                continue;
-            }
-            if (pool[i] && pool[i]->is_running())
-            {
-                const StatusCode altStatus = pool[i]->enqueue_task(std::move(task));
-                if (altStatus == StatusCode::STATUS_OK)
-                {
-                    return StatusCode::STATUS_OK;
-                }
-            }
+            return StatusCode::STATUS_OK;
         }
 
-        return StatusCode::STATUS_ERROR_THREAD_IS_NOT_RUNNING;
+        if (status == StatusCode::STATUS_ERROR_THREAD_IS_NOT_RUNNING)
+        {
+            const StatusCode restartStatus = preferred->start();
+            if (restartStatus != StatusCode::STATUS_OK)
+            {
+                return restartStatus;
+            }
+            return preferred->enqueue_task(std::move(task));
+        }
+
+        return status;
     }
 }

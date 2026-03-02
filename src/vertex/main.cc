@@ -59,9 +59,17 @@ bool VertexApp::OnInit()
         debuggerView->navigate_to_address(address);
     });
 
-    mainView->set_find_access_callback([debuggerView](const std::uint64_t address, const std::uint32_t size)
+    mainView->set_debugger_callbacks(
+        [debuggerView]() { return debuggerView->is_attached(); },
+        [debuggerView]() { debuggerView->attach_debugger(); }
+    );
+
+    mainView->set_find_access_callback([mainView, debuggerView](const std::uint64_t address, const std::uint32_t size)
     {
-        debuggerView->set_watchpoint(address, size);
+        if (mainView->ensure_debugger_attached())
+        {
+            debuggerView->set_watchpoint(address, size);
+        }
     });
 
     log.log_info("Vertex initialized");
