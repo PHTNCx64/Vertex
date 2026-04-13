@@ -1,0 +1,5 @@
+// Basic Vertex script template.
+void main()
+{
+    log_info("Script started.");
+}

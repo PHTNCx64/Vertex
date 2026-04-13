@@ -15,6 +15,7 @@
 #include <vertex/debugger/debuggertypes.hh>
 #include <vertex/runtime/iregistry.hh>
 #include <vertex/language/language.hh>
+#include <vertex/gui/theme/ithemeprovider.hh>
 
 namespace Vertex::View::Debugger
 {
@@ -23,8 +24,9 @@ namespace Vertex::View::Debugger
     public:
         using SetRegisterCallback = std::function<void(const std::string& name, std::uint64_t value)>;
         using RefreshCallback = std::function<void()>;
+        using ShowInMemoryCallback = std::function<void(std::uint64_t address)>;
 
-        RegistersPanel(wxWindow* parent, Language::ILanguage& languageService);
+        RegistersPanel(wxWindow* parent, Language::ILanguage& languageService, Gui::IThemeProvider& themeProvider);
 
         void update_registers(const ::Vertex::Debugger::RegisterSet& registers);
         void clear();
@@ -38,6 +40,9 @@ namespace Vertex::View::Debugger
 
         void set_register_callback(SetRegisterCallback callback);
         void set_refresh_callback(RefreshCallback callback);
+        void set_show_in_memory_callback(ShowInMemoryCallback callback);
+
+        void refresh_theme() const;
 
         [[nodiscard]] bool is_configured() const { return m_isConfigured; }
 
@@ -51,6 +56,7 @@ namespace Vertex::View::Debugger
         void on_refresh_clicked(wxCommandEvent& event);
 
         static constexpr int ID_REFRESH = wxID_HIGHEST + 1;
+        static constexpr int ID_SHOW_IN_MEMORY = wxID_HIGHEST + 2;
 
         [[nodiscard]] std::string format_register_value(std::uint64_t value, std::uint8_t bitWidth) const;
         [[nodiscard]] std::string build_flags_tooltip(std::uint64_t value) const;
@@ -61,6 +67,7 @@ namespace Vertex::View::Debugger
         ::Vertex::Debugger::RegisterSet m_registers{};
         SetRegisterCallback m_setRegisterCallback{};
         RefreshCallback m_refreshCallback{};
+        ShowInMemoryCallback m_showInMemoryCallback{};
 
         std::vector<Runtime::RegisterCategoryInfo> m_categories{};
         std::vector<Runtime::RegisterInfo> m_registerDefs{};
@@ -70,5 +77,6 @@ namespace Vertex::View::Debugger
         std::unordered_map<std::string, long> m_registerIndexMap{};
 
         Language::ILanguage& m_languageService;
+        Gui::IThemeProvider& m_themeProvider;
     };
 }

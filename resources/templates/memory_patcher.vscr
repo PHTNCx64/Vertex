@@ -1,0 +1,12 @@
+// Memory patcher template.
+// Replace placeholder addresses and values before running.
+void main()
+{
+    log_info("Memory patcher started.");
+
+    // Example flow:
+    // uint64 targetAddress = 0x0;
+    // string bytes;
+    // read_memory(targetAddress, 8, bytes);
+    // write_memory(targetAddress, bytes);
+}

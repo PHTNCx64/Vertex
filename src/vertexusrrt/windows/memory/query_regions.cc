@@ -4,6 +4,7 @@
 //
 #include <vertexusrrt/memory_internal.hh>
 
+#include <cstring>
 #include <vector>
 
 extern native_handle& get_native_handle();

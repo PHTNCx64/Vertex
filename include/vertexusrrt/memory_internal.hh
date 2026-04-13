@@ -231,5 +231,5 @@ namespace MemoryInternal
         }
     };
 
-    inline thread_local ModuleLookup g_moduleLookup{};
+    extern thread_local ModuleLookup g_moduleLookup;
 }

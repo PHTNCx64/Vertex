@@ -61,7 +61,7 @@ namespace Vertex::View
         const wxIconBundle iconBundle{logoStream, wxBITMAP_TYPE_ICO};
         if (!iconBundle.IsEmpty())
         {
-            wxTopLevelWindowGTK::SetIcons(iconBundle);
+            SetIcons(iconBundle);
         }
 
         m_auiManager.SetManagedWindow(this);
