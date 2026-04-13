@@ -122,7 +122,7 @@ namespace Vertex::Thread
     }
 
     StatusCode
-    ThreadDispatcher::dispatch_fire_and_forget(ThreadChannel channel, std::packaged_task<StatusCode()>&& task)
+    ThreadDispatcher::dispatch_fire_and_forget(const ThreadChannel channel, std::packaged_task<StatusCode()>&& task)
     {
         auto result = dispatch(channel, std::move(task));
         if (!result.has_value())
@@ -293,6 +293,7 @@ namespace Vertex::Thread
             m_dedicatedThreads[ThreadChannel::Freeze] = std::make_unique<VertexSPSCThread>();
             m_dedicatedThreads[ThreadChannel::ProcessList] = std::make_unique<VertexSPSCThread>();
             m_dedicatedThreads[ThreadChannel::Scanner] = std::make_unique<VertexSPSCThread>();
+            m_dedicatedThreads[ThreadChannel::Script] = std::make_unique<VertexSPSCThread>();
         }
     }
 

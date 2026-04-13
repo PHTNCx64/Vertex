@@ -26,4 +26,7 @@ namespace Vertex::Event
     static constexpr EventId DEBUGGER_STATE_CHANGED_EVENT = 16;
     static constexpr EventId DEBUGGER_MODULE_LOADED_EVENT = 17;
     static constexpr EventId DEBUGGER_MODULE_UNLOADED_EVENT = 18;
+
+    static constexpr EventId SCRIPT_OUTPUT_EVENT = 19;
+    static constexpr EventId SCRIPT_DIAGNOSTIC_EVENT = 20;
 }

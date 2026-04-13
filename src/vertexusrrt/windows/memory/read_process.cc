@@ -7,7 +7,7 @@
 
 #include <cstdint>
 
-#include <Windows.h>
+#include <windows.h>
 
 extern native_handle& get_native_handle();
 

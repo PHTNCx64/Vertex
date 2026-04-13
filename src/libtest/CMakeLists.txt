@@ -1,9 +1,4 @@
 #-----------------------------
-#  Source Files (Platform-independent)
-#-----------------------------
-set(SOURCES)
-
-#-----------------------------
 #  Platform Configuration
 #-----------------------------
 if(WIN32)
@@ -13,7 +8,7 @@ if(WIN32)
 elseif(APPLE)
     # list(APPEND SOURCES macos/main.cc)
 elseif(UNIX)
-    # list(APPEND SOURCES linux/main.cc)
+    list(APPEND SOURCES linux/main.cc)
 endif()
 
 message(STATUS "Building libtest (x64)")

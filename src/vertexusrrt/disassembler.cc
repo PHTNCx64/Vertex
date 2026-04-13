@@ -6,10 +6,10 @@
 
 #include <capstone/capstone.h>
 #include <algorithm>
+#include <cstring>
 #include <mutex>
 #include <unordered_set>
 #include <string_view>
-#include <vector>
 
 namespace PluginRuntime
 {
@@ -710,7 +710,7 @@ namespace PluginRuntime
         return STATUS_OK;
     }
 
-    std::uint32_t disassemble_single(std::uint64_t address, std::span<const std::uint8_t> code, DisassemblerResult* result)
+    std::uint32_t disassemble_single(const std::uint64_t address, const std::span<const std::uint8_t> code, DisassemblerResult* result)
     {
         if (!result || code.empty())
         {

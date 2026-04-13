@@ -3,17 +3,20 @@
 // Licensed under GPLv3.0 with Plugin Interface exceptions.
 //
 #include <vertex/view/memoryattributeview.hh>
+#include <vertex/gui/theme/themeprovider.hh>
 #include <wx/msgdlg.h>
 #include <wx/app.h>
 
 namespace Vertex::View
 {
     MemoryAttributeView::MemoryAttributeView(std::unique_ptr<ViewModel::MemoryAttributeViewModel> viewModel,
-                                             Language::ILanguage& languageService)
+                                             Language::ILanguage& languageService,
+                                             Gui::IThemeProvider& themeProvider)
         : wxDialog(wxTheApp->GetTopWindow(), wxID_ANY,
                   wxString::FromUTF8(languageService.fetch_translation("memoryAttributeWindow.title"))),
-          m_viewModel(std::move(viewModel)),
-          m_languageService(languageService)
+          m_viewModel{std::move(viewModel)},
+          m_languageService{languageService},
+          m_themeProvider{themeProvider}
     {
         m_viewModel->set_event_callback([this](const Event::EventId eventId, const Event::VertexEvent& event)
         {
@@ -22,6 +25,14 @@ namespace Vertex::View
 
         create_ui_elements();
         layout_ui_elements();
+
+        Bind(wxEVT_SYS_COLOUR_CHANGED, [this](wxSysColourChangedEvent& event)
+        {
+            m_themeProvider.refresh();
+            Gui::ThemeProvider::apply_palette_to_tree(this, m_themeProvider.palette());
+            Refresh();
+            event.Skip();
+        });
 
         SetSizer(m_mainSizer);
         wxTopLevelWindowBase::Layout();
@@ -55,18 +66,18 @@ namespace Vertex::View
         m_mainSizer = new wxBoxSizer(wxVERTICAL);
         m_memoryAttributeGroupSizer = new wxBoxSizer(wxHORIZONTAL);
 
-        m_memoryAttributeGroupSizer->Add(m_protectionGroupSizer, 1, wxEXPAND | wxALL, StandardWidgetValues::STANDARD_BORDER);
-        m_memoryAttributeGroupSizer->Add(m_stateGroupSizer, 1, wxEXPAND | wxALL, StandardWidgetValues::STANDARD_BORDER);
-        m_memoryAttributeGroupSizer->Add(m_typeGroupSizer, 1, wxEXPAND | wxALL, StandardWidgetValues::STANDARD_BORDER);
+        m_memoryAttributeGroupSizer->Add(m_protectionGroupSizer, StandardWidgetValues::STANDARD_PROPORTION, wxEXPAND | wxALL, StandardWidgetValues::STANDARD_BORDER);
+        m_memoryAttributeGroupSizer->Add(m_stateGroupSizer, StandardWidgetValues::STANDARD_PROPORTION, wxEXPAND | wxALL, StandardWidgetValues::STANDARD_BORDER);
+        m_memoryAttributeGroupSizer->Add(m_typeGroupSizer, StandardWidgetValues::STANDARD_PROPORTION, wxEXPAND | wxALL, StandardWidgetValues::STANDARD_BORDER);
 
-        m_mainSizer->Add(m_memoryAttributeGroupSizer, 1, wxEXPAND | wxALL, StandardWidgetValues::STANDARD_BORDER);
+        m_mainSizer->Add(m_memoryAttributeGroupSizer, StandardWidgetValues::STANDARD_PROPORTION, wxEXPAND | wxALL, StandardWidgetValues::STANDARD_BORDER);
 
         m_buttonSizer = new wxBoxSizer(wxHORIZONTAL);
         m_buttonSizer->AddStretchSpacer();
-        m_buttonSizer->Add(m_okButton, 0, wxRIGHT, StandardWidgetValues::STANDARD_BORDER);
-        m_buttonSizer->Add(m_cancelButton, 0, 0, 0);
+        m_buttonSizer->Add(m_okButton, StandardWidgetValues::NO_PROPORTION, wxRIGHT, StandardWidgetValues::STANDARD_BORDER);
+        m_buttonSizer->Add(m_cancelButton, StandardWidgetValues::NO_PROPORTION, 0, 0);
 
-        m_mainSizer->Add(m_buttonSizer, 0, wxEXPAND | wxALL, StandardWidgetValues::STANDARD_BORDER);
+        m_mainSizer->Add(m_buttonSizer, StandardWidgetValues::NO_PROPORTION, wxEXPAND | wxALL, StandardWidgetValues::STANDARD_BORDER);
     }
 
     void MemoryAttributeView::load_memory_attributes_from_viewmodel()
@@ -135,7 +146,7 @@ namespace Vertex::View
         auto* checkbox = new wxCheckBox(parent, wxID_ANY, wxString::FromUTF8(option.name));
         checkbox->SetValue(option.currentState);
         m_stateFunctions.push_back(option.stateFunction);
-        sizer->Add(checkbox, 0, wxEXPAND | wxALL, StandardWidgetValues::STANDARD_BORDER);
+        sizer->Add(checkbox, StandardWidgetValues::NO_PROPORTION, wxEXPAND | wxALL, StandardWidgetValues::STANDARD_BORDER);
         checkboxList->push_back(checkbox);
     }
 
@@ -223,10 +234,10 @@ namespace Vertex::View
 
     void MemoryAttributeView::apply_checkbox_states()
     {
-        std::vector<wxCheckBox*> allCheckboxes;
-        allCheckboxes.insert(allCheckboxes.end(), m_protectionCheckboxes.begin(), m_protectionCheckboxes.end());
-        allCheckboxes.insert(allCheckboxes.end(), m_stateCheckboxes.begin(), m_stateCheckboxes.end());
-        allCheckboxes.insert(allCheckboxes.end(), m_typeCheckboxes.begin(), m_typeCheckboxes.end());
+        std::vector<wxCheckBox*> allCheckboxes{};
+        allCheckboxes.append_range(m_protectionCheckboxes);
+        allCheckboxes.append_range(m_stateCheckboxes);
+        allCheckboxes.append_range(m_typeCheckboxes);
 
         for (std::size_t i = 0; i < allCheckboxes.size() && i < m_stateFunctions.size(); ++i)
         {

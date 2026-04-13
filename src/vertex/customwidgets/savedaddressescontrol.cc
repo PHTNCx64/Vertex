@@ -4,25 +4,28 @@
 //
 #include <vertex/customwidgets/savedaddressescontrol.hh>
 #include <vertex/customwidgets/valueeditdialog.hh>
+#include <vertex/gui/theme/themeprovider.hh>
 #include <vertex/scanner/valuetypes.hh>
 #include <wx/menu.h>
 #include <wx/clipbrd.h>
 #include <wx/renderer.h>
-#include <fmt/format.h>
 #include <algorithm>
 
 namespace Vertex::CustomWidgets
 {
     SavedAddressesHeader::SavedAddressesHeader(
         wxWindow* parent,
-        Language::ILanguage& languageService
+        Language::ILanguage& languageService,
+        Gui::IThemeProvider& themeProvider
     )
-        : wxPanel(parent, wxID_ANY, wxDefaultPosition, wxDefaultSize, wxFULL_REPAINT_ON_RESIZE)
+        : wxPanel()
+        , m_themeProvider(themeProvider)
     {
-        wxWindowBase::SetBackgroundStyle(wxBG_STYLE_PAINT);
+        SetBackgroundStyle(wxBG_STYLE_PAINT);
+        Create(parent, wxID_ANY, wxDefaultPosition, wxDefaultSize, wxFULL_REPAINT_ON_RESIZE);
+        refresh_theme();
 
         m_codeFont = wxFont(10, wxFONTFAMILY_TELETYPE, wxFONTSTYLE_NORMAL, wxFONTWEIGHT_NORMAL);
-        m_codeFont.SetFaceName("Consolas");
         m_codeFontBold = m_codeFont.Bold();
 
         wxClientDC dc(this);
@@ -65,6 +68,16 @@ namespace Vertex::CustomWidgets
     void SavedAddressesHeader::set_column_resize_callback(ColumnResizeCallback callback)
     {
         m_columnResizeCallback = std::move(callback);
+    }
+
+    void SavedAddressesHeader::refresh_theme()
+    {
+        const auto& pal = m_themeProvider.palette();
+        m_colors.headerBackground = pal.panel;
+        m_colors.headerBorder = pal.border;
+        m_colors.headerText = pal.textHeader;
+        m_colors.separatorHover = pal.accent;
+        Refresh();
     }
 
     int SavedAddressesHeader::get_separator_x(const int separatorIndex) const
@@ -248,19 +261,22 @@ namespace Vertex::CustomWidgets
     SavedAddressesControl::SavedAddressesControl(
         wxWindow* parent,
         Language::ILanguage& languageService,
+        Gui::IThemeProvider& themeProvider,
         const std::shared_ptr<ViewModel::MainViewModel>& viewModel,
         SavedAddressesHeader* header
     )
-        : wxScrolledWindow(parent, wxID_ANY, wxDefaultPosition, wxDefaultSize,
-                           wxVSCROLL | wxHSCROLL | wxFULL_REPAINT_ON_RESIZE | wxWANTS_CHARS)
+        : wxScrolledWindow()
         , m_languageService(languageService)
+        , m_themeProvider(themeProvider)
         , m_viewModel(viewModel)
         , m_header(header)
     {
-        wxWindowBase::SetBackgroundStyle(wxBG_STYLE_PAINT);
+        SetBackgroundStyle(wxBG_STYLE_PAINT);
+        Create(parent, wxID_ANY, wxDefaultPosition, wxDefaultSize,
+               wxVSCROLL | wxHSCROLL | wxFULL_REPAINT_ON_RESIZE | wxWANTS_CHARS);
+        refresh_theme();
 
         m_codeFont = wxFont(10, wxFONTFAMILY_TELETYPE, wxFONTSTYLE_NORMAL, wxFONTWEIGHT_NORMAL);
-        m_codeFont.SetFaceName("Consolas");
 
         wxClientDC dc(this);
         dc.SetFont(m_codeFont);
@@ -385,6 +401,20 @@ namespace Vertex::CustomWidgets
         Refresh(false);
     }
 
+    void SavedAddressesControl::refresh_theme()
+    {
+        const auto& pal = m_themeProvider.palette();
+        m_colors.background = pal.background;
+        m_colors.backgroundAlt = pal.backgroundAlt;
+        m_colors.selectedLine = pal.selection;
+        m_colors.address = pal.accent;
+        m_colors.type = pal.syntaxType;
+        m_colors.value = pal.syntaxArithmetic;
+        m_colors.frozenValue = pal.markerFrozen;
+        m_colors.separator = pal.border;
+        Refresh();
+    }
+
     bool SavedAddressesControl::is_click_on_checkbox(const int x) const
     {
         const int padding = m_header->get_column_padding();
@@ -435,6 +465,7 @@ namespace Vertex::CustomWidgets
             wxString::FromUTF8(m_languageService.fetch_translation("mainWindow.dialog.addressLabel")),
             wxString::FromUTF8(saved.addressStr)
         );
+        Gui::ThemeProvider::apply_palette_to_tree(&dialog, m_themeProvider.palette());
 
         if (dialog.ShowModal() == wxID_OK)
         {
@@ -461,6 +492,7 @@ namespace Vertex::CustomWidgets
             wxString::FromUTF8(m_languageService.fetch_translation("mainWindow.dialog.valueLabel")),
             wxString::FromUTF8(saved.value)
         );
+        Gui::ThemeProvider::apply_palette_to_tree(&dialog, m_themeProvider.palette());
 
         if (dialog.ShowModal() == wxID_OK)
         {
@@ -492,12 +524,12 @@ namespace Vertex::CustomWidgets
         m_typeCombo->SetSelection(saved.valueTypeIndex);
 
         m_typeCombo->Bind(wxEVT_COMBOBOX, &SavedAddressesControl::on_type_combo_selection, this);
-        m_typeCombo->Bind(wxEVT_KILL_FOCUS, [this](wxFocusEvent& focusEvent)
+        m_typeCombo->Bind(wxEVT_COMBOBOX_CLOSEUP, [this](wxCommandEvent& closeupEvent)
         {
-            focusEvent.Skip();
+            closeupEvent.Skip();
             CallAfter([this]()
             {
-                if (m_typeCombo && !m_typeCombo->HasFocus())
+                if (m_typeCombo)
                 {
                     hide_type_combo();
                     Refresh(false);
@@ -506,6 +538,13 @@ namespace Vertex::CustomWidgets
         });
 
         m_typeCombo->SetFocus();
+        CallAfter([this]()
+        {
+            if (m_typeCombo)
+            {
+                m_typeCombo->Popup();
+            }
+        });
     }
 
     void SavedAddressesControl::on_type_combo_selection([[maybe_unused]] wxCommandEvent& event)

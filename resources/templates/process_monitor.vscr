@@ -1,0 +1,15 @@
+// Process monitor template.
+// Adjust process APIs and parameters for your target.
+void main()
+{
+    log_info("Process monitor started.");
+
+    while (true)
+    {
+        // Example flow:
+        // refresh_process_list();
+        // const uint processCount = get_process_count();
+        // ... inspect entries here ...
+        sleep(1000);
+    }
+}

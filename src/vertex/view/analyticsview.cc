@@ -4,9 +4,9 @@
 //
 #include <vertex/utility.hh>
 #include <vertex/view/analyticsview.hh>
+#include <vertex/gui/theme/themeprovider.hh>
 #include <wx/sizer.h>
 #include <wx/app.h>
-#include <wx/settings.h>
 #include <wx/button.h>
 #include <wx/filedlg.h>
 #include <wx/msgdlg.h>
@@ -18,8 +18,6 @@ namespace Vertex::View
     {
         constexpr int BUTTON_SPACING = 4;
         constexpr int STANDARD_PADDING = 8;
-        constexpr int DARK_MODE_THRESHOLD = 128;
-        constexpr int RGB_COMPONENT_COUNT = 3;
 
         constexpr unsigned char INFO_DARK_R = 100;
         constexpr unsigned char INFO_DARK_G = 220;
@@ -50,9 +48,10 @@ namespace Vertex::View
         constexpr unsigned char DEFAULT_LIGHT_B = 0;
     }
 
-    AnalyticsView::AnalyticsView(Language::ILanguage& languageService, std::unique_ptr<ViewModel::AnalyticsViewModel> viewModel)
+    AnalyticsView::AnalyticsView(Language::ILanguage& languageService, std::unique_ptr<ViewModel::AnalyticsViewModel> viewModel, Gui::IThemeProvider& themeProvider)
         : wxDialog(wxTheApp->GetTopWindow(), wxID_ANY, wxString::FromUTF8(languageService.fetch_translation("analyticsWindow.title")), wxDefaultPosition, wxSize(StandardWidgetValues::STANDARD_X_DIP, StandardWidgetValues::STANDARD_Y_DIP), wxDEFAULT_DIALOG_STYLE | wxRESIZE_BORDER),
           m_languageService(languageService),
+          m_themeProvider(themeProvider),
           m_viewModel(std::move(viewModel))
     {
         create_controls();
@@ -76,6 +75,7 @@ namespace Vertex::View
         m_clearButton = new wxButton(this, wxID_ANY, wxString::FromUTF8(m_languageService.fetch_translation("analyticsWindow.clearButton")));
         m_saveButton = new wxButton(this, wxID_ANY, wxString::FromUTF8(m_languageService.fetch_translation("analyticsWindow.saveButton")));
         m_logTextCtrl = new wxRichTextCtrl(this, wxID_ANY, wxEmptyString, wxDefaultPosition, wxDefaultSize, wxRE_MULTILINE | wxTE_READONLY);
+        m_refreshTimer = new wxTimer(this);
     }
 
     void AnalyticsView::layout_controls()
@@ -90,13 +90,30 @@ namespace Vertex::View
         m_mainSizer->Add(m_buttonSizer, StandardWidgetValues::NO_PROPORTION, wxEXPAND | wxALL, STANDARD_PADDING);
         m_mainSizer->Add(m_logTextCtrl, StandardWidgetValues::STANDARD_PROPORTION, wxEXPAND | wxLEFT | wxRIGHT | wxBOTTOM, STANDARD_PADDING);
 
-        SetSizerAndFit(m_mainSizer);
+        SetSizer(m_mainSizer);
     }
 
     void AnalyticsView::bind_events()
     {
+        Bind(wxEVT_SYS_COLOUR_CHANGED, [this](wxSysColourChangedEvent& event)
+        {
+            m_themeProvider.refresh();
+            Gui::ThemeProvider::apply_palette_to_tree(this, m_themeProvider.palette());
+            refresh_logs();
+            Refresh();
+            event.Skip();
+        });
+
         m_clearButton->Bind(wxEVT_BUTTON, &AnalyticsView::on_clear_clicked, this);
         m_saveButton->Bind(wxEVT_BUTTON, &AnalyticsView::on_save_clicked, this);
+
+        Bind(wxEVT_TIMER, &AnalyticsView::on_refresh_timer, this, m_refreshTimer->GetId());
+
+        Bind(wxEVT_CLOSE_WINDOW, [this](wxCloseEvent& event)
+        {
+            m_refreshTimer->Stop();
+            event.Skip();
+        });
     }
 
     void AnalyticsView::setup_event_callback()
@@ -110,7 +127,7 @@ namespace Vertex::View
         }
     }
 
-    void AnalyticsView::vertex_event_callback(const Event::EventId eventId, const Event::VertexEvent& event)
+    void AnalyticsView::vertex_event_callback(const Event::EventId eventId, [[maybe_unused]] const Event::VertexEvent& event)
     {
         switch (eventId)
         {
@@ -125,11 +142,13 @@ namespace Vertex::View
     {
         if (IsShown())
         {
+            m_refreshTimer->Stop();
             Hide();
             return false;
         }
 
         refresh_logs();
+        m_refreshTimer->Start(StandardWidgetValues::TIMER_INTERVAL_MS);
         Show();
         return true;
     }
@@ -149,46 +168,81 @@ namespace Vertex::View
         }
     }
 
+    void AnalyticsView::append_log_entry(const Log::LogEntry& entry, const bool isDarkMode) const
+    {
+        const wxColour color = get_log_color(entry.level, isDarkMode);
+        const std::string timestamp = Log::TimestampFormatter::format(entry.timestamp);
+
+        std::string_view levelStr = m_languageService.fetch_translation("analyticsWindow.logLevels.info");
+        switch (entry.level)
+        {
+        case Log::LogLevel::INFO_LOG:
+            levelStr = m_languageService.fetch_translation("analyticsWindow.logLevels.info");
+            break;
+        case Log::LogLevel::WARN_LOG:
+            levelStr = m_languageService.fetch_translation("analyticsWindow.logLevels.warn");
+            break;
+        case Log::LogLevel::ERROR_LOG:
+            levelStr = m_languageService.fetch_translation("analyticsWindow.logLevels.error");
+            break;
+        }
+
+        const auto logLine = fmt::format("[{}] [{}] {}", timestamp, levelStr, entry.message);
+
+        m_logTextCtrl->BeginTextColour(color);
+        m_logTextCtrl->WriteText(wxString::FromUTF8(logLine));
+        m_logTextCtrl->EndTextColour();
+        m_logTextCtrl->WriteText("\n");
+    }
+
     void AnalyticsView::refresh_logs()
     {
         m_logTextCtrl->Freeze();
         m_logTextCtrl->Clear();
 
         m_cachedEntries = m_viewModel->get_log_entries();
-
-        const wxColour bgColor = wxSystemSettings::GetColour(wxSYS_COLOUR_WINDOW);
-        const bool isDarkMode = (bgColor.Red() + bgColor.Green() + bgColor.Blue()) / RGB_COMPONENT_COUNT < DARK_MODE_THRESHOLD;
+        const auto& palette = m_themeProvider.palette();
+        m_logTextCtrl->SetBackgroundColour(palette.background);
+        m_logTextCtrl->SetForegroundColour(palette.text);
+        const bool isDarkMode = m_themeProvider.is_dark();
 
         for (const auto& entry : m_cachedEntries)
         {
-            const wxColour color = get_log_color(entry.level, isDarkMode);
-            const std::string timestamp = Log::TimestampFormatter::format(entry.timestamp);
-
-            std::string_view levelStr = m_languageService.fetch_translation("analyticsWindow.logLevels.info");
-            switch (entry.level)
-            {
-            case Log::LogLevel::INFO_LOG:
-                levelStr = m_languageService.fetch_translation("analyticsWindow.logLevels.info");
-                break;
-            case Log::LogLevel::WARN_LOG:
-                levelStr = m_languageService.fetch_translation("analyticsWindow.logLevels.warn");
-                break;
-            case Log::LogLevel::ERROR_LOG:
-                levelStr = m_languageService.fetch_translation("analyticsWindow.logLevels.error");
-                break;
-            }
-
-            const auto logLine = fmt::format("[{}] [{}] {}", timestamp, levelStr, entry.message);
-
-            m_logTextCtrl->BeginTextColour(color);
-            m_logTextCtrl->WriteText(wxString::FromUTF8(logLine));
-            m_logTextCtrl->EndTextColour();
-            m_logTextCtrl->WriteText("\n");
+            append_log_entry(entry, isDarkMode);
         }
 
         m_logTextCtrl->Thaw();
-
         m_logTextCtrl->ShowPosition(m_logTextCtrl->GetLastPosition());
+    }
+
+    void AnalyticsView::on_refresh_timer([[maybe_unused]] wxTimerEvent& event)
+    {
+        auto entries = m_viewModel->get_log_entries();
+
+        if (entries.size() == m_cachedEntries.size())
+        {
+            return;
+        }
+
+        if (entries.size() > m_cachedEntries.size())
+        {
+            const bool isDarkMode = m_themeProvider.is_dark();
+            m_logTextCtrl->Freeze();
+
+            for (std::size_t i = m_cachedEntries.size(); i < entries.size(); ++i)
+            {
+                append_log_entry(entries[i], isDarkMode);
+            }
+
+            m_logTextCtrl->Thaw();
+            m_logTextCtrl->ShowPosition(m_logTextCtrl->GetLastPosition());
+            m_cachedEntries = std::move(entries);
+        }
+        else
+        {
+            m_cachedEntries = std::move(entries);
+            refresh_logs();
+        }
     }
 
     void AnalyticsView::on_clear_clicked([[maybe_unused]] wxCommandEvent& event)

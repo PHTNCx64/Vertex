@@ -8,7 +8,6 @@
 #include <vertex/thread/threadchannel.hh>
 
 #include <fmt/format.h>
-#include <ranges>
 #include <string_view>
 
 namespace
@@ -29,84 +28,36 @@ namespace Vertex::Model
         }
 
         std::packaged_task<StatusCode()> task(
-            [this, &methods]() -> StatusCode
-            {
-                const auto& plugin = m_loaderService.get_active_plugin().value().get();
+          [this, &methods]() -> StatusCode
+          {
+              const auto pluginRef = m_loaderService.get_active_plugin().value();
+              const auto& plugin = pluginRef.get();
 
-                std::uint32_t count{};
-                const auto countResult = Runtime::safe_call(plugin.internal_vertex_process_get_injection_methods, nullptr, &count);
-                const auto status = Runtime::get_status(countResult);
-                if (status == StatusCode::STATUS_ERROR_FUNCTION_NOT_FOUND)
-                {
-                    m_loggerService.log_error(fmt::format("{}: internal_vertex_process_get_injection_methods not implemented", MODEL_NAME));
-                    return StatusCode::STATUS_ERROR_PLUGIN_FUNCTION_NOT_IMPLEMENTED;
-                }
-                if (!Runtime::status_ok(countResult) || count == 0)
-                {
-                    return status;
-                }
+              std::uint32_t count{};
+              const auto countResult = Runtime::safe_call(plugin.internal_vertex_process_get_injection_methods, nullptr, &count);
+              const auto status = Runtime::get_status(countResult);
+              if (status == StatusCode::STATUS_ERROR_FUNCTION_NOT_FOUND)
+              {
+                  m_loggerService.log_error(fmt::format("{}: internal_vertex_process_get_injection_methods not implemented", MODEL_NAME));
+                  return StatusCode::STATUS_ERROR_PLUGIN_FUNCTION_NOT_IMPLEMENTED;
+              }
+              if (!Runtime::status_ok(countResult) || count == 0)
+              {
+                  return status;
+              }
 
-                std::vector<InjectionMethod> buffer(count);
-                InjectionMethod* bufferPtr = buffer.data();
-                const auto listResult = Runtime::safe_call(plugin.internal_vertex_process_get_injection_methods, &bufferPtr, &count);
-                if (!Runtime::status_ok(listResult))
-                {
-                    m_loggerService.log_error(fmt::format("{}: internal_vertex_process_get_injection_methods failed", MODEL_NAME));
-                    return Runtime::get_status(listResult);
-                }
+              std::vector<InjectionMethod> buffer(count);
+              InjectionMethod* bufferPtr = buffer.data();
+              const auto listResult = Runtime::safe_call(plugin.internal_vertex_process_get_injection_methods, &bufferPtr, &count);
+              if (!Runtime::status_ok(listResult))
+              {
+                  m_loggerService.log_error(fmt::format("{}: internal_vertex_process_get_injection_methods failed", MODEL_NAME));
+                  return Runtime::get_status(listResult);
+              }
 
-                methods.assign(bufferPtr, bufferPtr + count);
-                return StatusCode::STATUS_OK;
-            });
-
-        auto result = m_dispatcher.dispatch(Thread::ThreadChannel::ProcessList, std::move(task));
-        if (!result.has_value())
-        {
-            return result.error();
-        }
-        return result.value().get();
-    }
-
-    StatusCode InjectorModel::get_library_extensions(std::vector<std::string>& extensions) const
-    {
-        extensions.clear();
-
-        if (m_loaderService.has_plugin_loaded() != StatusCode::STATUS_OK)
-        {
-            m_loggerService.log_error(fmt::format("{}: No active plugin", MODEL_NAME));
-            return StatusCode::STATUS_ERROR_PLUGIN_NOT_ACTIVE;
-        }
-
-        std::packaged_task<StatusCode()> task(
-            [this, &extensions]() -> StatusCode
-            {
-                const auto& plugin = m_loaderService.get_active_plugin().value().get();
-
-                std::uint32_t count{};
-                const auto countResult = Runtime::safe_call(plugin.internal_vertex_process_get_library_extensions, nullptr, &count);
-                const auto status = Runtime::get_status(countResult);
-                if (status == StatusCode::STATUS_ERROR_FUNCTION_NOT_FOUND)
-                {
-                    m_loggerService.log_error(fmt::format("{}: internal_vertex_process_get_library_extensions not implemented", MODEL_NAME));
-                    return StatusCode::STATUS_ERROR_PLUGIN_FUNCTION_NOT_IMPLEMENTED;
-                }
-                if (!Runtime::status_ok(countResult) || count == 0)
-                {
-                    return status;
-                }
-
-                std::vector<char*> extPtrs(count, nullptr);
-                const auto extResult = Runtime::safe_call(plugin.internal_vertex_process_get_library_extensions, extPtrs.data(), &count);
-                if (!Runtime::status_ok(extResult))
-                {
-                    m_loggerService.log_error(fmt::format("{}: internal_vertex_process_get_library_extensions failed", MODEL_NAME));
-                    return Runtime::get_status(extResult);
-                }
-
-                std::ranges::for_each(extPtrs | std::views::filter([](const auto ptr) { return ptr != nullptr; }),
-                                      [&extensions](const auto ptr) { extensions.emplace_back(ptr); });
-                return StatusCode::STATUS_OK;
-            });
+              methods.assign(bufferPtr, bufferPtr + count);
+              return StatusCode::STATUS_OK;
+          });
 
         auto result = m_dispatcher.dispatch(Thread::ThreadChannel::ProcessList, std::move(task));
         if (!result.has_value())
@@ -127,10 +78,10 @@ namespace Vertex::Model
         const std::string path{libraryPath};
 
         std::packaged_task<StatusCode()> task(
-            [fn, path]() -> StatusCode
-            {
-                return fn(path.c_str());
-            });
+          [fn, path]() -> StatusCode
+          {
+              return fn(path.c_str());
+          });
 
         auto result = m_dispatcher.dispatch(Thread::ThreadChannel::ProcessList, std::move(task));
         if (!result.has_value())
@@ -139,4 +90,4 @@ namespace Vertex::Model
         }
         return result.value().get();
     }
-}
+} // namespace Vertex::Model

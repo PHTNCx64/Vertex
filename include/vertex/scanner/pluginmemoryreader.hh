@@ -18,6 +18,9 @@ namespace Vertex::Scanner
         }
 
         StatusCode read_memory(std::uint64_t address, std::uint64_t size, void* buffer) override;
+        [[nodiscard]] bool supports_bulk_read() const noexcept override;
+        [[nodiscard]] std::uint32_t bulk_request_limit() const noexcept override;
+        StatusCode read_memory_bulk(std::span<const BulkReadRequest> requests, std::span<BulkReadResult> results) override;
 
     private:
         Runtime::ILoader& m_loaderService;

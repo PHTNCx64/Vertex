@@ -9,6 +9,8 @@
 
 #include <sdk/feature.h>
 
+#include <fmt/format.h>
+
 #include <algorithm>
 #include <chrono>
 
@@ -18,14 +20,17 @@ namespace Vertex::Debugger
 {
     static constexpr std::uint32_t MAX_COMMAND_BURST {32};
 
-    DebuggerEngine::DebuggerEngine(Runtime::ILoader& loader, Thread::IThreadDispatcher& dispatcher)
+    DebuggerEngine::DebuggerEngine(Runtime::ILoader& loader, Thread::IThreadDispatcher& dispatcher, Log::ILog& logger)
         : m_loader(loader),
-          m_dispatcher(dispatcher)
+          m_dispatcher(dispatcher),
+          m_loggerService(logger)
     {
     }
 
     DebuggerEngine::~DebuggerEngine()
     {
+        m_uiLifetime->store(false, std::memory_order_release);
+
         if (m_running.load(std::memory_order_acquire))
         {
             [[maybe_unused]] const auto _ = stop();
@@ -34,7 +39,11 @@ namespace Vertex::Debugger
         if (m_stopFuture.valid())
         {
             static constexpr auto SHUTDOWN_TIMEOUT = std::chrono::seconds {5};
-            m_stopFuture.wait_for(SHUTDOWN_TIMEOUT);
+            const std::future_status status = m_stopFuture.wait_for(SHUTDOWN_TIMEOUT);
+            if (status == std::future_status::timeout)
+            {
+                m_loggerService.log_error(fmt::format("{}: Timeout while waiting for shutdown to complete", ENGINE_NAME));
+            }
         }
     }
 
@@ -43,14 +52,14 @@ namespace Vertex::Debugger
         bool expected {};
         if (!m_running.compare_exchange_strong(expected, true, std::memory_order_acq_rel))
         {
-            return STATUS_ERROR_DEBUGGER_ALREADY_RUNNING;
+            return StatusCode::STATUS_ERROR_DEBUGGER_ALREADY_RUNNING;
         }
 
         auto* plugin = get_plugin();
         if (plugin == nullptr)
         {
             m_running.store(false, std::memory_order_release);
-            return STATUS_ERROR_PLUGIN_NOT_LOADED;
+            return StatusCode::STATUS_ERROR_PLUGIN_NOT_LOADED;
         }
 
         m_isSingleThreadMode = m_dispatcher.is_single_threaded();
@@ -78,7 +87,10 @@ namespace Vertex::Debugger
             return Runtime::get_status(setResult);
         }
 
-        transition_state(EngineState::Detached);
+        if (!transition_state(EngineState::Detached))
+        {
+            m_loggerService.log_warn(fmt::format("{}: transition to {} was no-op", ENGINE_NAME, to_string_view(EngineState::Detached)));
+        }
 
         auto scheduleResult = m_dispatcher.schedule_recurring(
             Thread::ThreadChannel::Debugger,
@@ -94,20 +106,23 @@ namespace Vertex::Debugger
         {
             [[maybe_unused]] const auto clearResult =
                 Runtime::safe_call(plugin->internal_vertex_debugger_set_callbacks, nullptr);
-            transition_state(EngineState::Idle);
+            if (!transition_state(EngineState::Idle))
+            {
+                m_loggerService.log_warn(fmt::format("{}: transition to {} was no-op", ENGINE_NAME, to_string_view(EngineState::Idle)));
+            }
             m_running.store(false, std::memory_order_release);
             return scheduleResult.error();
         }
 
         m_pumpHandle = *scheduleResult;
-        return STATUS_OK;
+        return StatusCode::STATUS_OK;
     }
 
     StatusCode DebuggerEngine::stop()
     {
         if (!m_running.load(std::memory_order_acquire))
         {
-            return STATUS_ERROR_DEBUGGER_NOT_RUNNING;
+            return StatusCode::STATUS_ERROR_DEBUGGER_NOT_RUNNING;
         }
 
         m_commandQueue.enqueue(engine::CmdShutdown{});
@@ -121,7 +136,7 @@ namespace Vertex::Debugger
             {
                 drain_all_commands();
                 flush_events();
-                return STATUS_OK;
+                return StatusCode::STATUS_OK;
             });
 
         auto dispatchResult = m_dispatcher.dispatch(
@@ -134,12 +149,13 @@ namespace Vertex::Debugger
 
         m_stopFuture = std::move(*dispatchResult);
         m_running.store(false, std::memory_order_release);
-        return STATUS_OK;
+        return StatusCode::STATUS_OK;
     }
 
-    void DebuggerEngine::send_command(EngineCommand cmd)
+    void DebuggerEngine::send_command(const EngineCommand cmd)
     {
-        m_commandQueue.enqueue(std::move(cmd));
+        m_commandQueue.enqueue(cmd);
+        m_wakeSignal.release();
     }
 
     EngineSnapshot DebuggerEngine::get_snapshot() const
@@ -168,9 +184,17 @@ namespace Vertex::Debugger
     std::optional<EngineError> DebuggerEngine::consume_last_error()
     {
         std::scoped_lock lock {m_snapshotMutex};
-        auto error = std::move(m_lastError);
+        const auto error = m_lastError;
         m_lastError.reset();
         return error;
+    }
+
+    std::vector<LogEntry> DebuggerEngine::consume_log_entries()
+    {
+        std::scoped_lock lock {m_logMutex};
+        auto entries = std::move(m_pendingLogs);
+        m_pendingLogs.clear();
+        return entries;
     }
 
     void DebuggerEngine::post_error(const std::string_view operation, const StatusCode code)
@@ -195,16 +219,20 @@ namespace Vertex::Debugger
         if (currentState == EngineState::Detached || currentState == EngineState::Stopped)
         {
             flush_events();
-            return STATUS_OK;
+            std::ignore = m_wakeSignal.try_acquire_for(std::chrono::milliseconds{m_parkedTimeoutMs});
+            return StatusCode::STATUS_OK;
         }
 
         auto* plugin = get_plugin();
         if (plugin == nullptr) [[unlikely]]
         {
-            transition_state(EngineState::Detached);
+            if (!transition_state(EngineState::Detached))
+            {
+                m_loggerService.log_warn(fmt::format("{}: transition to {} was no-op", ENGINE_NAME, to_string_view(EngineState::Detached)));
+            }
             m_dirtyFlags.fetch_or(static_cast<std::uint32_t>(DirtyFlags::State), std::memory_order_relaxed);
             flush_events();
-            return STATUS_ERROR_PLUGIN_NOT_LOADED;
+            return StatusCode::STATUS_ERROR_PLUGIN_NOT_LOADED;
         }
 
         auto timeout = is_parked_state(currentState) ? m_parkedTimeoutMs : m_activeTimeoutMs;
@@ -220,14 +248,17 @@ namespace Vertex::Debugger
         }
         else
         {
-            transition_state(EngineState::Detached);
+            if (!transition_state(EngineState::Detached))
+            {
+                m_loggerService.log_warn(fmt::format("{}: transition to {} was no-op", ENGINE_NAME, to_string_view(EngineState::Detached)));
+            }
             m_dirtyFlags.fetch_or(
                 static_cast<std::uint32_t>(DirtyFlags::All), std::memory_order_relaxed);
-            post_error("tick", STATUS_DEBUG_TICK_ERROR);
+            post_error("tick", StatusCode::STATUS_DEBUG_TICK_ERROR);
         }
 
         flush_events();
-        return STATUS_OK;
+        return StatusCode::STATUS_OK;
     }
 
     void DebuggerEngine::drain_commands()
@@ -241,7 +272,10 @@ namespace Vertex::Debugger
             {
                 if (std::holds_alternative<engine::CmdShutdown>(cmd))
                 {
-                    transition_state(EngineState::Stopped);
+                    if (!transition_state(EngineState::Stopped))
+                    {
+                        m_loggerService.log_warn(fmt::format("{}: transition to {} was no-op", ENGINE_NAME, to_string_view(EngineState::Stopped)));
+                    }
                     m_dirtyFlags.fetch_or(
                         static_cast<std::uint32_t>(DirtyFlags::State), std::memory_order_relaxed);
                 }
@@ -262,7 +296,10 @@ namespace Vertex::Debugger
             {
                 if (std::holds_alternative<engine::CmdShutdown>(cmd))
                 {
-                    transition_state(EngineState::Stopped);
+                    if (!transition_state(EngineState::Stopped))
+                    {
+                        m_loggerService.log_warn(fmt::format("{}: transition to {} was no-op", ENGINE_NAME, to_string_view(EngineState::Stopped)));
+                    }
                     m_dirtyFlags.fetch_or(
                         static_cast<std::uint32_t>(DirtyFlags::State), std::memory_order_relaxed);
                 }
@@ -283,13 +320,16 @@ namespace Vertex::Debugger
                 {
                     if (m_state.load(std::memory_order_acquire) != EngineState::Detached)
                     {
-                        post_error("attach", STATUS_ERROR_INVALID_STATE);
+                        post_error("attach", StatusCode::STATUS_ERROR_INVALID_STATE);
                         return;
                     }
                     const auto result = Runtime::safe_call(plugin->internal_vertex_debugger_attach);
                     if (Runtime::status_ok(result))
                     {
-                        transition_state(EngineState::Running);
+                        if (!transition_state(EngineState::Running))
+                        {
+                            m_loggerService.log_warn(fmt::format("{}: transition to {} was no-op", ENGINE_NAME, to_string_view(EngineState::Running)));
+                        }
                         m_dirtyFlags.fetch_or(
                             static_cast<std::uint32_t>(DirtyFlags::All), std::memory_order_relaxed);
                     }
@@ -307,26 +347,35 @@ namespace Vertex::Debugger
                     }
                     const auto detachResult =
                         Runtime::safe_call(plugin->internal_vertex_debugger_detach);
-                    if (!Runtime::status_ok(detachResult))
+                    if (Runtime::status_ok(detachResult))
+                    {
+                        if (!transition_state(EngineState::Detached))
+                        {
+                            m_loggerService.log_warn(fmt::format("{}: transition to {} was no-op", ENGINE_NAME, to_string_view(EngineState::Detached)));
+                        }
+                        m_dirtyFlags.fetch_or(
+                            static_cast<std::uint32_t>(DirtyFlags::All), std::memory_order_relaxed);
+                    }
+                    else
                     {
                         post_error("detach", Runtime::get_status(detachResult));
                     }
-                    transition_state(EngineState::Detached);
-                    m_dirtyFlags.fetch_or(
-                        static_cast<std::uint32_t>(DirtyFlags::All), std::memory_order_relaxed);
                 }
                 else if constexpr (std::is_same_v<Cmd, engine::CmdContinue>)
                 {
                     if (m_state.load(std::memory_order_acquire) != EngineState::Paused)
                     {
-                        post_error("continue", STATUS_ERROR_INVALID_STATE);
+                        post_error("continue", StatusCode::STATUS_ERROR_INVALID_STATE);
                         return;
                     }
                     const auto result = Runtime::safe_call(
                         plugin->internal_vertex_debugger_continue, arg.passException);
                     if (Runtime::status_ok(result))
                     {
-                        transition_state(EngineState::Running);
+                        if (!transition_state(EngineState::Running))
+                        {
+                            m_loggerService.log_warn(fmt::format("{}: transition to {} was no-op", ENGINE_NAME, to_string_view(EngineState::Running)));
+                        }
                         m_dirtyFlags.fetch_or(
                             static_cast<std::uint32_t>(DirtyFlags::State), std::memory_order_relaxed);
                     }
@@ -339,7 +388,7 @@ namespace Vertex::Debugger
                 {
                     if (m_state.load(std::memory_order_acquire) != EngineState::Running)
                     {
-                        post_error("pause", STATUS_ERROR_INVALID_STATE);
+                        post_error("pause", StatusCode::STATUS_ERROR_INVALID_STATE);
                         return;
                     }
                     const auto pauseResult =
@@ -353,14 +402,17 @@ namespace Vertex::Debugger
                 {
                     if (m_state.load(std::memory_order_acquire) != EngineState::Paused)
                     {
-                        post_error("step_into", STATUS_ERROR_INVALID_STATE);
+                        post_error("step_into", StatusCode::STATUS_ERROR_INVALID_STATE);
                         return;
                     }
                     const auto result = Runtime::safe_call(
                         plugin->internal_vertex_debugger_step, VERTEX_STEP_INTO);
                     if (Runtime::status_ok(result))
                     {
-                        transition_state(EngineState::Running);
+                        if (!transition_state(EngineState::Running))
+                        {
+                            m_loggerService.log_warn(fmt::format("{}: transition to {} was no-op", ENGINE_NAME, to_string_view(EngineState::Running)));
+                        }
                         m_dirtyFlags.fetch_or(
                             static_cast<std::uint32_t>(DirtyFlags::State), std::memory_order_relaxed);
                     }
@@ -373,14 +425,17 @@ namespace Vertex::Debugger
                 {
                     if (m_state.load(std::memory_order_acquire) != EngineState::Paused)
                     {
-                        post_error("step_over", STATUS_ERROR_INVALID_STATE);
+                        post_error("step_over", StatusCode::STATUS_ERROR_INVALID_STATE);
                         return;
                     }
                     const auto result = Runtime::safe_call(
                         plugin->internal_vertex_debugger_step, VERTEX_STEP_OVER);
                     if (Runtime::status_ok(result))
                     {
-                        transition_state(EngineState::Running);
+                        if (!transition_state(EngineState::Running))
+                        {
+                            m_loggerService.log_warn(fmt::format("{}: transition to {} was no-op", ENGINE_NAME, to_string_view(EngineState::Running)));
+                        }
                         m_dirtyFlags.fetch_or(
                             static_cast<std::uint32_t>(DirtyFlags::State), std::memory_order_relaxed);
                     }
@@ -393,14 +448,17 @@ namespace Vertex::Debugger
                 {
                     if (m_state.load(std::memory_order_acquire) != EngineState::Paused)
                     {
-                        post_error("step_out", STATUS_ERROR_INVALID_STATE);
+                        post_error("step_out", StatusCode::STATUS_ERROR_INVALID_STATE);
                         return;
                     }
                     const auto result = Runtime::safe_call(
                         plugin->internal_vertex_debugger_step, VERTEX_STEP_OUT);
                     if (Runtime::status_ok(result))
                     {
-                        transition_state(EngineState::Running);
+                        if (!transition_state(EngineState::Running))
+                        {
+                            m_loggerService.log_warn(fmt::format("{}: transition to {} was no-op", ENGINE_NAME, to_string_view(EngineState::Running)));
+                        }
                         m_dirtyFlags.fetch_or(
                             static_cast<std::uint32_t>(DirtyFlags::State), std::memory_order_relaxed);
                     }
@@ -413,14 +471,17 @@ namespace Vertex::Debugger
                 {
                     if (m_state.load(std::memory_order_acquire) != EngineState::Paused)
                     {
-                        post_error("run_to_address", STATUS_ERROR_INVALID_STATE);
+                        post_error("run_to_address", StatusCode::STATUS_ERROR_INVALID_STATE);
                         return;
                     }
                     const auto result = Runtime::safe_call(
                         plugin->internal_vertex_debugger_run_to_address, arg.address);
                     if (Runtime::status_ok(result))
                     {
-                        transition_state(EngineState::Running);
+                        if (!transition_state(EngineState::Running))
+                        {
+                            m_loggerService.log_warn(fmt::format("{}: transition to {} was no-op", ENGINE_NAME, to_string_view(EngineState::Running)));
+                        }
                         m_dirtyFlags.fetch_or(
                             static_cast<std::uint32_t>(DirtyFlags::State), std::memory_order_relaxed);
                     }
@@ -432,6 +493,14 @@ namespace Vertex::Debugger
                 else if constexpr (std::is_same_v<Cmd, engine::CmdShutdown>)
                 {
                     const auto currentState = m_state.load(std::memory_order_acquire);
+
+                    const auto clearResult =
+                        Runtime::safe_call(plugin->internal_vertex_debugger_set_callbacks, nullptr);
+                    if (!Runtime::status_ok(clearResult))
+                    {
+                        post_error("shutdown_clear_callbacks", Runtime::get_status(clearResult));
+                    }
+
                     if (currentState != EngineState::Detached &&
                         currentState != EngineState::Idle &&
                         currentState != EngineState::Stopped)
@@ -443,13 +512,10 @@ namespace Vertex::Debugger
                             post_error("shutdown_detach", Runtime::get_status(detachResult));
                         }
                     }
-                    const auto clearResult =
-                        Runtime::safe_call(plugin->internal_vertex_debugger_set_callbacks, nullptr);
-                    if (!Runtime::status_ok(clearResult))
+                    if (!transition_state(EngineState::Stopped))
                     {
-                        post_error("shutdown_clear_callbacks", Runtime::get_status(clearResult));
+                        m_loggerService.log_warn(fmt::format("{}: transition to {} was no-op", ENGINE_NAME, to_string_view(EngineState::Stopped)));
                     }
-                    transition_state(EngineState::Stopped);
                     m_dirtyFlags.fetch_or(
                         static_cast<std::uint32_t>(DirtyFlags::State), std::memory_order_relaxed);
                 }
@@ -461,11 +527,11 @@ namespace Vertex::Debugger
     {
         switch (tickResult)
         {
-            case STATUS_DEBUG_TICK_NO_EVENT:
-            case STATUS_DEBUG_TICK_PROCESSED:
+            case StatusCode::STATUS_DEBUG_TICK_NO_EVENT:
+            case StatusCode::STATUS_DEBUG_TICK_PROCESSED:
                 break;
 
-            case STATUS_DEBUG_TICK_PAUSED:
+            case StatusCode::STATUS_DEBUG_TICK_PAUSED:
             {
                 if (transition_state(EngineState::Paused))
                 {
@@ -475,7 +541,7 @@ namespace Vertex::Debugger
                 break;
             }
 
-            case STATUS_DEBUG_TICK_PROCESS_EXITED:
+            case StatusCode::STATUS_DEBUG_TICK_PROCESS_EXITED:
             {
                 if (transition_state(EngineState::Exited))
                 {
@@ -485,7 +551,7 @@ namespace Vertex::Debugger
                 break;
             }
 
-            case STATUS_DEBUG_TICK_DETACHED:
+            case StatusCode::STATUS_DEBUG_TICK_DETACHED:
             {
                 if (transition_state(EngineState::Detached))
                 {
@@ -495,7 +561,7 @@ namespace Vertex::Debugger
                 break;
             }
 
-            case STATUS_DEBUG_TICK_ERROR:
+            case StatusCode::STATUS_DEBUG_TICK_ERROR:
             default:
             {
                 if (transition_state(EngineState::Detached))
@@ -552,9 +618,15 @@ namespace Vertex::Debugger
         if (m_eventCallback && wxTheApp)
         {
             auto callback = m_eventCallback;
+            auto uiLifetime = m_uiLifetime;
             wxTheApp->CallAfter(
-                [this, callback]()
+                [this, callback, uiLifetime]()
                 {
+                    if (!uiLifetime->load(std::memory_order_acquire))
+                    {
+                        return;
+                    }
+
                     const auto accumulatedFlags = static_cast<DirtyFlags>(
                         m_pendingUiFlags.exchange(0, std::memory_order_acq_rel));
 
@@ -576,7 +648,7 @@ namespace Vertex::Debugger
 
     Runtime::Plugin* DebuggerEngine::get_plugin() const
     {
-        if (m_loader.has_plugin_loaded() != STATUS_OK)
+        if (m_loader.has_plugin_loaded() != StatusCode::STATUS_OK)
         {
             return nullptr;
         }
@@ -607,8 +679,27 @@ namespace Vertex::Debugger
             engine->m_snapshot.currentAddress = event->address;
             engine->m_snapshot.currentThreadId = event->threadId;
         }
+
+        LogEntry entry{};
+        entry.level = LogLevel::Info;
+        entry.threadId = event->threadId;
+        entry.source = "engine.breakpoint";
+        entry.timestamp = static_cast<std::uint64_t>(std::chrono::system_clock::now().time_since_epoch().count());
+        if (event->description[0] != '\0')
+        {
+            entry.message = event->description;
+        }
+        else
+        {
+            entry.message = fmt::format("Breakpoint hit at 0x{:X}", event->address);
+        }
+        {
+            std::scoped_lock lock{engine->m_logMutex};
+            engine->m_pendingLogs.push_back(std::move(entry));
+        }
+
         engine->m_dirtyFlags.fetch_or(
-            static_cast<std::uint32_t>(DirtyFlags::Breakpoints | DirtyFlags::State),
+            static_cast<std::uint32_t>(DirtyFlags::Breakpoints | DirtyFlags::State | DirtyFlags::Logs),
             std::memory_order_relaxed);
     }
 
@@ -659,6 +750,8 @@ namespace Vertex::Debugger
             std::scoped_lock lock {engine->m_snapshotMutex};
             engine->m_snapshot.currentAddress = event->accessAddress;
             engine->m_snapshot.currentThreadId = event->threadId;
+            engine->m_snapshot.lastWatchpointId = event->breakpointId;
+            engine->m_snapshot.lastWatchpointAccessorAddress = event->accessAddress;
         }
         engine->m_dirtyFlags.fetch_or(
             static_cast<std::uint32_t>(DirtyFlags::Watchpoints | DirtyFlags::State),
@@ -720,25 +813,49 @@ namespace Vertex::Debugger
             static_cast<std::uint32_t>(DirtyFlags::All), std::memory_order_relaxed);
     }
 
-    void DebuggerEngine::on_output_string([[maybe_unused]] const ::OutputStringEvent* event, void* userData)
+    void DebuggerEngine::on_output_string(const ::OutputStringEvent* event, void* userData)
     {
-        if (userData == nullptr)
+        if (userData == nullptr || event == nullptr)
         {
             return;
         }
         auto* engine = static_cast<DebuggerEngine*>(userData);
+
+        LogEntry entry{};
+        entry.level = LogLevel::Output;
+        entry.message = event->message;
+        entry.threadId = event->threadId;
+        entry.source = "engine.output";
+        entry.timestamp = static_cast<std::uint64_t>(std::chrono::system_clock::now().time_since_epoch().count());
+        {
+            std::scoped_lock lock{engine->m_logMutex};
+            engine->m_pendingLogs.push_back(std::move(entry));
+        }
+
         engine->m_dirtyFlags.fetch_or(
-            static_cast<std::uint32_t>(DirtyFlags::State), std::memory_order_relaxed);
+            static_cast<std::uint32_t>(DirtyFlags::Logs), std::memory_order_relaxed);
     }
 
-    void DebuggerEngine::on_error([[maybe_unused]] const ::DebuggerError* error, void* userData)
+    void DebuggerEngine::on_error(const ::DebuggerError* error, void* userData)
     {
-        if (userData == nullptr)
+        if (userData == nullptr || error == nullptr)
         {
             return;
         }
         auto* engine = static_cast<DebuggerEngine*>(userData);
+
+        LogEntry entry{};
+        entry.level = LogLevel::Error;
+        entry.message = fmt::format("{} (code={})", error->message, static_cast<int>(error->code));
+        entry.threadId = 0;
+        entry.source = "engine.error";
+        entry.timestamp = static_cast<std::uint64_t>(std::chrono::system_clock::now().time_since_epoch().count());
+        {
+            std::scoped_lock lock{engine->m_logMutex};
+            engine->m_pendingLogs.push_back(std::move(entry));
+        }
+
         engine->m_dirtyFlags.fetch_or(
-            static_cast<std::uint32_t>(DirtyFlags::State), std::memory_order_relaxed);
+            static_cast<std::uint32_t>(DirtyFlags::Logs | DirtyFlags::State), std::memory_order_relaxed);
     }
 }

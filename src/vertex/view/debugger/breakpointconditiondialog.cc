@@ -5,6 +5,7 @@
 #include <vertex/view/debugger/breakpointconditiondialog.hh>
 #include <vertex/utility.hh>
 #include <fmt/format.h>
+#include <wx/msgdlg.h>
 
 namespace Vertex::View::Debugger
 {
@@ -61,14 +62,17 @@ namespace Vertex::View::Debugger
         m_logMessageCheck = new wxCheckBox(this, wxID_ANY,
             wxString::FromUTF8(m_languageService.fetch_translation("debugger.breakpoints.logMessage")));
         m_logMessageCheck->Enable(false);
+        m_logMessageCheck->Hide();
 
         m_continueExecutionCheck = new wxCheckBox(this, wxID_ANY,
             wxString::FromUTF8(m_languageService.fetch_translation("debugger.breakpoints.continueExecution")));
         m_continueExecutionCheck->Enable(false);
+        m_continueExecutionCheck->Hide();
 
         m_notImplementedLabel = new wxStaticText(this, wxID_ANY,
             wxString::FromUTF8(m_languageService.fetch_translation("debugger.breakpoints.notImplementedWarning")));
         m_notImplementedLabel->SetForegroundColour(wxColour(0xD4, 0xA0, 0x17));
+        m_notImplementedLabel->Hide();
 
         m_okButton = new wxButton(this, wxID_OK,
             wxString::FromUTF8(m_languageService.fetch_translation("general.ok")));
@@ -85,39 +89,31 @@ namespace Vertex::View::Debugger
 
         m_mainSizer->Add(new wxStaticText(this, wxID_ANY,
             wxString::FromUTF8(m_languageService.fetch_translation("debugger.breakpoints.conditionType"))),
-            0, wxALIGN_CENTER_VERTICAL);
-        m_mainSizer->Add(m_conditionTypeChoice, 1, wxEXPAND);
+            StandardWidgetValues::NO_PROPORTION, wxALIGN_CENTER_VERTICAL);
+        m_mainSizer->Add(m_conditionTypeChoice, StandardWidgetValues::STANDARD_PROPORTION, wxEXPAND);
 
         m_mainSizer->Add(new wxStaticText(this, wxID_ANY,
             wxString::FromUTF8(m_languageService.fetch_translation("debugger.breakpoints.expressionLabel"))),
-            0, wxALIGN_CENTER_VERTICAL);
-        m_mainSizer->Add(m_expressionInput, 1, wxEXPAND);
+            StandardWidgetValues::NO_PROPORTION, wxALIGN_CENTER_VERTICAL);
+        m_mainSizer->Add(m_expressionInput, StandardWidgetValues::STANDARD_PROPORTION, wxEXPAND);
 
         m_mainSizer->Add(new wxStaticText(this, wxID_ANY,
             wxString::FromUTF8(m_languageService.fetch_translation("debugger.breakpoints.hitCountTargetLabel"))),
-            0, wxALIGN_CENTER_VERTICAL);
-        m_mainSizer->Add(m_hitCountTargetSpin, 1, wxEXPAND);
+            StandardWidgetValues::NO_PROPORTION, wxALIGN_CENTER_VERTICAL);
+        m_mainSizer->Add(m_hitCountTargetSpin, StandardWidgetValues::STANDARD_PROPORTION, wxEXPAND);
 
         m_mainSizer->Add(new wxStaticText(this, wxID_ANY,
             wxString::FromUTF8(m_languageService.fetch_translation("debugger.breakpoints.currentHitCountLabel"))),
-            0, wxALIGN_CENTER_VERTICAL);
-        m_mainSizer->Add(m_currentHitCountLabel, 0, wxALIGN_CENTER_VERTICAL);
+            StandardWidgetValues::NO_PROPORTION, wxALIGN_CENTER_VERTICAL);
+        m_mainSizer->Add(m_currentHitCountLabel, StandardWidgetValues::NO_PROPORTION, wxALIGN_CENTER_VERTICAL);
 
-        topSizer->Add(m_mainSizer, 0, wxEXPAND | wxALL, StandardWidgetValues::BORDER_TWICE);
-
-        auto* actionsBox = new wxStaticBoxSizer(wxVERTICAL,
-            this, wxString::FromUTF8(m_languageService.fetch_translation("debugger.breakpoints.actionsLabel")));
-        actionsBox->Add(m_logMessageCheck, 0, wxALL, StandardWidgetValues::STANDARD_BORDER);
-        actionsBox->Add(m_continueExecutionCheck, 0, wxALL, StandardWidgetValues::STANDARD_BORDER);
-        topSizer->Add(actionsBox, 0, wxEXPAND | wxLEFT | wxRIGHT, StandardWidgetValues::BORDER_TWICE);
-
-        topSizer->Add(m_notImplementedLabel, 0, wxALL | wxALIGN_CENTER_HORIZONTAL, StandardWidgetValues::BORDER_TWICE);
+        topSizer->Add(m_mainSizer, StandardWidgetValues::NO_PROPORTION, wxEXPAND | wxALL, StandardWidgetValues::BORDER_TWICE);
 
         auto* buttonSizer = new wxBoxSizer(wxHORIZONTAL);
         buttonSizer->AddStretchSpacer();
-        buttonSizer->Add(m_okButton, 0, wxRIGHT, StandardWidgetValues::STANDARD_BORDER);
-        buttonSizer->Add(m_cancelButton, 0);
-        topSizer->Add(buttonSizer, 0, wxEXPAND | wxALL, StandardWidgetValues::BORDER_TWICE);
+        buttonSizer->Add(m_okButton, StandardWidgetValues::NO_PROPORTION, wxRIGHT, StandardWidgetValues::STANDARD_BORDER);
+        buttonSizer->Add(m_cancelButton, StandardWidgetValues::NO_PROPORTION);
+        topSizer->Add(buttonSizer, StandardWidgetValues::NO_PROPORTION, wxEXPAND | wxALL, StandardWidgetValues::BORDER_TWICE);
 
         SetSizer(topSizer);
     }
@@ -128,6 +124,13 @@ namespace Vertex::View::Debugger
         {
             update_field_states();
         });
+
+        m_expressionInput->Bind(wxEVT_TEXT, [this]([[maybe_unused]] wxCommandEvent& event)
+        {
+            update_field_states();
+        });
+
+        m_okButton->Bind(wxEVT_BUTTON, &BreakpointConditionDialog::on_ok_clicked, this);
     }
 
     void BreakpointConditionDialog::update_field_states()
@@ -135,9 +138,54 @@ namespace Vertex::View::Debugger
         const int selection = m_conditionTypeChoice->GetSelection();
         m_expressionInput->Enable(selection == 1);
         m_hitCountTargetSpin->Enable(selection >= 2);
-        m_notImplementedLabel->Show(selection == 1);
-        m_okButton->Enable(selection != 1);
+        m_okButton->Enable(selection != 1 || is_expression_valid(m_expressionInput->GetValue()));
         Layout();
+    }
+
+    void BreakpointConditionDialog::on_ok_clicked(wxCommandEvent& event)
+    {
+        if (m_conditionTypeChoice->GetSelection() == 1 &&
+            !is_expression_valid(m_expressionInput->GetValue()))
+        {
+            wxMessageBox(
+                "Please enter a valid expression. Parentheses must be balanced.",
+                wxString::FromUTF8(m_languageService.fetch_translation("debugger.breakpoints.conditionDialogTitle")),
+                wxOK | wxICON_WARNING,
+                this);
+            return;
+        }
+
+        event.Skip();
+    }
+
+    bool BreakpointConditionDialog::is_expression_valid(const wxString& expression) const
+    {
+        wxString normalized = expression;
+        normalized.Trim();
+        normalized.Trim(false);
+        if (normalized.empty())
+        {
+            return false;
+        }
+
+        int depth = 0;
+        for (const auto ch : normalized)
+        {
+            if (ch == '(')
+            {
+                ++depth;
+            }
+            else if (ch == ')')
+            {
+                --depth;
+                if (depth < 0)
+                {
+                    return false;
+                }
+            }
+        }
+
+        return depth == 0;
     }
 
     int BreakpointConditionDialog::get_condition_type() const

@@ -6,16 +6,21 @@
 
 #include <sdk/statuscode.h>
 #include <sdk/debugger.h>
+#include <vertex/debugger/debuggertypes.hh>
+#include <vertex/log/ilog.hh>
 #include <vertex/runtime/iloader.hh>
 #include <vertex/thread/ithreaddispatcher.hh>
 
 #include <atomic>
 #include <cstdint>
 #include <functional>
+#include <memory>
 #include <mutex>
 #include <optional>
+#include <semaphore>
 #include <string_view>
 #include <variant>
+#include <vector>
 
 #include <concurrentqueue/moodycamel/concurrentqueue.h>
 
@@ -31,6 +36,20 @@ namespace Vertex::Debugger
         Stopped
     };
 
+    [[nodiscard]] constexpr std::string_view to_string_view(const EngineState state) noexcept
+    {
+        switch (state)
+        {
+            case EngineState::Idle:     return "Idle";
+            case EngineState::Detached: return "Detached";
+            case EngineState::Running:  return "Running";
+            case EngineState::Paused:   return "Paused";
+            case EngineState::Exited:   return "Exited";
+            case EngineState::Stopped:  return "Stopped";
+        }
+        std::unreachable();
+    }
+
     struct EngineSnapshot final
     {
         EngineState state {};
@@ -40,6 +59,8 @@ namespace Vertex::Debugger
         std::uint32_t exceptionCode {};
         bool exceptionFirstChance {};
         bool hasException {};
+        std::uint32_t lastWatchpointId {};
+        std::uint64_t lastWatchpointAccessorAddress {};
     };
 
     enum class DirtyFlags : std::uint32_t
@@ -54,6 +75,9 @@ namespace Vertex::Debugger
         Watchpoints     = 1 << 6,
         ImportsExports  = 1 << 7,
         Disassembly     = 1 << 8,
+        Memory          = 1 << 9,
+        Watches         = 1 << 10,
+        Logs            = 1 << 11,
         All             = 0xFFFFFFFF
     };
 
@@ -112,7 +136,7 @@ namespace Vertex::Debugger
     class DebuggerEngine final
     {
     public:
-        explicit DebuggerEngine(Runtime::ILoader& loader, Thread::IThreadDispatcher& dispatcher);
+        explicit DebuggerEngine(Runtime::ILoader& loader, Thread::IThreadDispatcher& dispatcher, Log::ILog& logger);
         ~DebuggerEngine();
 
         DebuggerEngine(const DebuggerEngine&) = delete;
@@ -132,6 +156,7 @@ namespace Vertex::Debugger
         void set_tick_timeout(std::uint32_t activeMs, std::uint32_t parkedMs);
 
         [[nodiscard]] std::optional<EngineError> consume_last_error();
+        [[nodiscard]] std::vector<LogEntry> consume_log_entries();
 
     private:
         [[nodiscard]] StatusCode tick_once();
@@ -159,8 +184,11 @@ namespace Vertex::Debugger
         static void on_output_string(const ::OutputStringEvent* event, void* userData);
         static void on_error(const ::DebuggerError* error, void* userData);
 
+        static constexpr std::string_view ENGINE_NAME {"DebuggerEngine"};
+
         Runtime::ILoader& m_loader;
         Thread::IThreadDispatcher& m_dispatcher;
+        Log::ILog& m_loggerService;
 
         std::atomic<bool> m_running {};
         std::uint32_t m_singleThreadTickClampMs {50};
@@ -182,10 +210,14 @@ namespace Vertex::Debugger
         EngineEventCallback m_eventCallback {};
         std::mutex m_callbackMutex {};
         std::optional<EngineError> m_lastError {};
+        std::mutex m_logMutex {};
+        std::vector<LogEntry> m_pendingLogs {};
 
         Thread::RecurringTaskHandle m_pumpHandle {};
+        std::binary_semaphore m_wakeSignal {0};
         std::future<StatusCode> m_stopFuture {};
         bool m_isSingleThreadMode {};
         bool m_isDebuggerDependent {};
+        std::shared_ptr<std::atomic<bool>> m_uiLifetime {std::make_shared<std::atomic<bool>>(true)};
     };
 }

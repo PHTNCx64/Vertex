@@ -8,10 +8,23 @@
 #include <vertex/configuration/filesystem.hh>
 #include <vertex/runtime/loader.hh>
 #include <vertex/vertex.hh>
+#include <vertex/di.hh>
+#include <vertex/theme.hh>
 
 #include <fmt/format.h>
 
+#include <wx/mstream.h>
+#include <logo.hh>
+
+struct VertexApp::Impl final
+{
+    Vertex::DI::Injector injector{Vertex::DI::create_injector()};
+};
+
 wxIMPLEMENT_APP(VertexApp);
+
+VertexApp::VertexApp() = default;
+VertexApp::~VertexApp() = default;
 
 bool VertexApp::OnInit()
 {
@@ -19,8 +32,10 @@ bool VertexApp::OnInit()
     GTKSuppressDiagnostics();
 #endif
 
-    m_injector = std::make_unique<decltype(Vertex::DI::create_injector())>(Vertex::DI::create_injector());
-    auto& log = m_injector->create<Vertex::Log::ILog&>();
+    wxInitAllImageHandlers();
+
+    m_impl = std::make_unique<Impl>();
+    auto& log = m_impl->injector.create<Vertex::Log::ILog&>();
 
     log.log_info("Vertex starting");
 
@@ -29,20 +44,23 @@ bool VertexApp::OnInit()
         return false;
     }
 
-    auto& loader = m_injector->create<Vertex::Runtime::ILoader&>();
-    auto& language = m_injector->create<Vertex::Language::ILanguage&>();
-    auto& iconManager = m_injector->create<Vertex::Gui::IIconManager&>();
-    auto& settings = m_injector->create<Vertex::Configuration::ISettings&>();
-    auto& pluginConfig = m_injector->create<Vertex::Configuration::IPluginConfig&>();
-    auto& scanner = m_injector->create<Vertex::Scanner::IMemoryScanner&>();
-    auto& eventBus = m_injector->create<Vertex::Event::EventBus&>();
-    auto& dispatcher = m_injector->create<Vertex::Thread::IThreadDispatcher&>();
+    auto& loader = m_impl->injector.create<Vertex::Runtime::ILoader&>();
+    auto& language = m_impl->injector.create<Vertex::Language::ILanguage&>();
+    auto& iconManager = m_impl->injector.create<Vertex::Gui::IIconManager&>();
+    auto& themeProvider = m_impl->injector.create<Vertex::Gui::IThemeProvider&>();
+    auto& settings = m_impl->injector.create<Vertex::Configuration::ISettings&>();
+    auto& pluginConfig = m_impl->injector.create<Vertex::Configuration::IPluginConfig&>();
+    auto& scanner = m_impl->injector.create<Vertex::Scanner::IMemoryScanner&>();
+    auto& pointerScanner = m_impl->injector.create<Vertex::Scanner::IPointerScanner&>();
+    auto& eventBus = m_impl->injector.create<Vertex::Event::EventBus&>();
+    auto& dispatcher = m_impl->injector.create<Vertex::Thread::IThreadDispatcher&>();
+    auto& scripting = m_impl->injector.create<Vertex::Scripting::IAngelScript&>();
 
     apply_language_settings();
     apply_plugin_settings();
     apply_appearance_settings();
 
-    const Vertex::ViewFactory factory { eventBus, loader, log, language, iconManager, settings, pluginConfig, scanner, dispatcher };
+    const Vertex::ViewFactory factory { eventBus, loader, log, language, iconManager, themeProvider, settings, pluginConfig, scanner, pointerScanner, scripting, dispatcher };
     auto* mainView = factory.create_mainview(ApplicationName " " ApplicationVersion " by " ApplicationVendor);
 
     std::ignore = factory.create_processlistview();
@@ -51,8 +69,10 @@ bool VertexApp::OnInit()
     std::ignore = factory.create_pointerscan_memoryattributeview();
     std::ignore = factory.create_analyticsview();
     std::ignore = factory.create_injectorview();
+    std::ignore = factory.create_scriptingview();
 
     auto* debuggerView = factory.create_debuggerview();
+    auto* pointerScanView = factory.create_pointerscanview();
 
     mainView->set_view_in_disassembly_callback([debuggerView](const std::uint64_t address)
     {
@@ -64,6 +84,17 @@ bool VertexApp::OnInit()
         [debuggerView]() { debuggerView->attach_debugger(); }
     );
 
+    mainView->set_pointer_scan_callback([factory, mainView, pointerScanView](const std::uint64_t address)
+    {
+        auto* dialog = factory.create_pointerscanconfigdialog(mainView, address);
+        if (dialog->ShowModal() == wxID_OK)
+        {
+            const auto config = dialog->get_config();
+            pointerScanView->start_scan(config);
+        }
+        dialog->Destroy();
+    });
+
     mainView->set_find_access_callback([mainView, debuggerView](const std::uint64_t address, const std::uint32_t size)
     {
         if (mainView->ensure_debugger_attached())
@@ -72,17 +103,55 @@ bool VertexApp::OnInit()
         }
     });
 
+    std::ignore = scripting.start();
+    apply_script_settings();
+
     log.log_info("Vertex initialized");
+
+    wxMemoryInputStream logoStream{Vertex::Gui::logo_ico, Vertex::Gui::logo_ico_size};
+    const wxIconBundle iconBundle{logoStream, wxBITMAP_TYPE_ICO};
+    if (!iconBundle.IsEmpty())
+    {
+        mainView->SetIcons(iconBundle);
+    }
 
     return mainView->Show();
 }
 
 int VertexApp::OnExit()
 {
-    if (m_injector)
+    if (m_impl)
     {
-        auto& settings = m_injector->create<Vertex::Configuration::ISettings&>();
-        auto& log = m_injector->create<Vertex::Log::ILog&>();
+        auto& settings = m_impl->injector.create<Vertex::Configuration::ISettings&>();
+        auto& log = m_impl->injector.create<Vertex::Log::ILog&>();
+        auto& dispatcher = m_impl->injector.create<Vertex::Thread::IThreadDispatcher&>();
+        auto& loader = m_impl->injector.create<Vertex::Runtime::ILoader&>();
+        auto& scripting = m_impl->injector.create<Vertex::Scripting::IAngelScript&>();
+
+        std::ignore = scripting.stop();
+
+        const auto stopStatus = dispatcher.stop();
+        if (stopStatus != StatusCode::STATUS_OK &&
+            stopStatus != StatusCode::STATUS_ERROR_THREAD_IS_NOT_RUNNING)
+        {
+            log.log_warn(fmt::format("Failed to stop thread dispatcher on exit (status={})", static_cast<int>(stopStatus)));
+        }
+
+        const auto& plugins = loader.get_plugins();
+        for (std::size_t i{}; i < plugins.size(); ++i)
+        {
+            if (!plugins[i].is_loaded())
+            {
+                continue;
+            }
+
+            const auto unloadStatus = loader.unload_plugin(i);
+            if (unloadStatus != StatusCode::STATUS_OK)
+            {
+                log.log_warn(fmt::format("Failed to unload plugin {} during exit (status={})",
+                    plugins[i].get_filename(), static_cast<int>(unloadStatus)));
+            }
+        }
 
         const auto settingsPath = Vertex::Configuration::Filesystem::get_configuration_path() / "Settings.json";
         const StatusCode status = settings.save_to_file(settingsPath);
@@ -96,10 +165,7 @@ int VertexApp::OnExit()
             log.log_warn("Failed to save settings on exit");
         }
 
-        auto& dispatcher = m_injector->create<Vertex::Thread::IThreadDispatcher&>();
-        std::ignore = dispatcher.stop();
-
-        m_injector.reset();
+        m_impl.reset();
     }
 
     return wxAppBase::OnExit();
@@ -118,11 +184,11 @@ StatusCode VertexApp::initialize_filesystem() const
 
 void VertexApp::apply_language_settings() const
 {
-    auto& log = m_injector->create<Vertex::Log::ILog&>();
-    const auto& settings = m_injector->create<Vertex::Configuration::ISettings&>();
-    auto& language = m_injector->create<Vertex::Language::ILanguage&>();
+    auto& log = m_impl->injector.create<Vertex::Log::ILog&>();
+    const auto& settings = m_impl->injector.create<Vertex::Configuration::ISettings&>();
+    auto& language = m_impl->injector.create<Vertex::Language::ILanguage&>();
 
-    auto languagePath = settings.get_path("language.languagePath");
+    auto languagePath = Vertex::Configuration::Filesystem::resolve_path(settings.get_path("language.languagePath"));
     if (languagePath.empty())
     {
         languagePath = Vertex::Configuration::Filesystem::get_language_path();
@@ -134,13 +200,16 @@ void VertexApp::apply_language_settings() const
     {
         const auto availableLanguages = language.fetch_all_languages();
 
-        if (availableLanguages.contains("English_US"))
+        const auto englishIt = std::ranges::find_if(availableLanguages, [](const auto& entry) {
+            return entry.second.stem() == "English_US";
+        });
+        if (englishIt != availableLanguages.end())
         {
-            activeLanguage = "English_US.json";
+            activeLanguage = englishIt->second.filename().string();
         }
         else if (!availableLanguages.empty())
         {
-            activeLanguage = availableLanguages.begin()->first + ".json";
+            activeLanguage = availableLanguages.begin()->second.filename().string();
         }
     }
 
@@ -158,11 +227,11 @@ void VertexApp::apply_language_settings() const
 
 void VertexApp::apply_plugin_settings() const
 {
-    auto& log = m_injector->create<Vertex::Log::ILog&>();
-    const auto& settings = m_injector->create<Vertex::Configuration::ISettings&>();
-    auto& loader = m_injector->create<Vertex::Runtime::ILoader&>();
+    auto& log = m_impl->injector.create<Vertex::Log::ILog&>();
+    const auto& settings = m_impl->injector.create<Vertex::Configuration::ISettings&>();
+    auto& loader = m_impl->injector.create<Vertex::Runtime::ILoader&>();
 
-    const auto activePluginPath = settings.get_path("plugins.activePluginPath");
+    const auto activePluginPath = Vertex::Configuration::Filesystem::resolve_path(settings.get_path("plugins.activePluginPath"));
     if (activePluginPath.empty())
     {
         return;
@@ -177,17 +246,67 @@ void VertexApp::apply_plugin_settings() const
 
 void VertexApp::apply_appearance_settings()
 {
-    auto& log = m_injector->create<Vertex::Log::ILog&>();
-    const auto& settings = m_injector->create<Vertex::Configuration::ISettings&>();
+    auto& log = m_impl->injector.create<Vertex::Log::ILog&>();
+    const auto& settings = m_impl->injector.create<Vertex::Configuration::ISettings&>();
+    auto& themeProvider = m_impl->injector.create<Vertex::Gui::IThemeProvider&>();
 
-    const auto theme = settings.get_int("general.theme", 0);
+    const auto theme = settings.get_int("general.theme", Vertex::ApplicationAppearance::SYSTEM);
+    themeProvider.set_theme(static_cast<Vertex::Theme>(theme));
     SetAppearance(static_cast<Appearance>(theme));
 
     const bool loggingEnabled = settings.get_bool("general.enableLogging", true);
     if (!loggingEnabled)
     {
-        log.log_warn("Logging disabled per settings");
+        log.log_warn("Logging disabled per settings.");
     }
 
     log.set_logging_status(loggingEnabled);
+}
+
+void VertexApp::apply_script_settings() const
+{
+    auto& log = m_impl->injector.create<Vertex::Log::ILog&>();
+    const auto& settings = m_impl->injector.create<Vertex::Configuration::ISettings&>();
+    auto& scripting = m_impl->injector.create<Vertex::Scripting::IAngelScript&>();
+
+    const auto scriptPaths = settings.get_value("scripting.scriptPaths");
+    if (!scriptPaths.is_array() || scriptPaths.empty())
+    {
+        return;
+    }
+
+    for (const auto& pathEntry : scriptPaths)
+    {
+        if (!pathEntry.is_string())
+        {
+            continue;
+        }
+
+        const auto scriptDir = Vertex::Configuration::Filesystem::resolve_path(std::filesystem::path{pathEntry.get<std::string>()});
+        if (!std::filesystem::exists(scriptDir) || !std::filesystem::is_directory(scriptDir))
+        {
+            log.log_warn(fmt::format("Script path does not exist: {}", scriptDir.string()));
+            continue;
+        }
+
+        for (const auto& entry : std::filesystem::directory_iterator{scriptDir})
+        {
+            if (!entry.is_regular_file() || entry.path().extension() != Vertex::FileTypes::SCRIPTING_EXTENSION)
+            {
+                continue;
+            }
+
+            const auto moduleName = entry.path().stem().string();
+            auto result = scripting.create_context(moduleName, entry.path(), Vertex::Scripting::UseActive{});
+
+            if (result.has_value())
+            {
+                log.log_info(fmt::format("Script loaded: {}", entry.path().filename().string()));
+            }
+            else
+            {
+                log.log_error(fmt::format("Failed to load script: {}", entry.path().filename().string()));
+            }
+        }
+    }
 }

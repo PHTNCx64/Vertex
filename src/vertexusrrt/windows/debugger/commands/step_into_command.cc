@@ -4,13 +4,13 @@
 //
 #include <vertexusrrt/debugger_internal.hh>
 
-#include <Windows.h>
+#include <windows.h>
 
 namespace debugger
 {
     DWORD process_step_into_command(TickState& state, const DWORD threadId)
     {
-        if (!set_trap_flag(threadId, state.isWow64, true))
+        if (!set_trap_flag(threadId, true))
         {
             return DBG_EXCEPTION_NOT_HANDLED;
         }

@@ -4,7 +4,8 @@
 //
 #include <vertex/runtime/uiregistry.hh>
 
-#include <cstring>
+#include <algorithm>
+#include <ranges>
 #include <span>
 
 namespace Vertex::Runtime
@@ -12,19 +13,19 @@ namespace Vertex::Runtime
     UIRegistry::OwnedPanel UIRegistry::copy_panel(const UIPanel& panel)
     {
         OwnedPanel owned{};
-        std::memcpy(owned.panelId, panel.panelId, VERTEX_UI_MAX_PANEL_ID_LENGTH);
-        std::memcpy(owned.title, panel.title, VERTEX_UI_MAX_PANEL_TITLE_LENGTH);
+        std::ranges::copy(panel.panelId, owned.panelId);
+        std::ranges::copy(panel.title, owned.title);
         owned.onApply = panel.onApply;
         owned.onReset = panel.onReset;
         owned.userData = panel.userData;
 
-        auto srcSections = std::span{panel.sections, panel.sectionCount};
+        const auto srcSections = std::span{panel.sections, panel.sectionCount};
         owned.sections.reserve(srcSections.size());
 
         for (const auto& srcSection : srcSections)
         {
             OwnedSection ownedSection{};
-            std::memcpy(ownedSection.title, srcSection.title, VERTEX_UI_MAX_SECTION_TITLE_LENGTH);
+            std::ranges::copy(srcSection.title, ownedSection.title);
 
             auto srcFields = std::span{srcSection.fields, srcSection.fieldCount};
             ownedSection.fields.reserve(srcFields.size());
@@ -48,14 +49,14 @@ namespace Vertex::Runtime
     PanelSnapshot UIRegistry::build_snapshot(const OwnedPanel& owned)
     {
         PanelSnapshot snapshot{};
-        std::memcpy(snapshot.panel.panelId, owned.panelId, VERTEX_UI_MAX_PANEL_ID_LENGTH);
-        std::memcpy(snapshot.panel.title, owned.title, VERTEX_UI_MAX_PANEL_TITLE_LENGTH);
+        std::ranges::copy(owned.panelId, snapshot.panel.panelId);
+        std::ranges::copy(owned.title, snapshot.panel.title);
         snapshot.panel.onApply = owned.onApply;
         snapshot.panel.onReset = owned.onReset;
         snapshot.panel.userData = owned.userData;
 
-        size_t totalOptions{};
-        size_t totalFields{};
+        std::size_t totalOptions{};
+        std::size_t totalFields{};
         for (const auto& section : owned.sections)
         {
             totalFields += section.fields.size();
@@ -77,32 +78,32 @@ namespace Vertex::Runtime
             }
         }
 
-        uint32_t optionOffset{};
+        std::uint32_t optionOffset{};
         for (const auto& ownedSection : owned.sections)
         {
             for (const auto& ownedField : ownedSection.fields)
             {
                 UIField field = ownedField.header;
                 field.options = snapshot.options.data() + optionOffset;
-                field.optionCount = static_cast<uint32_t>(ownedField.options.size());
+                field.optionCount = static_cast<std::uint32_t>(ownedField.options.size());
                 snapshot.fields.push_back(field);
                 optionOffset += field.optionCount;
             }
         }
 
-        uint32_t fieldOffset{};
+        std::uint32_t fieldOffset{};
         for (const auto& ownedSection : owned.sections)
         {
             UISection section{};
-            std::memcpy(section.title, ownedSection.title, VERTEX_UI_MAX_SECTION_TITLE_LENGTH);
+            std::ranges::copy(ownedSection.title, section.title);
             section.fields = snapshot.fields.data() + fieldOffset;
-            section.fieldCount = static_cast<uint32_t>(ownedSection.fields.size());
+            section.fieldCount = static_cast<std::uint32_t>(ownedSection.fields.size());
             snapshot.sections.push_back(section);
             fieldOffset += section.fieldCount;
         }
 
         snapshot.panel.sections = snapshot.sections.data();
-        snapshot.panel.sectionCount = static_cast<uint32_t>(snapshot.sections.size());
+        snapshot.panel.sectionCount = static_cast<std::uint32_t>(snapshot.sections.size());
 
         return snapshot;
     }
@@ -128,7 +129,7 @@ namespace Vertex::Runtime
         }
 
         m_panels[panelId] = std::move(owned);
-        return STATUS_OK;
+        return StatusCode::STATUS_OK;
     }
 
     std::vector<PanelSnapshot> UIRegistry::get_panels() const
@@ -137,7 +138,7 @@ namespace Vertex::Runtime
 
         std::vector<PanelSnapshot> result{};
         result.reserve(m_panels.size());
-        for (const auto& [id, owned] : m_panels)
+        for (const auto& owned : m_panels | std::views::values)
         {
             result.push_back(build_snapshot(owned));
         }
@@ -166,11 +167,11 @@ namespace Vertex::Runtime
         const auto panelIt = m_panels.find(panelKey);
         if (panelIt == m_panels.end())
         {
-            return STATUS_ERROR_GENERAL_NOT_FOUND;
+            return StatusCode::STATUS_ERROR_GENERAL_NOT_FOUND;
         }
 
         m_values[panelKey][std::string{fieldId}] = value;
-        return STATUS_OK;
+        return StatusCode::STATUS_OK;
     }
 
     std::optional<UIValue> UIRegistry::get_value(const std::string_view panelId, const std::string_view fieldId) const

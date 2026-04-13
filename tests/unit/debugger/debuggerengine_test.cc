@@ -2,6 +2,7 @@
 #include <vertex/debugger/debuggerengine.hh>
 #include <vertex/runtime/plugin.hh>
 #include "../../mocks/MockILoader.hh"
+#include "../../mocks/MockILog.hh"
 #include "../../mocks/MockIThreadDispatcher.hh"
 
 #include <chrono>
@@ -32,8 +33,8 @@ namespace
     StatusCode VERTEX_API stub_continue_fail(uint8_t) { return STATUS_ERROR_GENERAL; }
     StatusCode VERTEX_API stub_pause() { return STATUS_OK; }
     StatusCode VERTEX_API stub_pause_fail() { return STATUS_ERROR_GENERAL; }
-    StatusCode VERTEX_API stub_step(StepMode) { return STATUS_OK; }
-    StatusCode VERTEX_API stub_step_fail(StepMode) { return STATUS_ERROR_GENERAL; }
+    StatusCode VERTEX_API stub_step(::StepMode) { return STATUS_OK; }
+    StatusCode VERTEX_API stub_step_fail(::StepMode) { return STATUS_ERROR_GENERAL; }
     StatusCode VERTEX_API stub_run_to_address(uint64_t) { return STATUS_OK; }
     StatusCode VERTEX_API stub_run_to_address_fail(uint64_t) { return STATUS_ERROR_GENERAL; }
     StatusCode VERTEX_API stub_tick_paused(uint32_t) { return STATUS_DEBUG_TICK_PAUSED; }
@@ -57,7 +58,7 @@ namespace
         int tickOrder {};
         std::uint32_t capturedTimeout {};
         std::uint8_t capturedPassException {};
-        StepMode capturedMode {};
+        ::StepMode capturedMode {};
         std::uint64_t capturedAddress {};
         DebuggerCallbacks capturedCallbacks {};
         bool callbacksCaptured {};
@@ -107,7 +108,7 @@ namespace
         return STATUS_OK;
     }
 
-    StatusCode VERTEX_API ctx_step(StepMode mode)
+    StatusCode VERTEX_API ctx_step(::StepMode mode)
     {
         g_ctx.stepCalled = true;
         g_ctx.capturedMode = mode;
@@ -149,7 +150,7 @@ namespace
     {
         if (g_ctx.callbacksCaptured && g_ctx.capturedCallbacks.on_breakpoint_hit != nullptr)
         {
-            DebugEvent event {};
+            ::DebugEvent event {};
             event.address = 0x401000;
             event.threadId = 42;
             g_ctx.capturedCallbacks.on_breakpoint_hit(&event, g_ctx.capturedCallbacks.user_data);
@@ -161,7 +162,7 @@ namespace
     {
         if (g_ctx.callbacksCaptured && g_ctx.capturedCallbacks.on_single_step != nullptr)
         {
-            DebugEvent event {};
+            ::DebugEvent event {};
             event.address = 0x402000;
             event.threadId = 99;
             g_ctx.capturedCallbacks.on_single_step(&event, g_ctx.capturedCallbacks.user_data);
@@ -186,8 +187,9 @@ class DebuggerEngineTest : public ::testing::Test
 {
 protected:
     NiceMock<MockILoader> m_loader {};
+    NiceMock<MockILog> m_logger {};
     NiceMock<MockIThreadDispatcher> m_dispatcher {};
-    Vertex::Runtime::Plugin m_plugin {};
+    Vertex::Runtime::Plugin m_plugin {m_logger};
     std::function<StatusCode()> m_capturedPumpTask {};
 
     void SetUp() override
@@ -293,7 +295,7 @@ protected:
 
 TEST_F(DebuggerEngineTest, Construction_InitialState_IsIdle)
 {
-    DebuggerEngine engine {m_loader, m_dispatcher};
+    DebuggerEngine engine {m_loader, m_dispatcher, m_logger};
     const auto snapshot = engine.get_snapshot();
     EXPECT_EQ(snapshot.state, EngineState::Idle);
     EXPECT_EQ(snapshot.currentAddress, 0u);
@@ -303,7 +305,7 @@ TEST_F(DebuggerEngineTest, Construction_InitialState_IsIdle)
 
 TEST_F(DebuggerEngineTest, Construction_GenerationIsZero)
 {
-    DebuggerEngine engine {m_loader, m_dispatcher};
+    DebuggerEngine engine {m_loader, m_dispatcher, m_logger};
     EXPECT_EQ(engine.get_generation(), 0u);
 }
 
@@ -314,7 +316,7 @@ TEST_F(DebuggerEngineTest, Construction_GenerationIsZero)
 TEST_F(DebuggerEngineTest, Start_NoPlugin_ReturnsPluginNotLoaded)
 {
     expect_plugin_unavailable();
-    DebuggerEngine engine {m_loader, m_dispatcher};
+    DebuggerEngine engine {m_loader, m_dispatcher, m_logger};
     EXPECT_EQ(engine.start(), STATUS_ERROR_PLUGIN_NOT_LOADED);
 }
 
@@ -323,7 +325,7 @@ TEST_F(DebuggerEngineTest, Start_SetCallbacksFails_ReturnsError)
     m_plugin.internal_vertex_debugger_set_callbacks = stub_set_callbacks_fail;
     expect_plugin_available();
     expect_not_single_threaded();
-    DebuggerEngine engine {m_loader, m_dispatcher};
+    DebuggerEngine engine {m_loader, m_dispatcher, m_logger};
     EXPECT_EQ(engine.start(), STATUS_ERROR_GENERAL);
     EXPECT_EQ(engine.get_snapshot().state, EngineState::Idle);
 }
@@ -335,7 +337,7 @@ TEST_F(DebuggerEngineTest, Start_ScheduleRecurringFails_ReturnsError)
     ON_CALL(m_dispatcher, schedule_recurring(_, _, _, _, _, _))
         .WillByDefault(Return(std::unexpected{STATUS_ERROR_THREAD_IS_BUSY}));
 
-    DebuggerEngine engine {m_loader, m_dispatcher};
+    DebuggerEngine engine {m_loader, m_dispatcher, m_logger};
     EXPECT_EQ(engine.start(), STATUS_ERROR_THREAD_IS_BUSY);
     EXPECT_EQ(engine.get_snapshot().state, EngineState::Idle);
 }
@@ -343,7 +345,7 @@ TEST_F(DebuggerEngineTest, Start_ScheduleRecurringFails_ReturnsError)
 TEST_F(DebuggerEngineTest, Start_Success_TransitionsToDetached)
 {
     expect_schedule_recurring_succeeds();
-    DebuggerEngine engine {m_loader, m_dispatcher};
+    DebuggerEngine engine {m_loader, m_dispatcher, m_logger};
     ASSERT_EQ(start_engine(engine), STATUS_OK);
     EXPECT_EQ(engine.get_snapshot().state, EngineState::Detached);
     EXPECT_EQ(engine.get_generation(), 1u);
@@ -353,7 +355,7 @@ TEST_F(DebuggerEngineTest, Start_Success_TransitionsToDetached)
 TEST_F(DebuggerEngineTest, Start_AlreadyRunning_ReturnsError)
 {
     expect_schedule_recurring_succeeds();
-    DebuggerEngine engine {m_loader, m_dispatcher};
+    DebuggerEngine engine {m_loader, m_dispatcher, m_logger};
     ASSERT_EQ(start_engine(engine), STATUS_OK);
     EXPECT_EQ(engine.start(), STATUS_ERROR_DEBUGGER_ALREADY_RUNNING);
     stop_engine_cleanly(engine);
@@ -365,14 +367,14 @@ TEST_F(DebuggerEngineTest, Start_AlreadyRunning_ReturnsError)
 
 TEST_F(DebuggerEngineTest, Stop_NotRunning_ReturnsError)
 {
-    DebuggerEngine engine {m_loader, m_dispatcher};
+    DebuggerEngine engine {m_loader, m_dispatcher, m_logger};
     EXPECT_EQ(engine.stop(), STATUS_ERROR_DEBUGGER_NOT_RUNNING);
 }
 
 TEST_F(DebuggerEngineTest, Stop_Running_TransitionsToStopped)
 {
     expect_schedule_recurring_succeeds();
-    DebuggerEngine engine {m_loader, m_dispatcher};
+    DebuggerEngine engine {m_loader, m_dispatcher, m_logger};
     ASSERT_EQ(start_engine(engine), STATUS_OK);
 
     expect_cancel_recurring_succeeds();
@@ -384,7 +386,7 @@ TEST_F(DebuggerEngineTest, Stop_Running_TransitionsToStopped)
 TEST_F(DebuggerEngineTest, Stop_DispatchFails_ReturnsError)
 {
     expect_schedule_recurring_succeeds();
-    DebuggerEngine engine {m_loader, m_dispatcher};
+    DebuggerEngine engine {m_loader, m_dispatcher, m_logger};
     ASSERT_EQ(start_engine(engine), STATUS_OK);
 
     expect_cancel_recurring_succeeds();
@@ -405,7 +407,7 @@ TEST_F(DebuggerEngineTest, Stop_DispatchFails_ReturnsError)
 
 TEST_F(DebuggerEngineTest, SendCommand_EnqueuesWithoutBlocking)
 {
-    DebuggerEngine engine {m_loader, m_dispatcher};
+    DebuggerEngine engine {m_loader, m_dispatcher, m_logger};
     engine.send_command(engine::CmdAttach{});
     engine.send_command(engine::CmdPause{});
     engine.send_command(engine::CmdShutdown{});
@@ -418,7 +420,7 @@ TEST_F(DebuggerEngineTest, SendCommand_EnqueuesWithoutBlocking)
 TEST_F(DebuggerEngineTest, GetSnapshot_AfterStart_ReflectsDetached)
 {
     expect_schedule_recurring_succeeds();
-    DebuggerEngine engine {m_loader, m_dispatcher};
+    DebuggerEngine engine {m_loader, m_dispatcher, m_logger};
     ASSERT_EQ(start_engine(engine), STATUS_OK);
 
     const auto snapshot = engine.get_snapshot();
@@ -435,7 +437,7 @@ TEST_F(DebuggerEngineTest, GetSnapshot_AfterStart_ReflectsDetached)
 
 TEST_F(DebuggerEngineTest, SetEventCallback_CanBeCalledBeforeStart)
 {
-    DebuggerEngine engine {m_loader, m_dispatcher};
+    DebuggerEngine engine {m_loader, m_dispatcher, m_logger};
     bool called {};
     engine.set_event_callback(
         [&called](DirtyFlags, const EngineSnapshot&) { called = true; });
@@ -444,7 +446,7 @@ TEST_F(DebuggerEngineTest, SetEventCallback_CanBeCalledBeforeStart)
 
 TEST_F(DebuggerEngineTest, SetTickTimeout_StoresValues)
 {
-    DebuggerEngine engine {m_loader, m_dispatcher};
+    DebuggerEngine engine {m_loader, m_dispatcher, m_logger};
     engine.set_tick_timeout(200, 1000);
 }
 
@@ -483,7 +485,7 @@ TEST_F(DebuggerEngineTest, DirtyFlags_NoneIsZero)
 TEST_F(DebuggerEngineTest, CmdShutdown_TransitionsToStopped)
 {
     expect_schedule_recurring_succeeds();
-    DebuggerEngine engine {m_loader, m_dispatcher};
+    DebuggerEngine engine {m_loader, m_dispatcher, m_logger};
     ASSERT_EQ(start_engine(engine), STATUS_OK);
 
     expect_cancel_recurring_succeeds();
@@ -500,7 +502,7 @@ TEST_F(DebuggerEngineTest, CmdShutdown_ClearsCallbacks)
     m_plugin.internal_vertex_debugger_set_callbacks = ctx_set_callbacks_detect_clear;
 
     expect_schedule_recurring_succeeds();
-    DebuggerEngine engine {m_loader, m_dispatcher};
+    DebuggerEngine engine {m_loader, m_dispatcher, m_logger};
     ASSERT_EQ(start_engine(engine), STATUS_OK);
 
     expect_cancel_recurring_succeeds();
@@ -516,7 +518,7 @@ TEST_F(DebuggerEngineTest, CmdShutdown_ClearsCallbacks)
 TEST_F(DebuggerEngineTest, TickOnce_DetachedState_DoesNotCallTick)
 {
     expect_schedule_recurring_captures_task();
-    DebuggerEngine engine {m_loader, m_dispatcher};
+    DebuggerEngine engine {m_loader, m_dispatcher, m_logger};
     ASSERT_EQ(start_engine(engine), STATUS_OK);
     ASSERT_TRUE(m_capturedPumpTask);
 
@@ -531,7 +533,7 @@ TEST_F(DebuggerEngineTest, TickOnce_DetachedState_DoesNotCallTick)
 TEST_F(DebuggerEngineTest, TickOnce_RunningState_CallsTick)
 {
     expect_schedule_recurring_captures_task();
-    DebuggerEngine engine {m_loader, m_dispatcher};
+    DebuggerEngine engine {m_loader, m_dispatcher, m_logger};
     ASSERT_EQ(start_engine(engine), STATUS_OK);
     ASSERT_TRUE(m_capturedPumpTask);
 
@@ -548,7 +550,7 @@ TEST_F(DebuggerEngineTest, TickOnce_RunningState_CallsTick)
 TEST_F(DebuggerEngineTest, TickOnce_StoppedState_DoesNotCallTick)
 {
     expect_schedule_recurring_captures_task();
-    DebuggerEngine engine {m_loader, m_dispatcher};
+    DebuggerEngine engine {m_loader, m_dispatcher, m_logger};
     ASSERT_EQ(start_engine(engine), STATUS_OK);
     ASSERT_TRUE(m_capturedPumpTask);
 
@@ -566,7 +568,7 @@ TEST_F(DebuggerEngineTest, TickOnce_StoppedState_DoesNotCallTick)
 TEST_F(DebuggerEngineTest, TickOnce_DrainsCommandsBeforeTick)
 {
     expect_schedule_recurring_captures_task();
-    DebuggerEngine engine {m_loader, m_dispatcher};
+    DebuggerEngine engine {m_loader, m_dispatcher, m_logger};
     ASSERT_EQ(start_engine(engine), STATUS_OK);
     ASSERT_TRUE(m_capturedPumpTask);
 
@@ -585,7 +587,7 @@ TEST_F(DebuggerEngineTest, TickOnce_DrainsCommandsBeforeTick)
 TEST_F(DebuggerEngineTest, TickOnce_ActiveTimeout_PassedToTick)
 {
     expect_schedule_recurring_captures_task();
-    DebuggerEngine engine {m_loader, m_dispatcher};
+    DebuggerEngine engine {m_loader, m_dispatcher, m_logger};
     engine.set_tick_timeout(200, 1000);
     ASSERT_EQ(start_engine(engine), STATUS_OK);
     ASSERT_TRUE(m_capturedPumpTask);
@@ -603,7 +605,7 @@ TEST_F(DebuggerEngineTest, TickOnce_ActiveTimeout_PassedToTick)
 TEST_F(DebuggerEngineTest, TickOnce_ParkedTimeout_PassedWhenPaused)
 {
     expect_schedule_recurring_captures_task();
-    DebuggerEngine engine {m_loader, m_dispatcher};
+    DebuggerEngine engine {m_loader, m_dispatcher, m_logger};
     engine.set_tick_timeout(100, 500);
     ASSERT_EQ(start_engine(engine), STATUS_OK);
     ASSERT_TRUE(m_capturedPumpTask);
@@ -625,7 +627,7 @@ TEST_F(DebuggerEngineTest, TickOnce_ParkedTimeout_PassedWhenPaused)
 TEST_F(DebuggerEngineTest, TickOnce_ParkedTimeout_PassedWhenExited)
 {
     expect_schedule_recurring_captures_task();
-    DebuggerEngine engine {m_loader, m_dispatcher};
+    DebuggerEngine engine {m_loader, m_dispatcher, m_logger};
     engine.set_tick_timeout(100, 500);
     ASSERT_EQ(start_engine(engine), STATUS_OK);
     ASSERT_TRUE(m_capturedPumpTask);
@@ -654,7 +656,7 @@ TEST_F(DebuggerEngineTest, TickOnce_SingleThreadDependent_ClampsTimeout)
     m_plugin.internal_vertex_debugger_tick = ctx_tick;
     g_ctx.tickReturnCode = STATUS_DEBUG_TICK_NO_EVENT;
 
-    DebuggerEngine engine {m_loader, m_dispatcher};
+    DebuggerEngine engine {m_loader, m_dispatcher, m_logger};
     engine.set_tick_timeout(200, 1000);
     expect_plugin_available();
     ASSERT_EQ(engine.start(), STATUS_OK);
@@ -675,7 +677,7 @@ TEST_F(DebuggerEngineTest, TickOnce_MultiThread_DoesNotClampTimeout)
     m_plugin.internal_vertex_debugger_tick = ctx_tick;
     g_ctx.tickReturnCode = STATUS_DEBUG_TICK_NO_EVENT;
 
-    DebuggerEngine engine {m_loader, m_dispatcher};
+    DebuggerEngine engine {m_loader, m_dispatcher, m_logger};
     engine.set_tick_timeout(200, 1000);
     ASSERT_EQ(start_engine(engine), STATUS_OK);
     ASSERT_TRUE(m_capturedPumpTask);
@@ -695,7 +697,7 @@ TEST_F(DebuggerEngineTest, TickOnce_MultiThread_DoesNotClampTimeout)
 TEST_F(DebuggerEngineTest, TickResult_NoEvent_StaysRunning)
 {
     expect_schedule_recurring_captures_task();
-    DebuggerEngine engine {m_loader, m_dispatcher};
+    DebuggerEngine engine {m_loader, m_dispatcher, m_logger};
     ASSERT_EQ(start_engine(engine), STATUS_OK);
     ASSERT_TRUE(m_capturedPumpTask);
 
@@ -710,7 +712,7 @@ TEST_F(DebuggerEngineTest, TickResult_NoEvent_StaysRunning)
 TEST_F(DebuggerEngineTest, TickResult_Processed_StaysRunning)
 {
     expect_schedule_recurring_captures_task();
-    DebuggerEngine engine {m_loader, m_dispatcher};
+    DebuggerEngine engine {m_loader, m_dispatcher, m_logger};
     ASSERT_EQ(start_engine(engine), STATUS_OK);
     ASSERT_TRUE(m_capturedPumpTask);
 
@@ -725,7 +727,7 @@ TEST_F(DebuggerEngineTest, TickResult_Processed_StaysRunning)
 TEST_F(DebuggerEngineTest, TickResult_Paused_TransitionsToPaused)
 {
     expect_schedule_recurring_captures_task();
-    DebuggerEngine engine {m_loader, m_dispatcher};
+    DebuggerEngine engine {m_loader, m_dispatcher, m_logger};
     ASSERT_EQ(start_engine(engine), STATUS_OK);
     ASSERT_TRUE(m_capturedPumpTask);
 
@@ -740,7 +742,7 @@ TEST_F(DebuggerEngineTest, TickResult_Paused_TransitionsToPaused)
 TEST_F(DebuggerEngineTest, TickResult_ProcessExited_TransitionsToExited)
 {
     expect_schedule_recurring_captures_task();
-    DebuggerEngine engine {m_loader, m_dispatcher};
+    DebuggerEngine engine {m_loader, m_dispatcher, m_logger};
     ASSERT_EQ(start_engine(engine), STATUS_OK);
     ASSERT_TRUE(m_capturedPumpTask);
 
@@ -755,7 +757,7 @@ TEST_F(DebuggerEngineTest, TickResult_ProcessExited_TransitionsToExited)
 TEST_F(DebuggerEngineTest, TickResult_Detached_TransitionsToDetached)
 {
     expect_schedule_recurring_captures_task();
-    DebuggerEngine engine {m_loader, m_dispatcher};
+    DebuggerEngine engine {m_loader, m_dispatcher, m_logger};
     ASSERT_EQ(start_engine(engine), STATUS_OK);
     ASSERT_TRUE(m_capturedPumpTask);
 
@@ -770,7 +772,7 @@ TEST_F(DebuggerEngineTest, TickResult_Detached_TransitionsToDetached)
 TEST_F(DebuggerEngineTest, TickResult_Error_TransitionsToDetached)
 {
     expect_schedule_recurring_captures_task();
-    DebuggerEngine engine {m_loader, m_dispatcher};
+    DebuggerEngine engine {m_loader, m_dispatcher, m_logger};
     ASSERT_EQ(start_engine(engine), STATUS_OK);
     ASSERT_TRUE(m_capturedPumpTask);
 
@@ -785,7 +787,7 @@ TEST_F(DebuggerEngineTest, TickResult_Error_TransitionsToDetached)
 TEST_F(DebuggerEngineTest, TickResult_ProcessExited_BumpsGeneration)
 {
     expect_schedule_recurring_captures_task();
-    DebuggerEngine engine {m_loader, m_dispatcher};
+    DebuggerEngine engine {m_loader, m_dispatcher, m_logger};
     ASSERT_EQ(start_engine(engine), STATUS_OK);
     ASSERT_TRUE(m_capturedPumpTask);
 
@@ -803,7 +805,7 @@ TEST_F(DebuggerEngineTest, TickResult_ProcessExited_BumpsGeneration)
 TEST_F(DebuggerEngineTest, TickResult_Detached_BumpsGeneration)
 {
     expect_schedule_recurring_captures_task();
-    DebuggerEngine engine {m_loader, m_dispatcher};
+    DebuggerEngine engine {m_loader, m_dispatcher, m_logger};
     ASSERT_EQ(start_engine(engine), STATUS_OK);
     ASSERT_TRUE(m_capturedPumpTask);
 
@@ -825,7 +827,7 @@ TEST_F(DebuggerEngineTest, TickResult_Detached_BumpsGeneration)
 TEST_F(DebuggerEngineTest, CmdAttach_FromDetached_TransitionsToRunning)
 {
     expect_schedule_recurring_captures_task();
-    DebuggerEngine engine {m_loader, m_dispatcher};
+    DebuggerEngine engine {m_loader, m_dispatcher, m_logger};
     ASSERT_EQ(start_engine(engine), STATUS_OK);
     ASSERT_TRUE(m_capturedPumpTask);
 
@@ -840,7 +842,7 @@ TEST_F(DebuggerEngineTest, CmdAttach_FromDetached_TransitionsToRunning)
 TEST_F(DebuggerEngineTest, CmdAttach_FromRunning_Ignored)
 {
     expect_schedule_recurring_captures_task();
-    DebuggerEngine engine {m_loader, m_dispatcher};
+    DebuggerEngine engine {m_loader, m_dispatcher, m_logger};
     ASSERT_EQ(start_engine(engine), STATUS_OK);
     ASSERT_TRUE(m_capturedPumpTask);
 
@@ -862,7 +864,7 @@ TEST_F(DebuggerEngineTest, CmdAttach_FromRunning_Ignored)
 TEST_F(DebuggerEngineTest, CmdAttach_PluginFails_StaysDetached)
 {
     expect_schedule_recurring_captures_task();
-    DebuggerEngine engine {m_loader, m_dispatcher};
+    DebuggerEngine engine {m_loader, m_dispatcher, m_logger};
     ASSERT_EQ(start_engine(engine), STATUS_OK);
     ASSERT_TRUE(m_capturedPumpTask);
 
@@ -878,7 +880,7 @@ TEST_F(DebuggerEngineTest, CmdAttach_PluginFails_StaysDetached)
 TEST_F(DebuggerEngineTest, CmdAttach_BumpsGeneration)
 {
     expect_schedule_recurring_captures_task();
-    DebuggerEngine engine {m_loader, m_dispatcher};
+    DebuggerEngine engine {m_loader, m_dispatcher, m_logger};
     ASSERT_EQ(start_engine(engine), STATUS_OK);
     ASSERT_TRUE(m_capturedPumpTask);
 
@@ -900,7 +902,7 @@ TEST_F(DebuggerEngineTest, CmdAttach_BumpsGeneration)
 TEST_F(DebuggerEngineTest, CmdDetach_FromRunning_TransitionsToDetached)
 {
     expect_schedule_recurring_captures_task();
-    DebuggerEngine engine {m_loader, m_dispatcher};
+    DebuggerEngine engine {m_loader, m_dispatcher, m_logger};
     ASSERT_EQ(start_engine(engine), STATUS_OK);
     ASSERT_TRUE(m_capturedPumpTask);
 
@@ -919,7 +921,7 @@ TEST_F(DebuggerEngineTest, CmdDetach_FromRunning_TransitionsToDetached)
 TEST_F(DebuggerEngineTest, CmdDetach_FromPaused_TransitionsToDetached)
 {
     expect_schedule_recurring_captures_task();
-    DebuggerEngine engine {m_loader, m_dispatcher};
+    DebuggerEngine engine {m_loader, m_dispatcher, m_logger};
     ASSERT_EQ(start_engine(engine), STATUS_OK);
     ASSERT_TRUE(m_capturedPumpTask);
 
@@ -939,7 +941,7 @@ TEST_F(DebuggerEngineTest, CmdDetach_FromPaused_TransitionsToDetached)
 TEST_F(DebuggerEngineTest, CmdDetach_FromDetached_NoOp)
 {
     expect_schedule_recurring_captures_task();
-    DebuggerEngine engine {m_loader, m_dispatcher};
+    DebuggerEngine engine {m_loader, m_dispatcher, m_logger};
     ASSERT_EQ(start_engine(engine), STATUS_OK);
     ASSERT_TRUE(m_capturedPumpTask);
 
@@ -958,7 +960,7 @@ TEST_F(DebuggerEngineTest, CmdDetach_FromDetached_NoOp)
 TEST_F(DebuggerEngineTest, CmdDetach_CallsPluginDetach)
 {
     expect_schedule_recurring_captures_task();
-    DebuggerEngine engine {m_loader, m_dispatcher};
+    DebuggerEngine engine {m_loader, m_dispatcher, m_logger};
     ASSERT_EQ(start_engine(engine), STATUS_OK);
     ASSERT_TRUE(m_capturedPumpTask);
 
@@ -982,7 +984,7 @@ TEST_F(DebuggerEngineTest, CmdDetach_CallsPluginDetach)
 TEST_F(DebuggerEngineTest, CmdContinue_FromPaused_TransitionsToRunning)
 {
     expect_schedule_recurring_captures_task();
-    DebuggerEngine engine {m_loader, m_dispatcher};
+    DebuggerEngine engine {m_loader, m_dispatcher, m_logger};
     ASSERT_EQ(start_engine(engine), STATUS_OK);
     ASSERT_TRUE(m_capturedPumpTask);
 
@@ -1002,7 +1004,7 @@ TEST_F(DebuggerEngineTest, CmdContinue_FromPaused_TransitionsToRunning)
 TEST_F(DebuggerEngineTest, CmdContinue_FromRunning_Ignored)
 {
     expect_schedule_recurring_captures_task();
-    DebuggerEngine engine {m_loader, m_dispatcher};
+    DebuggerEngine engine {m_loader, m_dispatcher, m_logger};
     ASSERT_EQ(start_engine(engine), STATUS_OK);
     ASSERT_TRUE(m_capturedPumpTask);
 
@@ -1024,7 +1026,7 @@ TEST_F(DebuggerEngineTest, CmdContinue_FromRunning_Ignored)
 TEST_F(DebuggerEngineTest, CmdContinue_PassesExceptionFlag)
 {
     expect_schedule_recurring_captures_task();
-    DebuggerEngine engine {m_loader, m_dispatcher};
+    DebuggerEngine engine {m_loader, m_dispatcher, m_logger};
     ASSERT_EQ(start_engine(engine), STATUS_OK);
     ASSERT_TRUE(m_capturedPumpTask);
 
@@ -1049,7 +1051,7 @@ TEST_F(DebuggerEngineTest, CmdContinue_PassesExceptionFlag)
 TEST_F(DebuggerEngineTest, CmdPause_FromRunning_CallsPluginPause)
 {
     expect_schedule_recurring_captures_task();
-    DebuggerEngine engine {m_loader, m_dispatcher};
+    DebuggerEngine engine {m_loader, m_dispatcher, m_logger};
     ASSERT_EQ(start_engine(engine), STATUS_OK);
     ASSERT_TRUE(m_capturedPumpTask);
 
@@ -1069,7 +1071,7 @@ TEST_F(DebuggerEngineTest, CmdPause_FromRunning_CallsPluginPause)
 TEST_F(DebuggerEngineTest, CmdPause_FromPaused_Ignored)
 {
     expect_schedule_recurring_captures_task();
-    DebuggerEngine engine {m_loader, m_dispatcher};
+    DebuggerEngine engine {m_loader, m_dispatcher, m_logger};
     ASSERT_EQ(start_engine(engine), STATUS_OK);
     ASSERT_TRUE(m_capturedPumpTask);
 
@@ -1092,7 +1094,7 @@ TEST_F(DebuggerEngineTest, CmdPause_FromPaused_Ignored)
 TEST_F(DebuggerEngineTest, CmdPause_DoesNotTransitionImmediately)
 {
     expect_schedule_recurring_captures_task();
-    DebuggerEngine engine {m_loader, m_dispatcher};
+    DebuggerEngine engine {m_loader, m_dispatcher, m_logger};
     ASSERT_EQ(start_engine(engine), STATUS_OK);
     ASSERT_TRUE(m_capturedPumpTask);
 
@@ -1116,7 +1118,7 @@ TEST_F(DebuggerEngineTest, CmdPause_DoesNotTransitionImmediately)
 TEST_F(DebuggerEngineTest, CmdStepInto_FromPaused_TransitionsToRunning)
 {
     expect_schedule_recurring_captures_task();
-    DebuggerEngine engine {m_loader, m_dispatcher};
+    DebuggerEngine engine {m_loader, m_dispatcher, m_logger};
     ASSERT_EQ(start_engine(engine), STATUS_OK);
     ASSERT_TRUE(m_capturedPumpTask);
 
@@ -1136,7 +1138,7 @@ TEST_F(DebuggerEngineTest, CmdStepInto_FromPaused_TransitionsToRunning)
 TEST_F(DebuggerEngineTest, CmdStepOver_FromPaused_TransitionsToRunning)
 {
     expect_schedule_recurring_captures_task();
-    DebuggerEngine engine {m_loader, m_dispatcher};
+    DebuggerEngine engine {m_loader, m_dispatcher, m_logger};
     ASSERT_EQ(start_engine(engine), STATUS_OK);
     ASSERT_TRUE(m_capturedPumpTask);
 
@@ -1156,7 +1158,7 @@ TEST_F(DebuggerEngineTest, CmdStepOver_FromPaused_TransitionsToRunning)
 TEST_F(DebuggerEngineTest, CmdStepOut_FromPaused_TransitionsToRunning)
 {
     expect_schedule_recurring_captures_task();
-    DebuggerEngine engine {m_loader, m_dispatcher};
+    DebuggerEngine engine {m_loader, m_dispatcher, m_logger};
     ASSERT_EQ(start_engine(engine), STATUS_OK);
     ASSERT_TRUE(m_capturedPumpTask);
 
@@ -1176,7 +1178,7 @@ TEST_F(DebuggerEngineTest, CmdStepOut_FromPaused_TransitionsToRunning)
 TEST_F(DebuggerEngineTest, CmdStepInto_FromRunning_Ignored)
 {
     expect_schedule_recurring_captures_task();
-    DebuggerEngine engine {m_loader, m_dispatcher};
+    DebuggerEngine engine {m_loader, m_dispatcher, m_logger};
     ASSERT_EQ(start_engine(engine), STATUS_OK);
     ASSERT_TRUE(m_capturedPumpTask);
 
@@ -1198,7 +1200,7 @@ TEST_F(DebuggerEngineTest, CmdStepInto_FromRunning_Ignored)
 TEST_F(DebuggerEngineTest, CmdStepInto_CallsPluginWithCorrectMode)
 {
     expect_schedule_recurring_captures_task();
-    DebuggerEngine engine {m_loader, m_dispatcher};
+    DebuggerEngine engine {m_loader, m_dispatcher, m_logger};
     ASSERT_EQ(start_engine(engine), STATUS_OK);
     ASSERT_TRUE(m_capturedPumpTask);
 
@@ -1219,7 +1221,7 @@ TEST_F(DebuggerEngineTest, CmdStepInto_CallsPluginWithCorrectMode)
 TEST_F(DebuggerEngineTest, CmdStepOver_CallsPluginWithCorrectMode)
 {
     expect_schedule_recurring_captures_task();
-    DebuggerEngine engine {m_loader, m_dispatcher};
+    DebuggerEngine engine {m_loader, m_dispatcher, m_logger};
     ASSERT_EQ(start_engine(engine), STATUS_OK);
     ASSERT_TRUE(m_capturedPumpTask);
 
@@ -1240,7 +1242,7 @@ TEST_F(DebuggerEngineTest, CmdStepOver_CallsPluginWithCorrectMode)
 TEST_F(DebuggerEngineTest, CmdStepOut_CallsPluginWithCorrectMode)
 {
     expect_schedule_recurring_captures_task();
-    DebuggerEngine engine {m_loader, m_dispatcher};
+    DebuggerEngine engine {m_loader, m_dispatcher, m_logger};
     ASSERT_EQ(start_engine(engine), STATUS_OK);
     ASSERT_TRUE(m_capturedPumpTask);
 
@@ -1265,7 +1267,7 @@ TEST_F(DebuggerEngineTest, CmdStepOut_CallsPluginWithCorrectMode)
 TEST_F(DebuggerEngineTest, CmdRunToAddress_FromPaused_TransitionsToRunning)
 {
     expect_schedule_recurring_captures_task();
-    DebuggerEngine engine {m_loader, m_dispatcher};
+    DebuggerEngine engine {m_loader, m_dispatcher, m_logger};
     ASSERT_EQ(start_engine(engine), STATUS_OK);
     ASSERT_TRUE(m_capturedPumpTask);
 
@@ -1285,7 +1287,7 @@ TEST_F(DebuggerEngineTest, CmdRunToAddress_FromPaused_TransitionsToRunning)
 TEST_F(DebuggerEngineTest, CmdRunToAddress_PassesAddress)
 {
     expect_schedule_recurring_captures_task();
-    DebuggerEngine engine {m_loader, m_dispatcher};
+    DebuggerEngine engine {m_loader, m_dispatcher, m_logger};
     ASSERT_EQ(start_engine(engine), STATUS_OK);
     ASSERT_TRUE(m_capturedPumpTask);
 
@@ -1306,7 +1308,7 @@ TEST_F(DebuggerEngineTest, CmdRunToAddress_PassesAddress)
 TEST_F(DebuggerEngineTest, CmdRunToAddress_FromRunning_Ignored)
 {
     expect_schedule_recurring_captures_task();
-    DebuggerEngine engine {m_loader, m_dispatcher};
+    DebuggerEngine engine {m_loader, m_dispatcher, m_logger};
     ASSERT_EQ(start_engine(engine), STATUS_OK);
     ASSERT_TRUE(m_capturedPumpTask);
 
@@ -1332,7 +1334,7 @@ TEST_F(DebuggerEngineTest, CmdRunToAddress_FromRunning_Ignored)
 TEST_F(DebuggerEngineTest, CmdShutdown_FromRunning_DetachesAndTransitionsToStopped)
 {
     expect_schedule_recurring_captures_task();
-    DebuggerEngine engine {m_loader, m_dispatcher};
+    DebuggerEngine engine {m_loader, m_dispatcher, m_logger};
     ASSERT_EQ(start_engine(engine), STATUS_OK);
     ASSERT_TRUE(m_capturedPumpTask);
 
@@ -1354,7 +1356,7 @@ TEST_F(DebuggerEngineTest, CmdShutdown_FromRunning_DetachesAndTransitionsToStopp
 TEST_F(DebuggerEngineTest, CmdShutdown_FromDetached_SkipsDetach)
 {
     expect_schedule_recurring_captures_task();
-    DebuggerEngine engine {m_loader, m_dispatcher};
+    DebuggerEngine engine {m_loader, m_dispatcher, m_logger};
     ASSERT_EQ(start_engine(engine), STATUS_OK);
     ASSERT_TRUE(m_capturedPumpTask);
 
@@ -1371,7 +1373,7 @@ TEST_F(DebuggerEngineTest, CmdShutdown_FromDetached_SkipsDetach)
 TEST_F(DebuggerEngineTest, CmdShutdown_ClearsCallbacksOnPlugin)
 {
     expect_schedule_recurring_captures_task();
-    DebuggerEngine engine {m_loader, m_dispatcher};
+    DebuggerEngine engine {m_loader, m_dispatcher, m_logger};
     ASSERT_EQ(start_engine(engine), STATUS_OK);
     ASSERT_TRUE(m_capturedPumpTask);
 
@@ -1391,7 +1393,7 @@ TEST_F(DebuggerEngineTest, CmdShutdown_ClearsCallbacksOnPlugin)
 TEST_F(DebuggerEngineTest, DrainCommands_BurstLimit_DoesNotExceed32)
 {
     expect_schedule_recurring_captures_task();
-    DebuggerEngine engine {m_loader, m_dispatcher};
+    DebuggerEngine engine {m_loader, m_dispatcher, m_logger};
     ASSERT_EQ(start_engine(engine), STATUS_OK);
     ASSERT_TRUE(m_capturedPumpTask);
 
@@ -1418,7 +1420,7 @@ TEST_F(DebuggerEngineTest, DrainCommands_BurstLimit_DoesNotExceed32)
 TEST_F(DebuggerEngineTest, Generation_IncrementsOnEachStateTransition)
 {
     expect_schedule_recurring_captures_task();
-    DebuggerEngine engine {m_loader, m_dispatcher};
+    DebuggerEngine engine {m_loader, m_dispatcher, m_logger};
     ASSERT_EQ(start_engine(engine), STATUS_OK);
     ASSERT_TRUE(m_capturedPumpTask);
 
@@ -1443,7 +1445,7 @@ TEST_F(DebuggerEngineTest, Generation_IncrementsOnEachStateTransition)
 TEST_F(DebuggerEngineTest, Generation_SnapshotMatchesAtomicGeneration)
 {
     expect_schedule_recurring_captures_task();
-    DebuggerEngine engine {m_loader, m_dispatcher};
+    DebuggerEngine engine {m_loader, m_dispatcher, m_logger};
     ASSERT_EQ(start_engine(engine), STATUS_OK);
     ASSERT_TRUE(m_capturedPumpTask);
 
@@ -1464,7 +1466,7 @@ TEST_F(DebuggerEngineTest, Callback_BreakpointHit_UpdatesSnapshotAndDirtyFlags)
 {
     m_plugin.internal_vertex_debugger_set_callbacks = ctx_set_callbacks_capture;
     expect_schedule_recurring_captures_task();
-    DebuggerEngine engine {m_loader, m_dispatcher};
+    DebuggerEngine engine {m_loader, m_dispatcher, m_logger};
     ASSERT_EQ(start_engine(engine), STATUS_OK);
     ASSERT_TRUE(m_capturedPumpTask);
     ASSERT_TRUE(g_ctx.callbacksCaptured);
@@ -1483,7 +1485,7 @@ TEST_F(DebuggerEngineTest, Callback_SingleStep_UpdatesSnapshotAndDirtyFlags)
 {
     m_plugin.internal_vertex_debugger_set_callbacks = ctx_set_callbacks_capture;
     expect_schedule_recurring_captures_task();
-    DebuggerEngine engine {m_loader, m_dispatcher};
+    DebuggerEngine engine {m_loader, m_dispatcher, m_logger};
     ASSERT_EQ(start_engine(engine), STATUS_OK);
     ASSERT_TRUE(m_capturedPumpTask);
     ASSERT_TRUE(g_ctx.callbacksCaptured);
@@ -1502,7 +1504,7 @@ TEST_F(DebuggerEngineTest, Callback_NullEvent_DoesNotCrash)
 {
     m_plugin.internal_vertex_debugger_set_callbacks = ctx_set_callbacks_capture;
     expect_schedule_recurring_succeeds();
-    DebuggerEngine engine {m_loader, m_dispatcher};
+    DebuggerEngine engine {m_loader, m_dispatcher, m_logger};
     ASSERT_EQ(start_engine(engine), STATUS_OK);
     ASSERT_TRUE(g_ctx.callbacksCaptured);
 
@@ -1517,11 +1519,11 @@ TEST_F(DebuggerEngineTest, Callback_NullUserData_DoesNotCrash)
 {
     m_plugin.internal_vertex_debugger_set_callbacks = ctx_set_callbacks_capture;
     expect_schedule_recurring_succeeds();
-    DebuggerEngine engine {m_loader, m_dispatcher};
+    DebuggerEngine engine {m_loader, m_dispatcher, m_logger};
     ASSERT_EQ(start_engine(engine), STATUS_OK);
     ASSERT_TRUE(g_ctx.callbacksCaptured);
 
-    DebugEvent event {};
+    ::DebugEvent event {};
     g_ctx.capturedCallbacks.on_breakpoint_hit(&event, nullptr);
     g_ctx.capturedCallbacks.on_single_step(&event, nullptr);
     g_ctx.capturedCallbacks.on_exception(&event, nullptr);
@@ -1551,7 +1553,7 @@ TEST_F(DebuggerEngineTest, Callback_WatchpointHit_UpdatesSnapshotAndDirtyFlags)
 {
     m_plugin.internal_vertex_debugger_set_callbacks = ctx_set_callbacks_capture;
     expect_schedule_recurring_captures_task();
-    DebuggerEngine engine {m_loader, m_dispatcher};
+    DebuggerEngine engine {m_loader, m_dispatcher, m_logger};
     ASSERT_EQ(start_engine(engine), STATUS_OK);
     ASSERT_TRUE(m_capturedPumpTask);
     ASSERT_TRUE(g_ctx.callbacksCaptured);
@@ -1575,7 +1577,7 @@ TEST_F(DebuggerEngineTest, Start_RegistersCallbacksWithPlugin)
     m_plugin.internal_vertex_debugger_set_callbacks = ctx_set_callbacks_capture;
 
     expect_schedule_recurring_succeeds();
-    DebuggerEngine engine {m_loader, m_dispatcher};
+    DebuggerEngine engine {m_loader, m_dispatcher, m_logger};
     ASSERT_EQ(start_engine(engine), STATUS_OK);
 
     ASSERT_TRUE(g_ctx.callbacksCaptured);
@@ -1600,7 +1602,7 @@ TEST_F(DebuggerEngineTest, Start_UserDataPointsToEngine)
     m_plugin.internal_vertex_debugger_set_callbacks = ctx_set_callbacks_capture;
 
     expect_schedule_recurring_succeeds();
-    DebuggerEngine engine {m_loader, m_dispatcher};
+    DebuggerEngine engine {m_loader, m_dispatcher, m_logger};
     ASSERT_EQ(start_engine(engine), STATUS_OK);
 
     EXPECT_EQ(g_ctx.capturedUserData, static_cast<void*>(&engine));
@@ -1630,7 +1632,7 @@ TEST_F(DebuggerEngineTest, Start_SchedulesPumpOnDebuggerChannel)
                 return RecurringTaskHandle{1, 1};
             }));
 
-    DebuggerEngine engine {m_loader, m_dispatcher};
+    DebuggerEngine engine {m_loader, m_dispatcher, m_logger};
     ASSERT_EQ(start_engine(engine), STATUS_OK);
 
     EXPECT_EQ(capturedChannel, ThreadChannel::Debugger);
@@ -1647,7 +1649,7 @@ TEST_F(DebuggerEngineTest, Start_SchedulesPumpOnDebuggerChannel)
 TEST_F(DebuggerEngineTest, StateMachine_FullCycle_IdleToStoppedThroughAllStates)
 {
     expect_schedule_recurring_captures_task();
-    DebuggerEngine engine {m_loader, m_dispatcher};
+    DebuggerEngine engine {m_loader, m_dispatcher, m_logger};
 
     EXPECT_EQ(engine.get_snapshot().state, EngineState::Idle);
 
@@ -1682,7 +1684,7 @@ TEST_F(DebuggerEngineTest, StateMachine_FullCycle_IdleToStoppedThroughAllStates)
 TEST_F(DebuggerEngineTest, StateMachine_ReattachAfterDetach)
 {
     expect_schedule_recurring_captures_task();
-    DebuggerEngine engine {m_loader, m_dispatcher};
+    DebuggerEngine engine {m_loader, m_dispatcher, m_logger};
     ASSERT_EQ(start_engine(engine), STATUS_OK);
     ASSERT_TRUE(m_capturedPumpTask);
 
@@ -1705,7 +1707,7 @@ TEST_F(DebuggerEngineTest, StateMachine_ReattachAfterDetach)
 TEST_F(DebuggerEngineTest, StateMachine_ReattachAfterTickError)
 {
     expect_schedule_recurring_captures_task();
-    DebuggerEngine engine {m_loader, m_dispatcher};
+    DebuggerEngine engine {m_loader, m_dispatcher, m_logger};
     ASSERT_EQ(start_engine(engine), STATUS_OK);
     ASSERT_TRUE(m_capturedPumpTask);
 
@@ -1726,7 +1728,7 @@ TEST_F(DebuggerEngineTest, StateMachine_ReattachAfterTickError)
 TEST_F(DebuggerEngineTest, StateMachine_ReattachAfterPluginDetach)
 {
     expect_schedule_recurring_captures_task();
-    DebuggerEngine engine {m_loader, m_dispatcher};
+    DebuggerEngine engine {m_loader, m_dispatcher, m_logger};
     ASSERT_EQ(start_engine(engine), STATUS_OK);
     ASSERT_TRUE(m_capturedPumpTask);
 
@@ -1750,7 +1752,7 @@ TEST_F(DebuggerEngineTest, StateMachine_ReattachAfterPluginDetach)
 TEST_F(DebuggerEngineTest, CmdAttach_FromRunning_PostsError)
 {
     expect_schedule_recurring_captures_task();
-    DebuggerEngine engine {m_loader, m_dispatcher};
+    DebuggerEngine engine {m_loader, m_dispatcher, m_logger};
     ASSERT_EQ(start_engine(engine), STATUS_OK);
     ASSERT_TRUE(m_capturedPumpTask);
 
@@ -1773,7 +1775,7 @@ TEST_F(DebuggerEngineTest, CmdAttach_FromRunning_PostsError)
 TEST_F(DebuggerEngineTest, CmdContinue_FromRunning_PostsError)
 {
     expect_schedule_recurring_captures_task();
-    DebuggerEngine engine {m_loader, m_dispatcher};
+    DebuggerEngine engine {m_loader, m_dispatcher, m_logger};
     ASSERT_EQ(start_engine(engine), STATUS_OK);
     ASSERT_TRUE(m_capturedPumpTask);
 
@@ -1795,7 +1797,7 @@ TEST_F(DebuggerEngineTest, CmdContinue_FromRunning_PostsError)
 TEST_F(DebuggerEngineTest, CmdPause_FromPaused_PostsError)
 {
     expect_schedule_recurring_captures_task();
-    DebuggerEngine engine {m_loader, m_dispatcher};
+    DebuggerEngine engine {m_loader, m_dispatcher, m_logger};
     ASSERT_EQ(start_engine(engine), STATUS_OK);
     ASSERT_TRUE(m_capturedPumpTask);
 
@@ -1818,7 +1820,7 @@ TEST_F(DebuggerEngineTest, CmdPause_FromPaused_PostsError)
 TEST_F(DebuggerEngineTest, CmdStepInto_FromRunning_PostsError)
 {
     expect_schedule_recurring_captures_task();
-    DebuggerEngine engine {m_loader, m_dispatcher};
+    DebuggerEngine engine {m_loader, m_dispatcher, m_logger};
     ASSERT_EQ(start_engine(engine), STATUS_OK);
     ASSERT_TRUE(m_capturedPumpTask);
 
@@ -1840,7 +1842,7 @@ TEST_F(DebuggerEngineTest, CmdStepInto_FromRunning_PostsError)
 TEST_F(DebuggerEngineTest, CmdStepOver_FromRunning_PostsError)
 {
     expect_schedule_recurring_captures_task();
-    DebuggerEngine engine {m_loader, m_dispatcher};
+    DebuggerEngine engine {m_loader, m_dispatcher, m_logger};
     ASSERT_EQ(start_engine(engine), STATUS_OK);
     ASSERT_TRUE(m_capturedPumpTask);
 
@@ -1862,7 +1864,7 @@ TEST_F(DebuggerEngineTest, CmdStepOver_FromRunning_PostsError)
 TEST_F(DebuggerEngineTest, CmdStepOut_FromRunning_PostsError)
 {
     expect_schedule_recurring_captures_task();
-    DebuggerEngine engine {m_loader, m_dispatcher};
+    DebuggerEngine engine {m_loader, m_dispatcher, m_logger};
     ASSERT_EQ(start_engine(engine), STATUS_OK);
     ASSERT_TRUE(m_capturedPumpTask);
 
@@ -1884,7 +1886,7 @@ TEST_F(DebuggerEngineTest, CmdStepOut_FromRunning_PostsError)
 TEST_F(DebuggerEngineTest, CmdRunToAddress_FromRunning_PostsError)
 {
     expect_schedule_recurring_captures_task();
-    DebuggerEngine engine {m_loader, m_dispatcher};
+    DebuggerEngine engine {m_loader, m_dispatcher, m_logger};
     ASSERT_EQ(start_engine(engine), STATUS_OK);
     ASSERT_TRUE(m_capturedPumpTask);
 
@@ -1910,7 +1912,7 @@ TEST_F(DebuggerEngineTest, CmdRunToAddress_FromRunning_PostsError)
 TEST_F(DebuggerEngineTest, CmdAttach_PluginFails_PostsError)
 {
     expect_schedule_recurring_captures_task();
-    DebuggerEngine engine {m_loader, m_dispatcher};
+    DebuggerEngine engine {m_loader, m_dispatcher, m_logger};
     ASSERT_EQ(start_engine(engine), STATUS_OK);
     ASSERT_TRUE(m_capturedPumpTask);
 
@@ -1929,7 +1931,7 @@ TEST_F(DebuggerEngineTest, CmdAttach_PluginFails_PostsError)
 TEST_F(DebuggerEngineTest, CmdContinue_PluginFails_PostsError)
 {
     expect_schedule_recurring_captures_task();
-    DebuggerEngine engine {m_loader, m_dispatcher};
+    DebuggerEngine engine {m_loader, m_dispatcher, m_logger};
     ASSERT_EQ(start_engine(engine), STATUS_OK);
     ASSERT_TRUE(m_capturedPumpTask);
 
@@ -1954,7 +1956,7 @@ TEST_F(DebuggerEngineTest, CmdContinue_PluginFails_PostsError)
 TEST_F(DebuggerEngineTest, CmdPause_PluginFails_PostsError)
 {
     expect_schedule_recurring_captures_task();
-    DebuggerEngine engine {m_loader, m_dispatcher};
+    DebuggerEngine engine {m_loader, m_dispatcher, m_logger};
     ASSERT_EQ(start_engine(engine), STATUS_OK);
     ASSERT_TRUE(m_capturedPumpTask);
 
@@ -1978,7 +1980,7 @@ TEST_F(DebuggerEngineTest, CmdPause_PluginFails_PostsError)
 TEST_F(DebuggerEngineTest, CmdStepInto_PluginFails_PostsError)
 {
     expect_schedule_recurring_captures_task();
-    DebuggerEngine engine {m_loader, m_dispatcher};
+    DebuggerEngine engine {m_loader, m_dispatcher, m_logger};
     ASSERT_EQ(start_engine(engine), STATUS_OK);
     ASSERT_TRUE(m_capturedPumpTask);
 
@@ -2003,7 +2005,7 @@ TEST_F(DebuggerEngineTest, CmdStepInto_PluginFails_PostsError)
 TEST_F(DebuggerEngineTest, CmdRunToAddress_PluginFails_PostsError)
 {
     expect_schedule_recurring_captures_task();
-    DebuggerEngine engine {m_loader, m_dispatcher};
+    DebuggerEngine engine {m_loader, m_dispatcher, m_logger};
     ASSERT_EQ(start_engine(engine), STATUS_OK);
     ASSERT_TRUE(m_capturedPumpTask);
 
@@ -2032,7 +2034,7 @@ TEST_F(DebuggerEngineTest, CmdRunToAddress_PluginFails_PostsError)
 TEST_F(DebuggerEngineTest, ConsumeLastError_ClearsAfterRead)
 {
     expect_schedule_recurring_captures_task();
-    DebuggerEngine engine {m_loader, m_dispatcher};
+    DebuggerEngine engine {m_loader, m_dispatcher, m_logger};
     ASSERT_EQ(start_engine(engine), STATUS_OK);
     ASSERT_TRUE(m_capturedPumpTask);
 
@@ -2051,7 +2053,7 @@ TEST_F(DebuggerEngineTest, ConsumeLastError_ClearsAfterRead)
 TEST_F(DebuggerEngineTest, ConsumeLastError_NoErrorReturnsEmpty)
 {
     expect_schedule_recurring_captures_task();
-    DebuggerEngine engine {m_loader, m_dispatcher};
+    DebuggerEngine engine {m_loader, m_dispatcher, m_logger};
     ASSERT_EQ(start_engine(engine), STATUS_OK);
     EXPECT_FALSE(engine.consume_last_error().has_value());
     stop_engine_cleanly(engine);
@@ -2060,7 +2062,7 @@ TEST_F(DebuggerEngineTest, ConsumeLastError_NoErrorReturnsEmpty)
 TEST_F(DebuggerEngineTest, CmdDetach_FromDetached_NoError)
 {
     expect_schedule_recurring_captures_task();
-    DebuggerEngine engine {m_loader, m_dispatcher};
+    DebuggerEngine engine {m_loader, m_dispatcher, m_logger};
     ASSERT_EQ(start_engine(engine), STATUS_OK);
     ASSERT_TRUE(m_capturedPumpTask);
 
@@ -2074,7 +2076,7 @@ TEST_F(DebuggerEngineTest, CmdDetach_FromDetached_NoError)
 TEST_F(DebuggerEngineTest, PostError_SetsDirtyFlags)
 {
     expect_schedule_recurring_captures_task();
-    DebuggerEngine engine {m_loader, m_dispatcher};
+    DebuggerEngine engine {m_loader, m_dispatcher, m_logger};
     ASSERT_EQ(start_engine(engine), STATUS_OK);
     ASSERT_TRUE(m_capturedPumpTask);
 
@@ -2099,7 +2101,7 @@ TEST_F(DebuggerEngineTest, PostError_SetsDirtyFlags)
 TEST_F(DebuggerEngineTest, Stop_DeepQueue_StillExecutesShutdown)
 {
     expect_schedule_recurring_captures_task();
-    DebuggerEngine engine {m_loader, m_dispatcher};
+    DebuggerEngine engine {m_loader, m_dispatcher, m_logger};
     ASSERT_EQ(start_engine(engine), STATUS_OK);
     ASSERT_TRUE(m_capturedPumpTask);
 
@@ -2127,7 +2129,7 @@ TEST_F(DebuggerEngineTest, Stop_DeepQueue_StillExecutesShutdown)
 TEST_F(DebuggerEngineTest, CmdDetach_PluginFails_PostsError)
 {
     expect_schedule_recurring_captures_task();
-    DebuggerEngine engine {m_loader, m_dispatcher};
+    DebuggerEngine engine {m_loader, m_dispatcher, m_logger};
     ASSERT_EQ(start_engine(engine), STATUS_OK);
     ASSERT_TRUE(m_capturedPumpTask);
 
@@ -2141,7 +2143,7 @@ TEST_F(DebuggerEngineTest, CmdDetach_PluginFails_PostsError)
     engine.send_command(engine::CmdDetach{});
     m_capturedPumpTask();
 
-    EXPECT_EQ(engine.get_snapshot().state, EngineState::Detached);
+    EXPECT_EQ(engine.get_snapshot().state, EngineState::Running);
 
     const auto error = engine.consume_last_error();
     ASSERT_TRUE(error.has_value());
@@ -2153,7 +2155,7 @@ TEST_F(DebuggerEngineTest, CmdDetach_PluginFails_PostsError)
 TEST_F(DebuggerEngineTest, CmdShutdown_DetachFails_PostsError)
 {
     expect_schedule_recurring_captures_task();
-    DebuggerEngine engine {m_loader, m_dispatcher};
+    DebuggerEngine engine {m_loader, m_dispatcher, m_logger};
     ASSERT_EQ(start_engine(engine), STATUS_OK);
     ASSERT_TRUE(m_capturedPumpTask);
 
@@ -2179,7 +2181,7 @@ TEST_F(DebuggerEngineTest, CmdShutdown_DetachFails_PostsError)
 TEST_F(DebuggerEngineTest, CmdShutdown_ClearCallbacksFails_PostsError)
 {
     expect_schedule_recurring_captures_task();
-    DebuggerEngine engine {m_loader, m_dispatcher};
+    DebuggerEngine engine {m_loader, m_dispatcher, m_logger};
     ASSERT_EQ(start_engine(engine), STATUS_OK);
     ASSERT_TRUE(m_capturedPumpTask);
 
@@ -2203,7 +2205,7 @@ TEST_F(DebuggerEngineTest, CmdShutdown_ClearCallbacksFails_PostsError)
 TEST_F(DebuggerEngineTest, TickResult_Error_InvalidatesAllCaches)
 {
     expect_schedule_recurring_captures_task();
-    DebuggerEngine engine {m_loader, m_dispatcher};
+    DebuggerEngine engine {m_loader, m_dispatcher, m_logger};
     ASSERT_EQ(start_engine(engine), STATUS_OK);
     ASSERT_TRUE(m_capturedPumpTask);
 
@@ -2230,7 +2232,7 @@ TEST_F(DebuggerEngineTest, Destructor_NeverStarted_DoesNotBlock)
 {
     const auto before = std::chrono::steady_clock::now();
     {
-        DebuggerEngine engine {m_loader, m_dispatcher};
+        DebuggerEngine engine {m_loader, m_dispatcher, m_logger};
     }
     const auto elapsed = std::chrono::steady_clock::now() - before;
     EXPECT_LT(elapsed, std::chrono::milliseconds {100});
@@ -2241,7 +2243,7 @@ TEST_F(DebuggerEngineTest, Destructor_FailedStart_DoesNotBlock)
     expect_plugin_unavailable();
     const auto before = std::chrono::steady_clock::now();
     {
-        DebuggerEngine engine {m_loader, m_dispatcher};
+        DebuggerEngine engine {m_loader, m_dispatcher, m_logger};
         ASSERT_EQ(engine.start(), STATUS_ERROR_PLUGIN_NOT_LOADED);
     }
     const auto elapsed = std::chrono::steady_clock::now() - before;
@@ -2257,7 +2259,7 @@ TEST_F(DebuggerEngineTest, Stop_IsNonBlocking_CleanupDeferred)
     expect_schedule_recurring_succeeds();
     std::packaged_task<StatusCode()> capturedFinalTask {};
 
-    DebuggerEngine engine {m_loader, m_dispatcher};
+    DebuggerEngine engine {m_loader, m_dispatcher, m_logger};
     ASSERT_EQ(start_engine(engine), STATUS_OK);
 
     expect_cancel_recurring_succeeds();
@@ -2285,7 +2287,7 @@ TEST_F(DebuggerEngineTest, Destructor_AfterStop_WaitsForCompletion)
     expect_schedule_recurring_succeeds();
     std::packaged_task<StatusCode()> capturedFinalTask {};
 
-    auto engine = std::make_unique<DebuggerEngine>(m_loader, m_dispatcher);
+    auto engine = std::make_unique<DebuggerEngine>(m_loader, m_dispatcher, m_logger);
     ASSERT_EQ(start_engine(*engine), STATUS_OK);
 
     expect_cancel_recurring_succeeds();
@@ -2319,7 +2321,7 @@ TEST_F(DebuggerEngineTest, Destructor_AfterStop_WaitsForCompletion)
 TEST_F(DebuggerEngineTest, TickOnce_SafeCallFailure_PostsError)
 {
     expect_schedule_recurring_captures_task();
-    DebuggerEngine engine {m_loader, m_dispatcher};
+    DebuggerEngine engine {m_loader, m_dispatcher, m_logger};
     ASSERT_EQ(start_engine(engine), STATUS_OK);
     ASSERT_TRUE(m_capturedPumpTask);
 
@@ -2344,7 +2346,7 @@ TEST_F(DebuggerEngineTest, TickOnce_SafeCallFailure_PostsError)
 TEST_F(DebuggerEngineTest, TickOnce_SafeCallFailure_InvalidatesAllCaches)
 {
     expect_schedule_recurring_captures_task();
-    DebuggerEngine engine {m_loader, m_dispatcher};
+    DebuggerEngine engine {m_loader, m_dispatcher, m_logger};
     ASSERT_EQ(start_engine(engine), STATUS_OK);
     ASSERT_TRUE(m_capturedPumpTask);
 

@@ -108,7 +108,8 @@ Before building Vertex, ensure you have the following installed:
 | `-Config`       | Build configuration: `Debug`, `Release`, or `RelWithDebInfo` | `Debug`   |
 | `-BuildDir`     | Output build directory                                | `build`   |
 | `-BuildAll`     | Build all targets                                     | off       |
-| `-RuntimeOnly`  | Build only the runtime (no plugins)                   | off       |
+| `-RuntimeOnly`  | Build runtime plugins only (no Vertex GUI app)        | off       |
+| `-VertexOnly`   | Build only the Vertex GUI app (plugins disabled)      | off       |
 | `-Usrrt`        | Build the vertexusrrt plugin                          | on (via CMake) |
 | `-Deci3rt`      | Build the Deci3 runtime target                        | off       |
 | `-NoTests`      | Disable building tests                                | off       |
@@ -129,6 +130,9 @@ Before building Vertex, ensure you have the following installed:
 
 # Release build without tests
 ./build.ps1 -Config Release -NoTests
+
+# Build only the GUI app
+./build.ps1 -VertexOnly
 
 # Specify vcpkg path explicitly
 ./build.ps1 -VcpkgRoot "C:\vcpkg"

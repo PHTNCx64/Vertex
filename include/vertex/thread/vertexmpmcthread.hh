@@ -30,7 +30,6 @@ namespace Vertex::Thread
 
         [[nodiscard]] StatusCode start();
         [[nodiscard]] StatusCode stop();
-        [[nodiscard]] StatusCode get_last_status();
         [[nodiscard]] StatusCode is_busy() const;
         [[nodiscard]] bool is_running() const noexcept;
         [[nodiscard]] std::size_t get_pending_tasks() const noexcept;
@@ -42,15 +41,13 @@ namespace Vertex::Thread
 
         std::jthread m_vertexThread {};
 
-        MSVC_SUPPRESS_PADDING_WARNING
+        START_PADDING_WARNING_SUPPRESSION
 
         alignas(std::hardware_destructive_interference_size) std::atomic<bool> m_isRunning {};
         alignas(std::hardware_destructive_interference_size) std::atomic<bool> m_isBusy {};
         alignas(std::hardware_destructive_interference_size) std::atomic<std::size_t> m_pendingTasks {};
 
-        MSVC_END_WARNING_SUPPRESSION
+        END_PADDING_WARNING_SUPPRESSION
 
-        mutable std::mutex m_futureMutex {};
-        std::future<StatusCode> m_lastFuture {};
     };
 }

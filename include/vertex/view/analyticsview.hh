@@ -6,8 +6,10 @@
 
 #include <wx/dialog.h>
 #include <wx/richtext/richtextctrl.h>
+#include <wx/timer.h>
 #include <vertex/viewmodel/analyticsviewmodel.hh>
 #include <vertex/language/ilanguage.hh>
+#include <vertex/gui/theme/ithemeprovider.hh>
 #include <memory>
 
 namespace Vertex::View
@@ -15,7 +17,7 @@ namespace Vertex::View
     class AnalyticsView final : public wxDialog
     {
       public:
-        explicit AnalyticsView(Language::ILanguage& languageService, std::unique_ptr<ViewModel::AnalyticsViewModel> viewModel);
+        AnalyticsView(Language::ILanguage& languageService, std::unique_ptr<ViewModel::AnalyticsViewModel> viewModel, Gui::IThemeProvider& themeProvider);
         void initialize_view();
         void refresh_logs();
 
@@ -29,16 +31,20 @@ namespace Vertex::View
 
         void on_clear_clicked(wxCommandEvent& event);
         void on_save_clicked(wxCommandEvent& event);
+        void on_refresh_timer(wxTimerEvent& event);
+        void append_log_entry(const Log::LogEntry& entry, bool isDarkMode) const;
 
         [[nodiscard]] static wxColour get_log_color(Log::LogLevel level, bool isDarkMode);
 
         Language::ILanguage& m_languageService;
+        Gui::IThemeProvider& m_themeProvider;
         std::unique_ptr<ViewModel::AnalyticsViewModel> m_viewModel;
         wxRichTextCtrl* m_logTextCtrl{};
         wxButton* m_clearButton{};
         wxButton* m_saveButton{};
         wxBoxSizer* m_mainSizer {};
         wxBoxSizer* m_buttonSizer {};
+        wxTimer* m_refreshTimer {};
 
         std::vector<Log::LogEntry> m_cachedEntries;
     };

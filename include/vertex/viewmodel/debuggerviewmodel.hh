@@ -11,6 +11,7 @@
 #include <thread>
 #include <vector>
 #include <optional>
+#include <span>
 
 #include <vertex/event/eventbus.hh>
 #include <vertex/event/types/processopenevent.hh>
@@ -60,7 +61,7 @@ namespace Vertex::ViewModel
         void request_disassembly_extend_up(std::uint64_t fromAddress) const;
         void request_disassembly_extend_down(std::uint64_t fromAddress) const;
 
-        void set_extension_result_callback(std::function<void(bool, Debugger::ExtensionResult)> callback);
+        void set_extension_result_callback(std::function<void(bool, Debugger::ExtensionResult)> callback) const;
 
         void query_xrefs_to(std::uint64_t address, Model::XrefResultCallback callback) const;
         void query_xrefs_from(std::uint64_t address, Model::XrefResultCallback callback) const;
@@ -73,12 +74,19 @@ namespace Vertex::ViewModel
         void request_call_stack() const;
 
         void request_threads() const;
+        void select_thread(std::uint32_t threadId) const;
+        void suspend_thread(std::uint32_t threadId) const;
+        void resume_thread(std::uint32_t threadId) const;
+        [[nodiscard]] StatusCode write_register(std::string_view registerName, std::uint64_t value) const;
+        void request_memory(std::uint64_t address, std::size_t size = 4096) const;
+        [[nodiscard]] StatusCode write_memory(std::uint64_t address, std::span<const std::uint8_t> data) const;
 
         void clear_cached_data() const;
 
         void toggle_breakpoint(std::uint64_t address) const;
         void add_breakpoint(std::uint64_t address, Debugger::BreakpointType type = Debugger::BreakpointType::Software) const;
         void remove_breakpoint(std::uint32_t id) const;
+        void retry_breakpoint(std::uint32_t id) const;
         void remove_breakpoint_at(std::uint64_t address) const;
         void enable_breakpoint(std::uint32_t id, bool enable) const;
 
@@ -92,6 +100,13 @@ namespace Vertex::ViewModel
         void remove_watchpoint(std::uint32_t id) const;
         void enable_watchpoint(std::uint32_t id, bool enable) const;
         [[nodiscard]] const std::vector<Debugger::Watchpoint>& get_watchpoints() const;
+        void add_watch_variable(std::string_view expression) const;
+        void remove_watch_variable(std::uint32_t watchId) const;
+        void modify_watch_variable(std::uint32_t watchId, std::string_view newValue) const;
+        void expand_watch_variable(std::uint32_t watchId, bool expanded) const;
+        void request_watch_data() const;
+        [[nodiscard]] const std::vector<Debugger::WatchVariable>& get_watch_variables() const;
+        [[nodiscard]] const std::vector<Debugger::LocalVariable>& get_local_variables() const;
 
         [[nodiscard]] std::uint64_t get_current_address() const;
         [[nodiscard]] std::uint32_t get_current_thread_id() const;
@@ -101,6 +116,8 @@ namespace Vertex::ViewModel
         [[nodiscard]] const std::vector<Debugger::Breakpoint>& get_breakpoints() const;
         [[nodiscard]] const std::vector<Debugger::ModuleInfo>& get_modules() const;
         [[nodiscard]] const std::vector<Debugger::ThreadInfo>& get_threads() const;
+        [[nodiscard]] const std::vector<Debugger::LogEntry>& get_logs() const;
+        [[nodiscard]] const Debugger::MemoryBlock& get_cached_memory() const;
         [[nodiscard]] bool has_breakpoint_at(std::uint64_t address) const;
 
         [[nodiscard]] bool has_exception() const;

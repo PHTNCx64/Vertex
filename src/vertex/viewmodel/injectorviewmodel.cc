@@ -53,9 +53,23 @@ namespace Vertex::ViewModel
         return m_injectionMethods;
     }
 
-    const std::vector<std::string>& InjectorViewModel::get_library_extensions() const noexcept
+    std::vector<std::string_view> InjectorViewModel::get_selected_method_extensions() const
     {
-        return m_libraryExtensions;
+        if (m_selectedMethodIndex < 0 || m_selectedMethodIndex >= static_cast<int>(m_injectionMethods.size()))
+        {
+            return {};
+        }
+
+        const auto& method = m_injectionMethods[m_selectedMethodIndex];
+        std::vector<std::string_view> result{};
+        result.reserve(method.extensionCount);
+
+        for (std::uint32_t i = 0; i < method.extensionCount; ++i)
+        {
+            result.emplace_back(method.extensions[i]);
+        }
+
+        return result;
     }
 
     void InjectorViewModel::load_injection_methods()
@@ -63,14 +77,6 @@ namespace Vertex::ViewModel
         if (const auto status = m_model->get_injection_methods(m_injectionMethods); status != StatusCode::STATUS_OK) [[unlikely]]
         {
             m_logService.log_error(fmt::format("InjectorViewModel: failed to load injection methods (status={})", static_cast<int>(status)));
-        }
-    }
-
-    void InjectorViewModel::load_library_extensions()
-    {
-        if (const auto status = m_model->get_library_extensions(m_libraryExtensions); status != StatusCode::STATUS_OK) [[unlikely]]
-        {
-            m_logService.log_error(fmt::format("InjectorViewModel: failed to load library extensions (status={})", static_cast<int>(status)));
         }
     }
 

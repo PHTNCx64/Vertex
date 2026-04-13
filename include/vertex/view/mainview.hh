@@ -13,10 +13,12 @@
 #include <wx/checkbox.h>
 #include <wx/combobox.h>
 #include <wx/statbox.h>
+#include <wx/spinctrl.h>
 #include <wx/aui/aui.h>
 
 #include <vertex/viewmodel/mainviewmodel.hh>
 #include <vertex/gui/iconmanager/iconmanager.hh>
+#include <vertex/gui/theme/ithemeprovider.hh>
 #include <vertex/language/language.hh>
 #include <vertex/customwidgets/scannedvaluespanel.hh>
 #include <vertex/customwidgets/savedaddressespanel.hh>
@@ -27,13 +29,8 @@ namespace Vertex::View
 {
     class MainView final : public wxFrame
     {
-    public:
-        MainView(
-            const wxString& title,
-            std::unique_ptr<ViewModel::MainViewModel> viewModel,
-            Language::ILanguage& languageService,
-            Gui::IIconManager& iconManager
-        );
+      public:
+        MainView(const wxString& title, std::unique_ptr<ViewModel::MainViewModel> viewModel, Language::ILanguage& languageService, Gui::IIconManager& iconManager, Gui::IThemeProvider& themeProvider);
 
         using DebuggerAttachedCheck = std::function<bool()>;
         using DebuggerAttachAction = std::function<void()>;
@@ -44,7 +41,7 @@ namespace Vertex::View
         void set_debugger_callbacks(DebuggerAttachedCheck isAttached, DebuggerAttachAction attach);
         [[nodiscard]] bool ensure_debugger_attached();
 
-    private:
+      private:
         enum class ControlStatus
         {
             NO_PROCESS_OPENED,
@@ -82,11 +79,14 @@ namespace Vertex::View
         void on_close(wxCloseEvent& event);
 
         void on_process_validity_check(wxTimerEvent& event);
-        void on_scan_progress_update(wxTimerEvent& event);
+        void on_scan_progress_update();
+        void on_scan_completed();
 
         void on_activity_clicked(wxCommandEvent& event);
 
         void show_about_dialog();
+
+        void refresh_toolbar_icons();
 
         wxPanel* m_mainPanel{};
         wxBoxSizer* m_mainBoxSizer{};
@@ -95,7 +95,7 @@ namespace Vertex::View
         wxMenuBar* m_menuBar{};
         wxAuiManager m_auiManager{};
         wxAuiToolBar* m_auiToolBar{};
-        wxFlexGridSizer* m_scannedValuesAndScanOptionsSizer{};
+        wxBoxSizer* m_scannedValuesAndScanOptionsSizer{};
         wxBoxSizer* m_scanOptionsWithButtonsSizer{};
         wxBoxSizer* m_topSectionSizer{};
         wxStaticText* m_processInformationAndStatusText{};
@@ -142,13 +142,6 @@ namespace Vertex::View
         wxBoxSizer* m_memoryRegionSettingsSizer{};
         wxButton* m_memoryRegionSettingsButton{};
 
-        wxBoxSizer* m_minAddressSizer{};
-        wxStaticText* m_minAddressLabel{};
-        wxTextCtrl* m_minAddressTextControl{};
-        wxBoxSizer* m_maxAddressSizer{};
-        wxStaticText* m_maxAddressLabel{};
-        wxTextCtrl* m_maxAddressTextControl{};
-
         wxButton* m_addAddressManuallyButton{};
 
         CustomWidgets::SavedAddressesPanel* m_savedAddressesPanel{};
@@ -157,15 +150,13 @@ namespace Vertex::View
         wxMenu* m_helpMenu{};
 
         wxTimer* m_processValidityCheck{};
-        wxTimer* m_scanProgressTimer{};
 
         std::unique_ptr<ViewModel::MainViewModel> m_viewModel{};
         Language::ILanguage& m_languageService;
         Gui::IIconManager& m_iconManager;
+        Gui::IThemeProvider& m_themeProvider;
 
         DebuggerAttachedCheck m_isDebuggerAttached{};
         DebuggerAttachAction m_attachDebugger{};
-
-        ResettableCallOnce m_timerReset{};
     };
-}
+} // namespace Vertex::View

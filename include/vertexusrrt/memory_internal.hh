@@ -10,12 +10,19 @@
 #include <sdk/api.h>
 
 #include <array>
-#include <memory>
+#include <cstdint>
+#include <filesystem>
 #include <string>
 #include <vector>
 
-#include <Windows.h>
+#if defined(_WIN32) || defined(_WIN64)
+#include <windows.h>
 #include <tlhelp32.h>
+#else
+#include <charconv>
+#include <format>
+#include <fstream>
+#endif
 
 namespace MemoryInternal
 {
@@ -45,6 +52,7 @@ namespace MemoryInternal
         g_memoryProtectionFlags[static_cast<std::uint32_t>(flag)] = state;
     }
 
+#if defined(_WIN32) || defined(_WIN64)
     inline std::array<MemoryAttributeOption, g_memoryAttributeOptionsSize> g_memoryProtectionOptions = {
       {{"PAGE_READONLY", set_page_state<ProtectionFlag::STATE_PAGE_READ_ONLY>, VERTEX_PROTECTION, &g_memoryProtectionFlags[static_cast<std::uint32_t>(ProtectionFlag::STATE_PAGE_READ_ONLY)]},
        {"PAGE_READWRITE", set_page_state<ProtectionFlag::STATE_PAGE_READ_WRITE>, VERTEX_PROTECTION, &g_memoryProtectionFlags[static_cast<std::uint32_t>(ProtectionFlag::STATE_PAGE_READ_WRITE)]},
@@ -58,12 +66,28 @@ namespace MemoryInternal
        {"MEM_IMAGE", set_page_state<ProtectionFlag::STATE_MEM_IMAGE>, VERTEX_TYPE, &g_memoryProtectionFlags[static_cast<std::uint32_t>(ProtectionFlag::STATE_MEM_IMAGE)]},
        {"MEM_MAPPED", set_page_state<ProtectionFlag::STATE_MEM_MAPPED>, VERTEX_TYPE, &g_memoryProtectionFlags[static_cast<std::uint32_t>(ProtectionFlag::STATE_MEM_MAPPED)]},
        {"MEM_PRIVATE", set_page_state<ProtectionFlag::STATE_MEM_PRIVATE>, VERTEX_TYPE, &g_memoryProtectionFlags[static_cast<std::uint32_t>(ProtectionFlag::STATE_MEM_PRIVATE)]}}};
+#else
+    inline std::array<MemoryAttributeOption, g_memoryAttributeOptionsSize> g_memoryProtectionOptions = {
+      {{"PROT_READ (r--)", set_page_state<ProtectionFlag::STATE_PAGE_READ_ONLY>, VERTEX_PROTECTION, &g_memoryProtectionFlags[static_cast<std::uint32_t>(ProtectionFlag::STATE_PAGE_READ_ONLY)]},
+       {"PROT_READ_WRITE (rw-)", set_page_state<ProtectionFlag::STATE_PAGE_READ_WRITE>, VERTEX_PROTECTION, &g_memoryProtectionFlags[static_cast<std::uint32_t>(ProtectionFlag::STATE_PAGE_READ_WRITE)]},
+       {"PROT_WRITE_PRIVATE (rw-p)", set_page_state<ProtectionFlag::STATE_PAGE_WRITE_COPY>, VERTEX_PROTECTION, &g_memoryProtectionFlags[static_cast<std::uint32_t>(ProtectionFlag::STATE_PAGE_WRITE_COPY)]},
+       {"PROT_READ_EXEC (r-x)", set_page_state<ProtectionFlag::STATE_PAGE_EXECUTE_READ>, VERTEX_PROTECTION, &g_memoryProtectionFlags[static_cast<std::uint32_t>(ProtectionFlag::STATE_PAGE_EXECUTE_READ)]},
+       {"PROT_READ_WRITE_EXEC (rwx)", set_page_state<ProtectionFlag::STATE_PAGE_EXECUTE_READ_WRITE>, VERTEX_PROTECTION, &g_memoryProtectionFlags[static_cast<std::uint32_t>(ProtectionFlag::STATE_PAGE_EXECUTE_WRITE_COPY)]},
+       {"PROT_EXEC_PRIVATE (rwxp)", set_page_state<ProtectionFlag::STATE_PAGE_EXECUTE_WRITE_COPY>, VERTEX_PROTECTION, &g_memoryProtectionFlags[static_cast<std::uint32_t>(ProtectionFlag::STATE_PAGE_EXECUTE_WRITE_COPY)]},
+       {"MAP_SHARED (s)", set_page_state<ProtectionFlag::STATE_PAGE_NO_CACHE>, VERTEX_PROTECTION, &g_memoryProtectionFlags[static_cast<std::uint32_t>(ProtectionFlag::STATE_PAGE_NO_CACHE)]},
+       {"MAP_PRIVATE (p)", set_page_state<ProtectionFlag::STATE_PAGE_WRITE_COMBINE>, VERTEX_PROTECTION, &g_memoryProtectionFlags[static_cast<std::uint32_t>(ProtectionFlag::STATE_PAGE_WRITE_COMBINE)]},
+       {"MAPPED", set_page_state<ProtectionFlag::STATE_MEM_COMMIT>, VERTEX_STATE, &g_memoryProtectionFlags[static_cast<std::uint32_t>(ProtectionFlag::STATE_MEM_COMMIT)]},
+       {"FILE_EXEC", set_page_state<ProtectionFlag::STATE_MEM_IMAGE>, VERTEX_TYPE, &g_memoryProtectionFlags[static_cast<std::uint32_t>(ProtectionFlag::STATE_MEM_IMAGE)]},
+       {"FILE_BACKED", set_page_state<ProtectionFlag::STATE_MEM_MAPPED>, VERTEX_TYPE, &g_memoryProtectionFlags[static_cast<std::uint32_t>(ProtectionFlag::STATE_MEM_MAPPED)]},
+       {"ANONYMOUS", set_page_state<ProtectionFlag::STATE_MEM_PRIVATE>, VERTEX_TYPE, &g_memoryProtectionFlags[static_cast<std::uint32_t>(ProtectionFlag::STATE_MEM_PRIVATE)]}}};
+#endif
 
     struct ModuleLookup final
     {
         std::vector<std::string> nameStorage{};
         std::vector<std::pair<std::uint64_t, std::size_t>> baseToNameIndex{};
 
+#if defined(_WIN32) || defined(_WIN64)
         void build(HANDLE processHandle)
         {
             nameStorage.clear();
@@ -105,6 +129,94 @@ namespace MemoryInternal
 
             CloseHandle(snapshot);
         }
+#else
+        void build(native_handle pid)
+        {
+            nameStorage.clear();
+            baseToNameIndex.clear();
+
+            if (pid == INVALID_HANDLE_VALUE)
+            {
+                return;
+            }
+
+            const auto mapsPath = std::format("/proc/{}/maps", pid);
+            std::ifstream mapsFile{mapsPath};
+            if (!mapsFile)
+            {
+                return;
+            }
+
+            std::string line{};
+            while (std::getline(mapsFile, line))
+            {
+                std::string_view sv{line};
+
+                const auto dashPos = sv.find('-');
+                if (dashPos == std::string_view::npos)
+                {
+                    continue;
+                }
+
+                std::uint64_t start{};
+                std::from_chars(sv.data(), sv.data() + dashPos, start, 16);
+                sv.remove_prefix(dashPos + 1);
+
+                const auto spacePos = sv.find(' ');
+                if (spacePos == std::string_view::npos)
+                {
+                    continue;
+                }
+                sv.remove_prefix(spacePos + 1);
+
+                const auto permsEnd = sv.find(' ');
+                if (permsEnd == std::string_view::npos)
+                {
+                    continue;
+                }
+                sv.remove_prefix(permsEnd + 1);
+
+                const auto offsetEnd = sv.find(' ');
+                if (offsetEnd == std::string_view::npos)
+                {
+                    continue;
+                }
+
+                std::uint64_t offset{};
+                std::from_chars(sv.data(), sv.data() + offsetEnd, offset, 16);
+
+                if (offset != 0)
+                {
+                    continue;
+                }
+
+                sv.remove_prefix(offsetEnd + 1);
+
+                for (int i = 0; i < 2; ++i)
+                {
+                    const auto nextSpace = sv.find(' ');
+                    if (nextSpace == std::string_view::npos)
+                    {
+                        break;
+                    }
+                    sv.remove_prefix(nextSpace + 1);
+                    while (!sv.empty() && sv.front() == ' ')
+                    {
+                        sv.remove_prefix(1);
+                    }
+                }
+
+                if (sv.empty() || sv.front() == '[')
+                {
+                    continue;
+                }
+
+                auto moduleName = std::filesystem::path{std::string{sv}}.filename().string();
+                baseToNameIndex.emplace_back(start, nameStorage.size());
+                nameStorage.push_back(std::move(moduleName));
+            }
+        }
+#endif
 
         [[nodiscard]] const char* find(const std::uint64_t allocationBase) const
         {
@@ -119,5 +231,5 @@ namespace MemoryInternal
         }
     };
 
-    inline ModuleLookup g_moduleLookup{};
+    inline thread_local ModuleLookup g_moduleLookup{};
 }

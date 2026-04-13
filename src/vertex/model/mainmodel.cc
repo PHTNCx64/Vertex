@@ -12,15 +12,12 @@
 #include <sdk/memory.h>
 #include <ranges>
 #include <algorithm>
+#include <limits>
 #include <string_view>
 
 namespace Vertex::Model
 {
-    MainModel::MainModel(Configuration::ISettings& settingsService,
-                         Scanner::IMemoryScanner& memoryService,
-                         Runtime::ILoader& loaderService,
-                         Log::ILog& loggerService,
-                         Thread::IThreadDispatcher& dispatcher)
+    MainModel::MainModel(Configuration::ISettings& settingsService, Scanner::IMemoryScanner& memoryService, Runtime::ILoader& loaderService, Log::ILog& loggerService, Thread::IThreadDispatcher& dispatcher)
         : m_settingsService{settingsService},
           m_memoryService{memoryService},
           m_loaderService{loaderService},
@@ -29,9 +26,7 @@ namespace Vertex::Model
     {
     }
 
-    StatusCode MainModel::validate_input(const Scanner::ValueType type, const bool hexadecimal,
-                                         const std::string_view input,
-                                         std::vector<std::uint8_t>& output) const
+    StatusCode MainModel::validate_input(const Scanner::ValueType type, const bool hexadecimal, const std::string_view input, std::vector<std::uint8_t>& output) const
     {
         if (input.empty())
         {
@@ -40,7 +35,11 @@ namespace Vertex::Model
             return StatusCode::STATUS_OK;
         }
 
-        if (std::ranges::all_of(input, [](const char c) { return std::isspace(static_cast<unsigned char>(c)); }))
+        if (std::ranges::all_of(input,
+                                [](const char c)
+                                {
+                                    return std::isspace(static_cast<unsigned char>(c));
+                                }))
         {
             m_loggerService.log_warn(fmt::format("{}: Input contains only whitespace", MODEL_NAME));
             output.clear();
@@ -49,24 +48,23 @@ namespace Vertex::Model
 
         const auto typeName = Scanner::get_value_type_name(type);
 
-        m_loggerService.log_info(fmt::format("{}: validate_input: type={}, hex={}, input='{}'",
-            MODEL_NAME, typeName, hexadecimal, input));
+        m_loggerService.log_info(fmt::format("{}: validate_input: type={}, hex={}, input='{}'", MODEL_NAME, typeName, hexadecimal, input));
 
         auto result = Scanner::ValueConverter::parse(type, std::string{input}, hexadecimal);
         if (!result.has_value())
         {
-            m_loggerService.log_error(fmt::format("{}: Failed to parse input '{}' as {} (hex={})",
-                MODEL_NAME, input, typeName, hexadecimal));
+            m_loggerService.log_error(fmt::format("{}: Failed to parse input '{}' as {} (hex={})", MODEL_NAME, input, typeName, hexadecimal));
             return StatusCode::STATUS_ERROR_INVALID_PARAMETER;
         }
 
         output = std::move(result.value());
 
         std::string bytesHex{};
-        std::ranges::for_each(output | std::views::take(16), [&bytesHex](const auto byte)
-        {
-            bytesHex += fmt::format("{:02X} ", byte);
-        });
+        std::ranges::for_each(output | std::views::take(16),
+                              [&bytesHex](const auto byte)
+                              {
+                                  bytesHex += fmt::format("{:02X} ", byte);
+                              });
         m_loggerService.log_info(fmt::format("{}: Parsed {} bytes: [{}]", MODEL_NAME, output.size(), bytesHex));
 
         return StatusCode::STATUS_OK;
@@ -83,18 +81,19 @@ namespace Vertex::Model
         output.resize(size);
 
         std::packaged_task<StatusCode()> task(
-            [this, address, size, &output]() -> StatusCode
-            {
-                const auto& plugin = m_loaderService.get_active_plugin().value().get();
-                const auto result = Runtime::safe_call(plugin.internal_vertex_memory_read_process, address, static_cast<std::uint32_t>(size), output.data());
-                const auto status = Runtime::get_status(result);
-                if (status == StatusCode::STATUS_ERROR_FUNCTION_NOT_FOUND)
-                {
-                    m_loggerService.log_error(fmt::format("{}: internal_vertex_read_process_memory not implemented", MODEL_NAME));
-                    return StatusCode::STATUS_ERROR_PLUGIN_FUNCTION_NOT_IMPLEMENTED;
-                }
-                return status;
-            });
+          [this, address, size, &output]() -> StatusCode
+          {
+              auto pluginRef = m_loaderService.get_active_plugin().value();
+              auto& plugin = pluginRef.get();
+              const auto result = Runtime::safe_call(plugin.internal_vertex_memory_read_process, address, static_cast<std::uint32_t>(size), output.data());
+              const auto status = Runtime::get_status(result);
+              if (status == StatusCode::STATUS_ERROR_FUNCTION_NOT_FOUND)
+              {
+                  m_loggerService.log_error(fmt::format("{}: internal_vertex_read_process_memory not implemented", MODEL_NAME));
+                  return StatusCode::STATUS_ERROR_PLUGIN_FUNCTION_NOT_IMPLEMENTED;
+              }
+              return status;
+          });
 
         auto dispatchResult = m_dispatcher.dispatch(Thread::ThreadChannel::Scanner, std::move(task));
         if (!dispatchResult.has_value())
@@ -119,34 +118,29 @@ namespace Vertex::Model
             return StatusCode::STATUS_ERROR_PLUGIN_NOT_ACTIVE;
         }
 
-        m_loggerService.log_info(fmt::format("{}: Writing {} bytes to address 0x{:X}",
-            MODEL_NAME, data.size(), address));
+        m_loggerService.log_info(fmt::format("{}: Writing {} bytes to address 0x{:X}", MODEL_NAME, data.size(), address));
 
         std::packaged_task<StatusCode()> task(
-            [this, address, &data]() -> StatusCode
-            {
-                const auto& plugin = m_loaderService.get_active_plugin().value().get();
-                const auto result = Runtime::safe_call(
-                    plugin.internal_vertex_memory_write_process,
-                    address,
-                    static_cast<std::uint64_t>(data.size()),
-                    reinterpret_cast<const char*>(data.data()));
-                const auto status = Runtime::get_status(result);
+          [this, address, &data]() -> StatusCode
+          {
+              auto pluginRef = m_loaderService.get_active_plugin().value();
+              auto& plugin = pluginRef.get();
+              const auto result = Runtime::safe_call(plugin.internal_vertex_memory_write_process, address, static_cast<std::uint64_t>(data.size()), reinterpret_cast<const char*>(data.data()));
+              const auto status = Runtime::get_status(result);
 
-                if (status == StatusCode::STATUS_ERROR_FUNCTION_NOT_FOUND)
-                {
-                    m_loggerService.log_error(fmt::format("{}: internal_vertex_write_process_memory not implemented", MODEL_NAME));
-                    return StatusCode::STATUS_ERROR_PLUGIN_FUNCTION_NOT_IMPLEMENTED;
-                }
+              if (status == StatusCode::STATUS_ERROR_FUNCTION_NOT_FOUND)
+              {
+                  m_loggerService.log_error(fmt::format("{}: internal_vertex_write_process_memory not implemented", MODEL_NAME));
+                  return StatusCode::STATUS_ERROR_PLUGIN_FUNCTION_NOT_IMPLEMENTED;
+              }
 
-                if (!Runtime::status_ok(result))
-                {
-                    m_loggerService.log_error(fmt::format("{}: write_process_memory FAILED with status {}",
-                        MODEL_NAME, static_cast<int>(status)));
-                }
+              if (!Runtime::status_ok(result))
+              {
+                  m_loggerService.log_error(fmt::format("{}: write_process_memory FAILED with status {}", MODEL_NAME, static_cast<int>(status)));
+              }
 
-                return status;
-            });
+              return status;
+          });
 
         auto dispatchResult = m_dispatcher.dispatch(Thread::ThreadChannel::Scanner, std::move(task));
         if (!dispatchResult.has_value())
@@ -157,10 +151,316 @@ namespace Vertex::Model
         return dispatchResult.value().get();
     }
 
-    Theme MainModel::get_theme() const
+    bool MainModel::supports_bulk_read() const
     {
-        return static_cast<Theme>(m_settingsService.get_int("general.theme"));
+        if (m_loaderService.has_plugin_loaded() != StatusCode::STATUS_OK)
+        {
+            return false;
+        }
+
+        const auto pluginOpt = m_loaderService.get_active_plugin();
+        if (!pluginOpt.has_value())
+        {
+            return false;
+        }
+
+        return pluginOpt.value().get().internal_vertex_memory_read_process_bulk != nullptr;
     }
+
+    bool MainModel::supports_bulk_write() const
+    {
+        if (m_loaderService.has_plugin_loaded() != StatusCode::STATUS_OK)
+        {
+            return false;
+        }
+
+        const auto pluginOpt = m_loaderService.get_active_plugin();
+        if (!pluginOpt.has_value())
+        {
+            return false;
+        }
+
+        return pluginOpt.value().get().internal_vertex_memory_write_process_bulk != nullptr;
+    }
+
+    StatusCode MainModel::get_bulk_request_limit(std::uint32_t& maxRequestCount) const
+    {
+        maxRequestCount = 0;
+
+        if (m_loaderService.has_plugin_loaded() != StatusCode::STATUS_OK)
+        {
+            m_loggerService.log_error(fmt::format("{}: No active plugin", MODEL_NAME));
+            return StatusCode::STATUS_ERROR_PLUGIN_NOT_ACTIVE;
+        }
+
+        const auto pluginOpt = m_loaderService.get_active_plugin();
+        if (!pluginOpt.has_value())
+        {
+            m_loggerService.log_error(fmt::format("{}: No active plugin", MODEL_NAME));
+            return StatusCode::STATUS_ERROR_PLUGIN_NOT_ACTIVE;
+        }
+
+        if (pluginOpt.value().get().internal_vertex_memory_get_bulk_request_limit == nullptr)
+        {
+            m_loggerService.log_error(fmt::format("{}: get_bulk_request_limit called but plugin does not export limit query", MODEL_NAME));
+            return StatusCode::STATUS_ERROR_PLUGIN_FUNCTION_NOT_IMPLEMENTED;
+        }
+
+        std::packaged_task<StatusCode()> task(
+          [this, &maxRequestCount]() -> StatusCode
+          {
+              const auto pluginRef = m_loaderService.get_active_plugin().value();
+              const auto& plugin = pluginRef.get();
+              const auto result = Runtime::safe_call(plugin.internal_vertex_memory_get_bulk_request_limit, &maxRequestCount);
+              const auto status = Runtime::get_status(result);
+              if (status == StatusCode::STATUS_ERROR_FUNCTION_NOT_FOUND)
+              {
+                  m_loggerService.log_error(fmt::format("{}: internal_vertex_memory_get_bulk_request_limit not implemented", MODEL_NAME));
+                  return StatusCode::STATUS_ERROR_PLUGIN_FUNCTION_NOT_IMPLEMENTED;
+              }
+              return status;
+          });
+
+        auto dispatchResult = m_dispatcher.dispatch(Thread::ThreadChannel::Scanner, std::move(task));
+        if (!dispatchResult.has_value())
+        {
+            return dispatchResult.error();
+        }
+
+        const auto status = dispatchResult.value().get();
+        if (status != StatusCode::STATUS_OK)
+        {
+            return status;
+        }
+
+        if (maxRequestCount == 0)
+        {
+            m_loggerService.log_error(fmt::format("{}: get_bulk_request_limit returned an invalid value of 0", MODEL_NAME));
+            return StatusCode::STATUS_ERROR_INVALID_PARAMETER;
+        }
+
+        return StatusCode::STATUS_OK;
+    }
+
+    StatusCode MainModel::read_process_memory_bulk(const std::span<const BulkReadEntry> entries, std::span<BulkReadResult> results) const
+    {
+        if (entries.empty())
+        {
+            return StatusCode::STATUS_OK;
+        }
+
+        if (entries.size() != results.size())
+        {
+            m_loggerService.log_error(fmt::format("{}: read_process_memory_bulk entries/results size mismatch ({} vs {})", MODEL_NAME, entries.size(), results.size()));
+            return StatusCode::STATUS_ERROR_INVALID_PARAMETER;
+        }
+
+        if (entries.size() > std::numeric_limits<std::uint32_t>::max())
+        {
+            m_loggerService.log_error(fmt::format("{}: read_process_memory_bulk count {} exceeds uint32 limit", MODEL_NAME, entries.size()));
+            return StatusCode::STATUS_ERROR_INVALID_PARAMETER;
+        }
+
+        const bool hasNullBuffer = std::ranges::any_of(entries,
+                                                       [](const auto& entry)
+                                                       {
+                                                           return entry.buffer == nullptr && entry.size > 0;
+                                                       });
+        if (hasNullBuffer)
+        {
+            m_loggerService.log_error(fmt::format("{}: read_process_memory_bulk has null buffer with non-zero size", MODEL_NAME));
+            return StatusCode::STATUS_ERROR_INVALID_PARAMETER;
+        }
+
+        if (m_loaderService.has_plugin_loaded() != StatusCode::STATUS_OK)
+        {
+            m_loggerService.log_error(fmt::format("{}: No active plugin", MODEL_NAME));
+            return StatusCode::STATUS_ERROR_PLUGIN_NOT_ACTIVE;
+        }
+
+        const auto pluginOpt = m_loaderService.get_active_plugin();
+        if (!pluginOpt.has_value())
+        {
+            m_loggerService.log_error(fmt::format("{}: No active plugin", MODEL_NAME));
+            return StatusCode::STATUS_ERROR_PLUGIN_NOT_ACTIVE;
+        }
+
+        if (pluginOpt.value().get().internal_vertex_memory_read_process_bulk == nullptr)
+        {
+            m_loggerService.log_error(fmt::format("{}: read_process_memory_bulk called but plugin does not export bulk read", MODEL_NAME));
+            return StatusCode::STATUS_ERROR_PLUGIN_FUNCTION_NOT_IMPLEMENTED;
+        }
+
+        std::vector<::BulkReadRequest> requests(entries.size());
+        for (std::size_t index{}; index < entries.size(); ++index)
+        {
+            requests[index] = {entries[index].address, entries[index].size, entries[index].buffer};
+        }
+
+        std::packaged_task<StatusCode()> task(
+          [this, &requests, &results]() -> StatusCode
+          {
+              auto pluginRef = m_loaderService.get_active_plugin().value();
+              auto& plugin = pluginRef.get();
+
+              std::uint32_t maxPerBulkCall = static_cast<std::uint32_t>(requests.size());
+              if (plugin.internal_vertex_memory_get_bulk_request_limit != nullptr)
+              {
+                  std::uint32_t queriedLimit{};
+                  const auto limitCallResult = Runtime::safe_call(plugin.internal_vertex_memory_get_bulk_request_limit, &queriedLimit);
+                  if (Runtime::status_ok(limitCallResult) && queriedLimit > 0)
+                  {
+                      maxPerBulkCall = std::min(maxPerBulkCall, queriedLimit);
+                  }
+              }
+              maxPerBulkCall = std::max<std::uint32_t>(1, maxPerBulkCall);
+
+              std::size_t offset{};
+              while (offset < requests.size())
+              {
+                  const auto remaining = requests.size() - offset;
+                  const auto chunkCount = static_cast<std::uint32_t>(std::min<std::size_t>(remaining, maxPerBulkCall));
+                  const auto result = Runtime::safe_call(plugin.internal_vertex_memory_read_process_bulk, requests.data() + offset, results.data() + offset, chunkCount);
+                  const auto status = Runtime::get_status(result);
+                  if (status == StatusCode::STATUS_ERROR_FUNCTION_NOT_FOUND)
+                  {
+                      m_loggerService.log_error(fmt::format("{}: internal_vertex_memory_read_process_bulk not implemented", MODEL_NAME));
+                      return StatusCode::STATUS_ERROR_PLUGIN_FUNCTION_NOT_IMPLEMENTED;
+                  }
+                  if (status != StatusCode::STATUS_OK)
+                  {
+                      return status;
+                  }
+
+                  offset += chunkCount;
+              }
+
+              return StatusCode::STATUS_OK;
+          });
+
+        auto dispatchResult = m_dispatcher.dispatch(Thread::ThreadChannel::Scanner, std::move(task));
+        if (!dispatchResult.has_value())
+        {
+            return dispatchResult.error();
+        }
+
+        const auto overallStatus = dispatchResult.value().get();
+        if (overallStatus != StatusCode::STATUS_OK)
+        {
+            m_loggerService.log_error(fmt::format("{}: read_process_memory_bulk FAILED with status {}", MODEL_NAME, static_cast<int>(overallStatus)));
+            return overallStatus;
+        }
+
+        const auto failCount = std::ranges::count_if(results,
+                                                     [](const auto& result)
+                                                     {
+                                                         return result.status != StatusCode::STATUS_OK;
+                                                     });
+        if (failCount > 0)
+        {
+            m_loggerService.log_warn(fmt::format("{}: Bulk read partial success: {} of {} entries failed", MODEL_NAME, failCount, entries.size()));
+        }
+
+        return StatusCode::STATUS_OK;
+    }
+
+    StatusCode MainModel::write_process_memory_bulk(const std::span<const BulkWriteEntry> entries) const
+    {
+        if (entries.empty())
+        {
+            return StatusCode::STATUS_OK;
+        }
+
+        if (entries.size() > std::numeric_limits<std::uint32_t>::max())
+        {
+            m_loggerService.log_error(fmt::format("{}: write_process_memory_bulk count {} exceeds uint32 limit", MODEL_NAME, entries.size()));
+            return StatusCode::STATUS_ERROR_INVALID_PARAMETER;
+        }
+
+        const bool hasNullBuffer = std::ranges::any_of(entries,
+                                                       [](const auto& entry)
+                                                       {
+                                                           return entry.bytes.data() == nullptr && !entry.bytes.empty();
+                                                       });
+        if (hasNullBuffer)
+        {
+            m_loggerService.log_error(fmt::format("{}: write_process_memory_bulk has null buffer with non-zero size", MODEL_NAME));
+            return StatusCode::STATUS_ERROR_INVALID_PARAMETER;
+        }
+
+        if (m_loaderService.has_plugin_loaded() != StatusCode::STATUS_OK)
+        {
+            m_loggerService.log_error(fmt::format("{}: No active plugin", MODEL_NAME));
+            return StatusCode::STATUS_ERROR_PLUGIN_NOT_ACTIVE;
+        }
+
+        auto pluginRef = m_loaderService.get_active_plugin().value();
+        auto& plugin = pluginRef.get();
+
+        if (plugin.internal_vertex_memory_write_process_bulk == nullptr)
+        {
+            m_loggerService.log_error(fmt::format("{}: write_process_memory_bulk called but plugin does not export bulk write", MODEL_NAME));
+            return StatusCode::STATUS_ERROR_PLUGIN_FUNCTION_NOT_IMPLEMENTED;
+        }
+
+        m_loggerService.log_info(fmt::format("{}: Bulk writing {} entries", MODEL_NAME, entries.size()));
+
+        std::vector<::BulkWriteRequest> requests(entries.size());
+        std::vector<::BulkWriteResult> results(entries.size());
+        for (std::size_t index{}; index < entries.size(); ++index)
+        {
+            requests[index] = {entries[index].address, entries[index].bytes.size(), entries[index].bytes.data()};
+        }
+
+        std::uint32_t maxPerBulkCall = static_cast<std::uint32_t>(requests.size());
+        if (plugin.internal_vertex_memory_get_bulk_request_limit != nullptr)
+        {
+            std::uint32_t queriedLimit{};
+            const auto limitCallResult = Runtime::safe_call(plugin.internal_vertex_memory_get_bulk_request_limit, &queriedLimit);
+            if (Runtime::status_ok(limitCallResult) && queriedLimit > 0)
+            {
+                maxPerBulkCall = std::min(maxPerBulkCall, queriedLimit);
+            }
+        }
+        maxPerBulkCall = std::max<std::uint32_t>(1, maxPerBulkCall);
+
+        std::size_t offset{};
+        while (offset < requests.size())
+        {
+            const auto remaining = requests.size() - offset;
+            const auto chunkCount = static_cast<std::uint32_t>(std::min<std::size_t>(remaining, maxPerBulkCall));
+
+            const auto callResult = Runtime::safe_call(plugin.internal_vertex_memory_write_process_bulk, requests.data() + offset, results.data() + offset, chunkCount);
+            const auto overallStatus = Runtime::get_status(callResult);
+            if (overallStatus == StatusCode::STATUS_ERROR_FUNCTION_NOT_FOUND)
+            {
+                m_loggerService.log_error(fmt::format("{}: internal_vertex_memory_write_process_bulk not implemented", MODEL_NAME));
+                return StatusCode::STATUS_ERROR_PLUGIN_FUNCTION_NOT_IMPLEMENTED;
+            }
+
+            if (!Runtime::status_ok(callResult))
+            {
+                m_loggerService.log_error(fmt::format("{}: write_process_memory_bulk FAILED with status {}", MODEL_NAME, static_cast<int>(overallStatus)));
+                return overallStatus;
+            }
+
+            offset += chunkCount;
+        }
+
+        const auto failCount = std::ranges::count_if(results,
+                                                     [](const auto& result)
+                                                     {
+                                                         return result.status != StatusCode::STATUS_OK;
+                                                     });
+        if (failCount > 0)
+        {
+            m_loggerService.log_warn(fmt::format("{}: Bulk write partial success: {} of {} entries failed", MODEL_NAME, failCount, entries.size()));
+        }
+
+        return StatusCode::STATUS_OK;
+    }
+
+    Theme MainModel::get_theme() const { return static_cast<Theme>(m_settingsService.get_int("general.theme")); }
 
     StatusCode MainModel::kill_process() const
     {
@@ -170,7 +470,8 @@ namespace Vertex::Model
             return StatusCode::STATUS_ERROR_PLUGIN_NOT_ACTIVE;
         }
 
-        const auto& plugin = m_loaderService.get_active_plugin().value().get();
+        auto pluginRef = m_loaderService.get_active_plugin().value();
+        auto& plugin = pluginRef.get();
 
         if (!plugin.is_loaded())
         {
@@ -179,18 +480,19 @@ namespace Vertex::Model
         }
 
         std::packaged_task<StatusCode()> task(
-            [this]() -> StatusCode
-            {
-                const auto& plugin = m_loaderService.get_active_plugin().value().get();
-                const auto result = Runtime::safe_call(plugin.internal_vertex_process_kill);
-                const auto status = Runtime::get_status(result);
-                if (status == StatusCode::STATUS_ERROR_FUNCTION_NOT_FOUND)
-                {
-                    m_loggerService.log_error(fmt::format("{}: {}", MODEL_NAME, "internal_vertex_is_process_valid is not implemented by plugin!"));
-                    return StatusCode::STATUS_ERROR_PLUGIN_FUNCTION_NOT_IMPLEMENTED;
-                }
-                return status;
-            });
+          [this]() -> StatusCode
+          {
+              auto pluginRef = m_loaderService.get_active_plugin().value();
+              auto& plugin = pluginRef.get();
+              const auto result = Runtime::safe_call(plugin.internal_vertex_process_kill);
+              const auto status = Runtime::get_status(result);
+              if (status == StatusCode::STATUS_ERROR_FUNCTION_NOT_FOUND)
+              {
+                  m_loggerService.log_error(fmt::format("{}: {}", MODEL_NAME, "internal_vertex_is_process_valid is not implemented by plugin!"));
+                  return StatusCode::STATUS_ERROR_PLUGIN_FUNCTION_NOT_IMPLEMENTED;
+              }
+              return status;
+          });
 
         auto dispatchResult = m_dispatcher.dispatch(Thread::ThreadChannel::ProcessList, std::move(task));
         if (!dispatchResult.has_value())
@@ -201,10 +503,7 @@ namespace Vertex::Model
         return dispatchResult.value().get();
     }
 
-    bool MainModel::is_scan_complete() const
-    {
-        return m_memoryService.is_scan_complete();
-    }
+    bool MainModel::is_scan_complete() const { return m_memoryService.is_scan_complete(); }
 
     StatusCode MainModel::is_process_opened() const
     {
@@ -214,7 +513,8 @@ namespace Vertex::Model
             return StatusCode::STATUS_ERROR_PLUGIN_NOT_ACTIVE;
         }
 
-        const auto& plugin = m_loaderService.get_active_plugin().value().get();
+        auto pluginRef = m_loaderService.get_active_plugin().value();
+        auto& plugin = pluginRef.get();
 
         if (!plugin.is_loaded())
         {
@@ -223,18 +523,19 @@ namespace Vertex::Model
         }
 
         std::packaged_task<StatusCode()> task(
-            [this]() -> StatusCode
-            {
-                const auto& plugin = m_loaderService.get_active_plugin().value().get();
-                const auto result = Runtime::safe_call(plugin.internal_vertex_process_is_valid);
-                const auto status = Runtime::get_status(result);
-                if (status == StatusCode::STATUS_ERROR_FUNCTION_NOT_FOUND)
-                {
-                    m_loggerService.log_error(fmt::format("{}: {}", MODEL_NAME, "internal_vertex_is_process_valid is not implemented by plugin!"));
-                    return StatusCode::STATUS_ERROR_PLUGIN_FUNCTION_NOT_IMPLEMENTED;
-                }
-                return status;
-            });
+          [this]() -> StatusCode
+          {
+              auto pluginRef = m_loaderService.get_active_plugin().value();
+              auto& plugin = pluginRef.get();
+              const auto result = Runtime::safe_call(plugin.internal_vertex_process_is_valid);
+              const auto status = Runtime::get_status(result);
+              if (status == StatusCode::STATUS_ERROR_FUNCTION_NOT_FOUND)
+              {
+                  m_loggerService.log_error(fmt::format("{}: {}", MODEL_NAME, "internal_vertex_is_process_valid is not implemented by plugin!"));
+                  return StatusCode::STATUS_ERROR_PLUGIN_FUNCTION_NOT_IMPLEMENTED;
+              }
+              return status;
+          });
 
         auto dispatchResult = m_dispatcher.dispatch(Thread::ThreadChannel::ProcessList, std::move(task));
         if (!dispatchResult.has_value())
@@ -254,8 +555,11 @@ namespace Vertex::Model
         }
     }
 
-    StatusCode MainModel::initialize_scan(Scanner::ValueType valueType, std::uint8_t scanMode,
-                                          bool hexDisplay, bool alignmentEnabled, std::size_t alignmentValue,
+    StatusCode MainModel::initialize_scan(Scanner::ValueType valueType,
+                                          std::uint8_t scanMode,
+                                          bool hexDisplay,
+                                          bool alignmentEnabled,
+                                          std::size_t alignmentValue,
                                           Scanner::Endianness endianness,
                                           const std::vector<std::uint8_t>& input,
                                           const std::vector<std::uint8_t>& input2) const
@@ -268,14 +572,13 @@ namespace Vertex::Model
             return queryStatus;
         }
 
-        auto scanRegions = regions
-            | std::views::transform([](const auto& region) {
-                return Scanner::ScanRegion{
-                    .baseAddress = region.baseAddress,
-                    .size = region.regionSize
-                };
-            })
-            | std::ranges::to<std::vector>();
+        auto scanRegions = regions |
+                           std::views::transform(
+                             [](const auto& region)
+                             {
+                                 return Scanner::ScanRegion{.baseAddress = region.baseAddress, .size = region.regionSize};
+                             }) |
+                           std::ranges::to<std::vector>();
 
         Scanner::ScanConfiguration config{};
         config.valueType = valueType;
@@ -300,8 +603,11 @@ namespace Vertex::Model
         return m_memoryService.initialize_scan(config, scanRegions);
     }
 
-    StatusCode MainModel::initialize_next_scan(Scanner::ValueType valueType, std::uint8_t scanMode,
-                                               bool hexDisplay, bool alignmentEnabled, std::size_t alignmentValue,
+    StatusCode MainModel::initialize_next_scan(Scanner::ValueType valueType,
+                                               std::uint8_t scanMode,
+                                               bool hexDisplay,
+                                               bool alignmentEnabled,
+                                               std::size_t alignmentValue,
                                                Scanner::Endianness endianness,
                                                const std::vector<std::uint8_t>& input,
                                                const std::vector<std::uint8_t>& input2) const
@@ -327,40 +633,23 @@ namespace Vertex::Model
         return m_memoryService.initialize_next_scan(config);
     }
 
-    StatusCode MainModel::undo_scan() const
-    {
-        return m_memoryService.undo_scan();
-    }
+    StatusCode MainModel::undo_scan() const { return m_memoryService.undo_scan(); }
 
-    StatusCode MainModel::stop_scan() const
-    {
-        return m_memoryService.stop_scan();
-    }
+    StatusCode MainModel::stop_scan() const { return m_memoryService.stop_scan(); }
 
-    void MainModel::finalize_scan() const
-    {
-        m_memoryService.finalize_scan();
-    }
+    void MainModel::set_scan_completion_callback(std::move_only_function<void()> callback) const { m_memoryService.set_scan_completion_callback(std::move(callback)); }
 
-    bool MainModel::can_undo_scan() const
-    {
-        return m_memoryService.can_undo();
-    }
+    void MainModel::set_scan_progress_callback(std::move_only_function<void()> callback) const { m_memoryService.set_scan_progress_callback(std::move(callback)); }
 
-    std::uint64_t MainModel::get_scan_progress_current() const
-    {
-        return m_memoryService.get_regions_scanned();
-    }
+    void MainModel::finalize_scan() const { m_memoryService.finalize_scan(); }
 
-    std::uint64_t MainModel::get_scan_progress_total() const
-    {
-        return m_memoryService.get_total_regions();
-    }
+    bool MainModel::can_undo_scan() const { return m_memoryService.can_undo(); }
 
-    std::uint64_t MainModel::get_scan_results_count() const
-    {
-        return m_memoryService.get_results_count();
-    }
+    std::uint64_t MainModel::get_scan_progress_current() const { return m_memoryService.get_regions_scanned(); }
+
+    std::uint64_t MainModel::get_scan_progress_total() const { return m_memoryService.get_total_regions(); }
+
+    std::uint64_t MainModel::get_scan_results_count() const { return m_memoryService.get_results_count(); }
 
     StatusCode MainModel::get_scan_results(std::vector<Scanner::IMemoryScanner::ScanResultEntry>& results, const std::size_t maxResults) const
     {
@@ -382,41 +671,89 @@ namespace Vertex::Model
         }
 
         std::packaged_task<StatusCode()> task(
-            [this, &extensions]() -> StatusCode
-            {
-                const auto& plugin = m_loaderService.get_active_plugin().value().get();
-                std::uint32_t count{};
-                const auto countResult = Runtime::safe_call(plugin.internal_vertex_process_get_executable_extensions, nullptr, &count);
-                const auto status = Runtime::get_status(countResult);
-                if (status == StatusCode::STATUS_ERROR_FUNCTION_NOT_FOUND)
-                {
-                    m_loggerService.log_error(fmt::format("{}: internal_vertex_get_process_extensions not implemented", MODEL_NAME));
-                    return StatusCode::STATUS_ERROR_PLUGIN_FUNCTION_NOT_IMPLEMENTED;
-                }
-                if (!Runtime::status_ok(countResult) || count == 0)
-                {
-                    m_loggerService.log_error(fmt::format("{}: internal_vertex_get_process_extensions failed to get count", MODEL_NAME));
-                    return status;
-                }
+          [this, &extensions]() -> StatusCode
+          {
+              auto pluginRef = m_loaderService.get_active_plugin().value();
+              auto& plugin = pluginRef.get();
+              std::uint32_t count{};
+              const auto countResult = Runtime::safe_call(plugin.internal_vertex_process_get_executable_extensions, nullptr, &count);
+              const auto status = Runtime::get_status(countResult);
+              if (status == StatusCode::STATUS_ERROR_FUNCTION_NOT_FOUND)
+              {
+                  m_loggerService.log_error(fmt::format("{}: internal_vertex_get_process_extensions not implemented", MODEL_NAME));
+                  return StatusCode::STATUS_ERROR_PLUGIN_FUNCTION_NOT_IMPLEMENTED;
+              }
+              if (!Runtime::status_ok(countResult) || count == 0)
+              {
+                  m_loggerService.log_error(fmt::format("{}: internal_vertex_get_process_extensions failed to get count", MODEL_NAME));
+                  return status;
+              }
 
-                std::vector<char*> ext_ptrs(count, nullptr);
-                const auto extResult = Runtime::safe_call(plugin.internal_vertex_process_get_executable_extensions, ext_ptrs.data(), &count);
-                const auto extStatus = Runtime::get_status(extResult);
-                if (extStatus == StatusCode::STATUS_ERROR_FUNCTION_NOT_FOUND)
-                {
-                    m_loggerService.log_error(fmt::format("{}: internal_vertex_get_process_extensions not implemented", MODEL_NAME));
-                    return StatusCode::STATUS_ERROR_PLUGIN_FUNCTION_NOT_IMPLEMENTED;
-                }
-                if (!Runtime::status_ok(extResult))
-                {
-                    m_loggerService.log_error(fmt::format("{}: vertex_get_process_extensions failed to get extensions", MODEL_NAME));
-                    return extStatus;
-                }
+              std::vector<char*> ext_ptrs(count, nullptr);
+              const auto extResult = Runtime::safe_call(plugin.internal_vertex_process_get_executable_extensions, ext_ptrs.data(), &count);
+              const auto extStatus = Runtime::get_status(extResult);
+              if (extStatus == StatusCode::STATUS_ERROR_FUNCTION_NOT_FOUND)
+              {
+                  m_loggerService.log_error(fmt::format("{}: internal_vertex_get_process_extensions not implemented", MODEL_NAME));
+                  return StatusCode::STATUS_ERROR_PLUGIN_FUNCTION_NOT_IMPLEMENTED;
+              }
+              if (!Runtime::status_ok(extResult))
+              {
+                  m_loggerService.log_error(fmt::format("{}: vertex_get_process_extensions failed to get extensions", MODEL_NAME));
+                  return extStatus;
+              }
 
-                std::ranges::for_each(ext_ptrs | std::views::filter([](const auto ptr) { return ptr != nullptr; }),
-                                      [&extensions](const auto ptr) { extensions.emplace_back(ptr); });
-                return StatusCode::STATUS_OK;
-            });
+              std::ranges::for_each(ext_ptrs | std::views::filter(
+                                                 [](const auto ptr)
+                                                 {
+                                                     return ptr != nullptr;
+                                                 }),
+                                    [&extensions](const auto ptr)
+                                    {
+                                        extensions.emplace_back(ptr);
+                                    });
+              return StatusCode::STATUS_OK;
+          });
+
+        auto dispatchResult = m_dispatcher.dispatch(Thread::ThreadChannel::ProcessList, std::move(task));
+        if (!dispatchResult.has_value())
+        {
+            return dispatchResult.error();
+        }
+
+        return dispatchResult.value().get();
+    }
+
+    StatusCode MainModel::open_new_process(const std::string_view processPath, const int argc, const char** argv) const
+    {
+        if (processPath.empty())
+        {
+            m_loggerService.log_error(fmt::format("{}: open_new_process called with empty path", MODEL_NAME));
+            return StatusCode::STATUS_ERROR_INVALID_PARAMETER;
+        }
+
+        if (m_loaderService.has_plugin_loaded() != StatusCode::STATUS_OK)
+        {
+            m_loggerService.log_error(fmt::format("{}: No active plugin", MODEL_NAME));
+            return StatusCode::STATUS_ERROR_PLUGIN_NOT_ACTIVE;
+        }
+
+        std::string pathStr{processPath};
+
+        std::packaged_task<StatusCode()> task(
+          [this, pathStr = std::move(pathStr), argc, argv]() -> StatusCode
+          {
+              auto pluginRef = m_loaderService.get_active_plugin().value();
+              auto& plugin = pluginRef.get();
+              const auto result = Runtime::safe_call(plugin.internal_vertex_process_open_new, pathStr.c_str(), argc, argv);
+              const auto status = Runtime::get_status(result);
+              if (status == StatusCode::STATUS_ERROR_FUNCTION_NOT_FOUND)
+              {
+                  m_loggerService.log_error(fmt::format("{}: internal_vertex_process_open_new not implemented", MODEL_NAME));
+                  return StatusCode::STATUS_ERROR_PLUGIN_FUNCTION_NOT_IMPLEMENTED;
+              }
+              return status;
+          });
 
         auto dispatchResult = m_dispatcher.dispatch(Thread::ThreadChannel::ProcessList, std::move(task));
         if (!dispatchResult.has_value())
@@ -436,18 +773,19 @@ namespace Vertex::Model
         }
 
         std::packaged_task<StatusCode()> task(
-            [this, &address]() -> StatusCode
-            {
-                const auto& plugin = m_loaderService.get_active_plugin().value().get();
-                const auto result = Runtime::safe_call(plugin.internal_vertex_memory_get_min_process_address, &address);
-                const auto status = Runtime::get_status(result);
-                if (status == StatusCode::STATUS_ERROR_FUNCTION_NOT_FOUND)
-                {
-                    m_loggerService.log_error(fmt::format("{}: internal_vertex_memory_get_min_process_address not implemented", MODEL_NAME));
-                    return StatusCode::STATUS_ERROR_PLUGIN_FUNCTION_NOT_IMPLEMENTED;
-                }
-                return status;
-            });
+          [this, &address]() -> StatusCode
+          {
+              auto pluginRef = m_loaderService.get_active_plugin().value();
+              auto& plugin = pluginRef.get();
+              const auto result = Runtime::safe_call(plugin.internal_vertex_memory_get_min_process_address, &address);
+              const auto status = Runtime::get_status(result);
+              if (status == StatusCode::STATUS_ERROR_FUNCTION_NOT_FOUND)
+              {
+                  m_loggerService.log_error(fmt::format("{}: internal_vertex_memory_get_min_process_address not implemented", MODEL_NAME));
+                  return StatusCode::STATUS_ERROR_PLUGIN_FUNCTION_NOT_IMPLEMENTED;
+              }
+              return status;
+          });
 
         auto dispatchResult = m_dispatcher.dispatch(Thread::ThreadChannel::Scanner, std::move(task));
         if (!dispatchResult.has_value())
@@ -467,18 +805,19 @@ namespace Vertex::Model
         }
 
         std::packaged_task<StatusCode()> task(
-            [this, &address]() -> StatusCode
-            {
-                const auto& plugin = m_loaderService.get_active_plugin().value().get();
-                const auto result = Runtime::safe_call(plugin.internal_vertex_memory_get_max_process_address, &address);
-                const auto status = Runtime::get_status(result);
-                if (status == StatusCode::STATUS_ERROR_FUNCTION_NOT_FOUND)
-                {
-                    m_loggerService.log_error(fmt::format("{}: internal_vertex_memory_get_max_process_address not implemented", MODEL_NAME));
-                    return StatusCode::STATUS_ERROR_PLUGIN_FUNCTION_NOT_IMPLEMENTED;
-                }
-                return status;
-            });
+          [this, &address]() -> StatusCode
+          {
+              auto pluginRef = m_loaderService.get_active_plugin().value();
+              auto& plugin = pluginRef.get();
+              const auto result = Runtime::safe_call(plugin.internal_vertex_memory_get_max_process_address, &address);
+              const auto status = Runtime::get_status(result);
+              if (status == StatusCode::STATUS_ERROR_FUNCTION_NOT_FOUND)
+              {
+                  m_loggerService.log_error(fmt::format("{}: internal_vertex_memory_get_max_process_address not implemented", MODEL_NAME));
+                  return StatusCode::STATUS_ERROR_PLUGIN_FUNCTION_NOT_IMPLEMENTED;
+              }
+              return status;
+          });
 
         auto dispatchResult = m_dispatcher.dispatch(Thread::ThreadChannel::Scanner, std::move(task));
         if (!dispatchResult.has_value())
@@ -502,23 +841,24 @@ namespace Vertex::Model
         StatusCode queryStatus{};
 
         std::packaged_task<StatusCode()> task(
-            [this, &internalRegions, &internalRegionsSize, &queryStatus]() -> StatusCode
-            {
-                const auto& plugin = m_loaderService.get_active_plugin().value().get();
+          [this, &internalRegions, &internalRegionsSize, &queryStatus]() -> StatusCode
+          {
+              auto pluginRef = m_loaderService.get_active_plugin().value();
+              auto& plugin = pluginRef.get();
 
-                const auto result = Runtime::safe_call(plugin.internal_vertex_memory_query_regions, &internalRegions, &internalRegionsSize);
-                queryStatus = Runtime::get_status(result);
-                if (queryStatus == StatusCode::STATUS_ERROR_FUNCTION_NOT_FOUND)
-                {
-                    m_loggerService.log_error(fmt::format("{}: internal_vertex_query_memory_regions not implemented", MODEL_NAME));
-                    return StatusCode::STATUS_ERROR_PLUGIN_FUNCTION_NOT_IMPLEMENTED;
-                }
-                if (!Runtime::status_ok(result))
-                {
-                    return queryStatus;
-                }
-                return StatusCode::STATUS_OK;
-            });
+              const auto result = Runtime::safe_call(plugin.internal_vertex_memory_query_regions, &internalRegions, &internalRegionsSize);
+              queryStatus = Runtime::get_status(result);
+              if (queryStatus == StatusCode::STATUS_ERROR_FUNCTION_NOT_FOUND)
+              {
+                  m_loggerService.log_error(fmt::format("{}: internal_vertex_query_memory_regions not implemented", MODEL_NAME));
+                  return StatusCode::STATUS_ERROR_PLUGIN_FUNCTION_NOT_IMPLEMENTED;
+              }
+              if (!Runtime::status_ok(result))
+              {
+                  return queryStatus;
+              }
+              return StatusCode::STATUS_OK;
+          });
 
         auto dispatchResult = m_dispatcher.dispatch(Thread::ThreadChannel::Scanner, std::move(task));
         if (!dispatchResult.has_value())
@@ -535,25 +875,23 @@ namespace Vertex::Model
         regions.assign(internalRegions, internalRegions + internalRegionsSize);
 
         const auto totalSize = std::ranges::fold_left(regions, std::uint64_t{0},
-            [](const auto sum, const auto& region) { return sum + region.regionSize; });
-        m_loggerService.log_info(fmt::format("{}: Queried {} memory regions, total size {} MB",
-            MODEL_NAME, regions.size(), totalSize / (1024 * 1024)));
+                                                      [](const auto sum, const auto& region)
+                                                      {
+                                                          return sum + region.regionSize;
+                                                      });
+        m_loggerService.log_info(fmt::format("{}: Queried {} memory regions, total size {} MB", MODEL_NAME, regions.size(), totalSize / (1024 * 1024)));
 
-        std::ranges::for_each(
-            regions | std::views::take(5) | std::views::enumerate,
-            [this](const auto& entry) {
-                const auto& [i, region] = entry;
-                m_loggerService.log_info(fmt::format("{}: Region[{}]: base=0x{:X}, size={}",
-                    MODEL_NAME, i, region.baseAddress, region.regionSize));
-            });
+        std::ranges::for_each(regions | std::views::take(5) | std::views::enumerate,
+                              [this](const auto& entry)
+                              {
+                                  const auto& [i, region] = entry;
+                                  m_loggerService.log_info(fmt::format("{}: Region[{}]: base=0x{:X}, size={}", MODEL_NAME, i, region.baseAddress, region.regionSize));
+                              });
 
         return status;
     }
 
-    Log::ILog* MainModel::get_log_service() const
-    {
-        return &m_loggerService;
-    }
+    Log::ILog* MainModel::get_log_service() const { return &m_loggerService; }
 
     int MainModel::get_ui_state_int(const std::string_view key, const int defaultValue) const
     {
@@ -592,4 +930,4 @@ namespace Vertex::Model
             m_settingsService.set_value(keyStr, value);
         }
     }
-}
+} // namespace Vertex::Model

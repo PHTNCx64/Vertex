@@ -4,13 +4,13 @@
 //
 #include <vertexusrrt/debugger_internal.hh>
 
-#include <Windows.h>
+#include <windows.h>
 
 namespace debugger
 {
     DWORD process_step_out_command(TickState& state, const DWORD threadId)
     {
-        const auto stepOutTarget = get_step_out_target(threadId, state.isWow64);
+        const auto stepOutTarget = get_step_out_target(threadId);
 
         if (stepOutTarget.has_value())
         {
@@ -22,7 +22,7 @@ namespace debugger
             return DBG_CONTINUE;
         }
 
-        if (!set_trap_flag(threadId, state.isWow64, true))
+        if (!set_trap_flag(threadId, true))
         {
             return DBG_EXCEPTION_NOT_HANDLED;
         }

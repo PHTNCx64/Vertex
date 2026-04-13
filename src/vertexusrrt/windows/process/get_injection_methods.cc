@@ -24,22 +24,26 @@ namespace
         {
             "CreateRemoteThread Injection",
             "Basic injection that uses remote threads and LoadLibrary to inject a DLL into the target process.",
-            remote_thread_inject
+            remote_thread_inject,
+            {{".dll"}},
+            1
         },
         {
             "Manual Map Injection",
             "Advanced injection technique that manually maps a DLL into memory without using LoadLibrary. The DLL does not appear in the module list and bypasses standard loader mechanisms.",
-            manual_map_inject
+            manual_map_inject,
+            {{".dll"}},
+            1
         }
     }};
 }
 
-extern "C" VERTEX_EXPORT StatusCode VERTEX_API vertex_process_get_injection_methods(VertexInjectionMethod** methods, std::uint32_t* count)
+extern "C" VERTEX_EXPORT StatusCode VERTEX_API vertex_process_get_injection_methods(InjectionMethod** methods, std::uint32_t* count)
 {
     *count = static_cast<std::uint32_t>(g_injectionMethods.size());
     if (methods)
     {
-        *methods = const_cast<VertexInjectionMethod*>(g_injectionMethods.data());
+        *methods = const_cast<InjectionMethod*>(g_injectionMethods.data());
     }
     return StatusCode::STATUS_OK;
 }

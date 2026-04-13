@@ -13,10 +13,12 @@ namespace Vertex::Configuration
     static constexpr auto PLUGINS_PATH = "Plugins";
     static constexpr auto CONFIG_PATH = "Configuration";
     static constexpr auto LANG_PATH = "Language";
+    static constexpr auto SCRIPT_PATH = "Scripts";
+    static constexpr auto CRASH_DUMP_PATH = "Crashdumps";
 
     StatusCode Filesystem::construct_runtime_filesystem()
     {
-        const auto currentPath = std::filesystem::current_path();
+        const auto& basePath = get_base_path();
         std::error_code ec{};
 
         auto makeDir = [&](const std::filesystem::path& path) -> StatusCode
@@ -30,19 +32,31 @@ namespace Vertex::Configuration
             return StatusCode::STATUS_OK;
         };
 
-        StatusCode status = makeDir(currentPath / PLUGINS_PATH);
+        StatusCode status = makeDir(basePath / PLUGINS_PATH);
         if (status != StatusCode::STATUS_OK)
         {
             return status;
         }
 
-        status = makeDir(currentPath / CONFIG_PATH);
+        status = makeDir(basePath / CONFIG_PATH);
         if (status != StatusCode::STATUS_OK)
         {
             return status;
         }
 
-        status = makeDir(currentPath / LANG_PATH);
+        status = makeDir(basePath / LANG_PATH);
+        if (status != StatusCode::STATUS_OK)
+        {
+            return status;
+        }
+
+        status = makeDir(basePath / SCRIPT_PATH);
+        if (status != StatusCode::STATUS_OK)
+        {
+            return status;
+        }
+
+        status = makeDir(basePath / CRASH_DUMP_PATH);
         if (status != StatusCode::STATUS_OK)
         {
             return status;
@@ -53,17 +67,59 @@ namespace Vertex::Configuration
 
     std::filesystem::path Filesystem::get_configuration_path()
     {
-        return std::filesystem::absolute(CONFIG_PATH);
+        return get_base_path() / CONFIG_PATH;
     }
 
     std::filesystem::path Filesystem::get_language_path()
     {
-        return std::filesystem::absolute(LANG_PATH);
+        return get_base_path() / LANG_PATH;
     }
 
     std::filesystem::path Filesystem::get_plugin_path()
     {
-        return std::filesystem::absolute(PLUGINS_PATH);
+        return get_base_path() / PLUGINS_PATH;
+    }
+
+    std::filesystem::path Filesystem::get_script_path()
+    {
+        return get_base_path() / SCRIPT_PATH;
+    }
+
+    std::filesystem::path Filesystem::get_crash_dump_path()
+    {
+        return get_base_path() / CRASH_DUMP_PATH;
+    }
+
+    std::filesystem::path Filesystem::resolve_path(const std::filesystem::path& path)
+    {
+        if (path.empty() || path.is_absolute())
+        {
+            return path;
+        }
+        return get_base_path() / path;
+    }
+
+    std::filesystem::path Filesystem::make_relative(const std::filesystem::path& path)
+    {
+        if (path.empty() || path.is_relative())
+        {
+            return path;
+        }
+
+        const auto basePath = get_base_path();
+        auto [baseIt, pathIt] = std::mismatch(basePath.begin(), basePath.end(), path.begin(), path.end());
+
+        if (baseIt == basePath.end())
+        {
+            std::filesystem::path relative{};
+            for (; pathIt != path.end(); ++pathIt)
+            {
+                relative /= *pathIt;
+            }
+            return relative;
+        }
+
+        return path;
     }
 
     StatusCode write_configuration_file(const std::filesystem::path& filePath, const nlohmann::json& settings)
@@ -72,8 +128,7 @@ namespace Vertex::Configuration
 
         if (filePath.is_relative())
         {
-            const auto currentPath = std::filesystem::current_path();
-            absolutePath = currentPath / CONFIG_PATH / filePath;
+            absolutePath = Filesystem::get_configuration_path() / filePath;
         }
         else
         {

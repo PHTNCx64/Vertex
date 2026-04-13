@@ -162,8 +162,8 @@ namespace Vertex::Scanner
         return std::fabs(currentVal - (prevVal - amount)) < 0.0000001;
     }
 
-    [[nodiscard]] inline bool string_compare_exact(const char* memory, std::size_t memorySize,
-                                                    const char* needle, std::size_t needleSize)
+    [[nodiscard]] inline bool string_compare_exact(const char* memory, const std::size_t memorySize,
+                                                    const char* needle, const std::size_t needleSize)
     {
         if (memorySize < needleSize)
         {
@@ -172,8 +172,8 @@ namespace Vertex::Scanner
         return std::equal(needle, needle + needleSize, memory);
     }
 
-    [[nodiscard]] inline bool string_compare_contains(const char* memory, std::size_t memorySize,
-                                                       const char* needle, std::size_t needleSize)
+    [[nodiscard]] inline bool string_compare_contains(const char* memory, const std::size_t memorySize,
+                                                       const char* needle, const std::size_t needleSize)
     {
         if (memorySize < needleSize || needleSize == 0)
         {
@@ -191,8 +191,8 @@ namespace Vertex::Scanner
         return false;
     }
 
-    [[nodiscard]] inline bool string_compare_begins_with(const char* memory, std::size_t memorySize,
-                                                          const char* needle, std::size_t needleSize)
+    [[nodiscard]] inline bool string_compare_begins_with(const char* memory, const std::size_t memorySize,
+                                                          const char* needle, const std::size_t needleSize)
     {
         if (memorySize < needleSize)
         {
@@ -201,8 +201,8 @@ namespace Vertex::Scanner
         return std::equal(needle, needle + needleSize, memory);
     }
 
-    [[nodiscard]] inline bool string_compare_ends_with(const char* memory, std::size_t memorySize,
-                                                        const char* needle, std::size_t needleSize)
+    [[nodiscard]] inline bool string_compare_ends_with(const char* memory, const std::size_t memorySize,
+                                                        const char* needle, const std::size_t needleSize)
     {
         if (memorySize < needleSize)
         {
@@ -212,7 +212,7 @@ namespace Vertex::Scanner
     }
 
     template<class T>
-    [[nodiscard]] inline bool compare_value(NumericScanMode mode, const void* current,
+    [[nodiscard]] inline bool compare_value(const NumericScanMode mode, const void* current,
                                              const void* input, const void* input2 = nullptr,
                                              const void* previous = nullptr)
     {
@@ -245,8 +245,8 @@ namespace Vertex::Scanner
         }
     }
 
-    [[nodiscard]] inline bool compare_string(StringScanMode mode, const char* memory, std::size_t memorySize,
-                                              const char* needle, std::size_t needleSize)
+    [[nodiscard]] inline bool compare_string(const StringScanMode mode, const char* memory, const std::size_t memorySize,
+                                              const char* needle, const std::size_t needleSize)
     {
         switch (mode)
         {
@@ -263,7 +263,7 @@ namespace Vertex::Scanner
         }
     }
 
-    [[nodiscard]] inline bool compare_numeric_value(ValueType type, NumericScanMode mode,
+    [[nodiscard]] inline bool compare_numeric_value(const ValueType type, const NumericScanMode mode,
                                                      const void* current, const void* input,
                                                      const void* input2, const void* previous)
     {
@@ -296,8 +296,8 @@ namespace Vertex::Scanner
 
     using ScanComparatorFn = bool(*)(const void*, const void*, const void*, const void*);
 
-    template<typename T>
-    [[nodiscard]] inline ScanComparatorFn resolve_comparator_for_type(NumericScanMode mode)
+    template<class T>
+    [[nodiscard]] inline ScanComparatorFn resolve_comparator_for_type(const NumericScanMode mode)
     {
         switch (mode)
         {
@@ -329,32 +329,32 @@ namespace Vertex::Scanner
             case NumericScanMode::Changed:
                 return +[](const void* c, const void*, const void*, const void* p) -> bool
                 {
-                    return compare_changed<T>(c, p);
+                    return p && compare_changed<T>(c, p);
                 };
             case NumericScanMode::Unchanged:
                 return +[](const void* c, const void*, const void*, const void* p) -> bool
                 {
-                    return compare_unchanged<T>(c, p);
+                    return p && compare_unchanged<T>(c, p);
                 };
             case NumericScanMode::Increased:
                 return +[](const void* c, const void*, const void*, const void* p) -> bool
                 {
-                    return compare_increased<T>(c, p);
+                    return p && compare_increased<T>(c, p);
                 };
             case NumericScanMode::Decreased:
                 return +[](const void* c, const void*, const void*, const void* p) -> bool
                 {
-                    return compare_decreased<T>(c, p);
+                    return p && compare_decreased<T>(c, p);
                 };
             case NumericScanMode::IncreasedBy:
                 return +[](const void* c, const void* i, const void*, const void* p) -> bool
                 {
-                    return compare_increased_by<T>(c, p, i);
+                    return p && compare_increased_by<T>(c, p, i);
                 };
             case NumericScanMode::DecreasedBy:
                 return +[](const void* c, const void* i, const void*, const void* p) -> bool
                 {
-                    return compare_decreased_by<T>(c, p, i);
+                    return p && compare_decreased_by<T>(c, p, i);
                 };
             default:
                 return +[](const void*, const void*, const void*, const void*) -> bool
@@ -364,7 +364,7 @@ namespace Vertex::Scanner
         }
     }
 
-    [[nodiscard]] inline ScanComparatorFn resolve_scan_comparator(ValueType type, NumericScanMode mode)
+    [[nodiscard]] inline ScanComparatorFn resolve_scan_comparator(const ValueType type, const NumericScanMode mode)
     {
         switch (type)
         {

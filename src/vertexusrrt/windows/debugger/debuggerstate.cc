@@ -8,7 +8,7 @@
 
 #include <sdk/api.h>
 
-#include <Windows.h>
+#include <windows.h>
 
 #include <algorithm>
 #include <format>
@@ -146,7 +146,6 @@ extern "C"
 
         cache_process_architecture();
 
-        g_tickState.isWow64 = get_process_architecture() == ProcessArchitecture::X86;
         g_tickState.attachedProcessId = processId;
         g_tickState.currentThreadId = 0;
         g_tickState.initialBreakpointPending = true;
@@ -316,7 +315,9 @@ extern "C"
             return StatusCode::STATUS_ERROR_THREAD_INVALID_TASK;
         }
 
-        if (g_tickState.isWow64)
+        const bool isWow64 = get_process_architecture() == ProcessArchitecture::X86;
+
+        if (isWow64)
         {
             WOW64_CONTEXT ctx{};
             ctx.ContextFlags = WOW64_CONTEXT_CONTROL;
@@ -355,7 +356,9 @@ extern "C"
             return StatusCode::STATUS_ERROR_THREAD_INVALID_TASK;
         }
 
-        if (g_tickState.isWow64)
+        const bool isWow64 = get_process_architecture() == ProcessArchitecture::X86;
+
+        if (isWow64)
         {
             WOW64_CONTEXT ctx{};
             ctx.ContextFlags = WOW64_CONTEXT_CONTROL;

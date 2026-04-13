@@ -8,9 +8,14 @@
 #include <cstdint>
 #include <new>
 
+#include <vertex/macrohelp.hh>
+
 namespace Vertex::Memory
 {
+    START_PADDING_WARNING_SUPPRESSION
     inline constexpr std::size_t CACHE_LINE_SIZE = std::hardware_destructive_interference_size;
+    END_PADDING_WARNING_SUPPRESSION
+
     inline constexpr std::size_t SIMD_ALIGNMENT = 32;
     inline constexpr std::size_t PAGE_SIZE = 4096;
 
@@ -44,8 +49,8 @@ namespace Vertex::Memory
     #define VERTEX_MEMORY_STAT_INC(stat) get_memory_stats().stat.fetch_add(1, std::memory_order_relaxed)
     #define VERTEX_MEMORY_STAT_ADD(stat, val) get_memory_stats().stat.fetch_add(val, std::memory_order_relaxed)
 #else
-    #define VERTEX_MEMORY_STAT_INC(stat) ((void)0)
-    #define VERTEX_MEMORY_STAT_ADD(stat, val) ((void)0)
+    #define VERTEX_MEMORY_STAT_INC(stat) (static_cast<void>(0))
+    #define VERTEX_MEMORY_STAT_ADD(stat, val) (static_cast<void>(0))
 #endif
 
 } // namespace Vertex::Memory

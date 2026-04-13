@@ -4,6 +4,7 @@
 //
 #pragma once
 
+#include <string>
 #include <string_view>
 
 namespace Vertex::Runtime
@@ -16,6 +17,7 @@ namespace Vertex::Runtime
         [[nodiscard]] static void* load_library(std::string_view path);
         [[nodiscard]] static bool unload_library(void* handle);
         [[nodiscard]] static void* resolve_address(void* libraryHandle, std::string_view funcName);
+        [[nodiscard]] static std::string last_error();
     };
 
 }

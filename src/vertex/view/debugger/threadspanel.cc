@@ -11,9 +11,10 @@
 
 namespace Vertex::View::Debugger
 {
-    ThreadsPanel::ThreadsPanel(wxWindow* parent, Language::ILanguage& languageService)
+    ThreadsPanel::ThreadsPanel(wxWindow* parent, Language::ILanguage& languageService, Gui::IThemeProvider& themeProvider)
         : wxPanel(parent, wxID_ANY)
         , m_languageService(languageService)
+        , m_themeProvider(themeProvider)
     {
         create_controls();
         layout_controls();
@@ -37,7 +38,7 @@ namespace Vertex::View::Debugger
 
     void ThreadsPanel::layout_controls()
     {
-        m_mainSizer->Add(m_threadList, 1, wxEXPAND | wxALL, StandardWidgetValues::STANDARD_BORDER);
+        m_mainSizer->Add(m_threadList, StandardWidgetValues::STANDARD_PROPORTION, wxEXPAND | wxALL, StandardWidgetValues::STANDARD_BORDER);
         SetSizer(m_mainSizer);
     }
 
@@ -67,12 +68,12 @@ namespace Vertex::View::Debugger
 
             if (thread.isCurrent)
             {
-                m_threadList->SetItemBackgroundColour(idx, wxColour(0x26, 0x4F, 0x78));
+                m_threadList->SetItemBackgroundColour(idx, m_themeProvider.palette().selection);
             }
         }
     }
 
-    void ThreadsPanel::set_current_thread(std::uint32_t threadId)
+    void ThreadsPanel::set_current_thread(const std::uint32_t threadId)
     {
         m_currentThreadId = threadId;
     }
@@ -97,6 +98,29 @@ namespace Vertex::View::Debugger
         m_threadList->DeleteAllItems();
         m_threads.clear();
         m_currentThreadId = 0;
+    }
+
+    void ThreadsPanel::refresh_theme() const
+    {
+        const auto& pal = m_themeProvider.palette();
+        m_threadList->SetBackgroundColour(pal.background);
+        m_threadList->SetForegroundColour(pal.text);
+
+        const long count = m_threadList->GetItemCount();
+        for (long i = 0; i < count; ++i)
+        {
+            if (i < static_cast<long>(m_threads.size()) && m_threads[i].isCurrent)
+            {
+                m_threadList->SetItemBackgroundColour(i, pal.selection);
+            }
+            else
+            {
+                m_threadList->SetItemBackgroundColour(i, pal.background);
+            }
+            m_threadList->SetItemTextColour(i, pal.text);
+        }
+
+        m_threadList->Refresh();
     }
 
     void ThreadsPanel::on_item_activated(const wxListEvent& event)

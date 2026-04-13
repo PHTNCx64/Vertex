@@ -2,8 +2,10 @@
 // Copyright (C) 2026 PHTNC<>.
 // Licensed under GPLv3.0 with Plugin Interface exceptions.
 //
+#include <utility>
 #include <vertex/view/aboutview.hh>
 #include <vertex/utility.hh>
+#include <vertex/gui/theme/themeprovider.hh>
 
 #include <wx/statbox.h>
 #include <wx/statline.h>
@@ -22,10 +24,9 @@ namespace Vertex::View
         constexpr int SCROLL_RATE_HORIZONTAL = 0;
         constexpr int SCROLL_RATE_VERTICAL = 10;
         constexpr int DEFAULT_WIDTH = -1;
-        constexpr unsigned char GRAY_COLOR_VALUE = 128;
     }
 
-    AboutView::AboutView(wxWindow* parent, Language::ILanguage& languageService, const AboutInfo& aboutInfo)
+    AboutView::AboutView(wxWindow* parent, Language::ILanguage& languageService, Gui::IThemeProvider& themeProvider, AboutInfo  aboutInfo)
         : wxDialog(parent,
                    wxID_ANY,
                    wxString::FromUTF8(languageService.fetch_translation("aboutWindow.title")),
@@ -33,7 +34,8 @@ namespace Vertex::View
                    wxSize(FromDIP(ABOUT_DIALOG_WIDTH), FromDIP(ABOUT_DIALOG_HEIGHT)),
                    wxDEFAULT_DIALOG_STYLE | wxRESIZE_BORDER),
           m_languageService(languageService),
-          m_aboutInfo(aboutInfo)
+          m_themeProvider(themeProvider),
+          m_aboutInfo(std::move(aboutInfo))
     {
         create_controls();
         layout_controls();
@@ -63,6 +65,14 @@ namespace Vertex::View
 
     void AboutView::bind_events()
     {
+        Bind(wxEVT_SYS_COLOUR_CHANGED, [this](wxSysColourChangedEvent& event)
+        {
+            m_themeProvider.refresh();
+            Gui::ThemeProvider::apply_palette_to_tree(this, m_themeProvider.palette());
+            Refresh();
+            event.Skip();
+        });
+
         m_closeButton->Bind(wxEVT_BUTTON, [this]([[maybe_unused]] wxCommandEvent& event)
         {
             EndModal(wxID_OK);
@@ -103,7 +113,7 @@ namespace Vertex::View
         m_vendorLabel = new wxStaticText(m_headerPanel, wxID_ANY, wxString::FromUTF8(m_aboutInfo.vendor));
 
         m_copyrightLabel = new wxStaticText(m_headerPanel, wxID_ANY, wxString::FromUTF8(m_aboutInfo.copyright));
-        m_copyrightLabel->SetForegroundColour(wxColour(GRAY_COLOR_VALUE, GRAY_COLOR_VALUE, GRAY_COLOR_VALUE));
+        m_copyrightLabel->SetForegroundColour(m_themeProvider.palette().textSecondary);
 
         m_descriptionLabel = new wxStaticText(m_headerPanel, wxID_ANY, wxString::FromUTF8(m_aboutInfo.description),
                                               wxDefaultPosition, wxDefaultSize, wxALIGN_CENTER | wxST_NO_AUTORESIZE);
@@ -169,7 +179,7 @@ namespace Vertex::View
                 wxString::FromUTF8(m_languageService.fetch_translation("aboutWindow.license")),
                 wxString::FromUTF8(m_aboutInfo.license));
             m_licenseLabel = new wxStaticText(m_footerPanel, wxID_ANY, licenseText);
-            m_licenseLabel->SetForegroundColour(wxColour(GRAY_COLOR_VALUE, GRAY_COLOR_VALUE, GRAY_COLOR_VALUE));
+            m_licenseLabel->SetForegroundColour(m_themeProvider.palette().textSecondary);
         }
 
         m_closeButton = new wxButton(m_footerPanel, wxID_OK,
@@ -275,9 +285,9 @@ namespace Vertex::View
 
         for (const auto& [name, role] : entries)
         {
-            wxBoxSizer* entrySizer = new wxBoxSizer(wxHORIZONTAL);
+            auto* entrySizer = new wxBoxSizer(wxHORIZONTAL);
 
-            wxStaticText* nameLabel = new wxStaticText(staticBox, wxID_ANY, wxString::FromUTF8(name));
+            auto* nameLabel = new wxStaticText(staticBox, wxID_ANY, wxString::FromUTF8(name));
             wxFont nameFont = nameLabel->GetFont();
             nameFont.SetWeight(wxFONTWEIGHT_BOLD);
             nameLabel->SetFont(nameFont);
@@ -287,8 +297,8 @@ namespace Vertex::View
 
             if (!role.empty())
             {
-                wxStaticText* roleLabel = new wxStaticText(staticBox, wxID_ANY, wxString::Format(" - %s", wxString::FromUTF8(role)));
-                roleLabel->SetForegroundColour(wxColour(GRAY_COLOR_VALUE, GRAY_COLOR_VALUE, GRAY_COLOR_VALUE));
+                auto* roleLabel = new wxStaticText(staticBox, wxID_ANY, wxString::Format(" - %s", wxString::FromUTF8(role)));
+                roleLabel->SetForegroundColour(m_themeProvider.palette().textSecondary);
                 entrySizer->Add(roleLabel, StandardWidgetValues::NO_PROPORTION,
                                wxALIGN_CENTER_VERTICAL);
             }

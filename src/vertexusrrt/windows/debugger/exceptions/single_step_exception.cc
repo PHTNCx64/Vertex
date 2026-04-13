@@ -3,10 +3,13 @@
 // Licensed under LGPLv3.0+
 //
 #include <vertexusrrt/debugger_internal.hh>
+#include <vertexusrrt/native_handle.hh>
 
-#include <Windows.h>
+#include <windows.h>
 
 #include <format>
+
+extern ProcessArchitecture get_process_architecture();
 
 namespace debugger
 {
@@ -32,8 +35,9 @@ namespace debugger
 
         constexpr std::uint64_t DR6_STATUS_MASK = 0xFULL;
 
-        std::uint64_t read_dr6_and_clear(const DWORD threadId, const bool isWow64)
+        std::uint64_t read_dr6_and_clear(const DWORD threadId)
         {
+            const bool isWow64 = get_process_architecture() == ProcessArchitecture::X86;
             const HANDLE cached = get_cached_thread_handle(threadId);
             const HANDLE threadHandle = cached != nullptr ? cached
                 : OpenThread(THREAD_GET_CONTEXT | THREAD_SET_CONTEXT, FALSE, threadId);
@@ -146,7 +150,7 @@ namespace debugger
             }
             case DebugCommand::StepInto:
             {
-                if (!set_trap_flag(event.dwThreadId, state.isWow64, true))
+                if (!set_trap_flag(event.dwThreadId, true))
                 {
                     return TickEventResult{.continueStatus = DBG_EXCEPTION_NOT_HANDLED};
                 }
@@ -161,7 +165,7 @@ namespace debugger
                         return TickEventResult{.continueStatus = DBG_CONTINUE, .isInternal = true};
                     }
                 }
-                if (!set_trap_flag(event.dwThreadId, state.isWow64, true))
+                if (!set_trap_flag(event.dwThreadId, true))
                 {
                     return TickEventResult{.continueStatus = DBG_EXCEPTION_NOT_HANDLED};
                 }
@@ -176,7 +180,7 @@ namespace debugger
                         return TickEventResult{.continueStatus = DBG_CONTINUE, .isInternal = true};
                     }
                 }
-                if (!set_trap_flag(event.dwThreadId, state.isWow64, true))
+                if (!set_trap_flag(event.dwThreadId, true))
                 {
                     return TickEventResult{.continueStatus = DBG_EXCEPTION_NOT_HANDLED};
                 }
@@ -197,7 +201,7 @@ namespace debugger
             return TickEventResult{.continueStatus = DBG_CONTINUE, .isInternal = true};
         }
 
-        const std::uint64_t dr6Value = read_dr6_and_clear(event.dwThreadId, state.isWow64);
+        const std::uint64_t dr6Value = read_dr6_and_clear(event.dwThreadId);
         if ((dr6Value & DR6_STATUS_MASK) != 0)
         {
             std::uint32_t hitHwBreakpointId{};

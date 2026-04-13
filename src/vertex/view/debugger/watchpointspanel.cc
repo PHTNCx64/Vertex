@@ -37,7 +37,7 @@ namespace Vertex::View::Debugger
 
     void WatchpointsPanel::layout_controls()
     {
-        m_mainSizer->Add(m_watchpointList, 1, wxEXPAND | wxALL, StandardWidgetValues::STANDARD_BORDER);
+        m_mainSizer->Add(m_watchpointList, StandardWidgetValues::STANDARD_PROPORTION, wxEXPAND | wxALL, StandardWidgetValues::STANDARD_BORDER);
         SetSizer(m_mainSizer);
     }
 
@@ -205,6 +205,10 @@ namespace Vertex::View::Debugger
                 }
                 break;
             case 1005:
+                if (m_gotoAccessorCallback && wp.lastAccessorAddress != 0)
+                {
+                    m_gotoAccessorCallback(wp.lastAccessorAddress);
+                }
                 break;
             default:
                 break;

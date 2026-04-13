@@ -4,8 +4,8 @@
 //
 #include <vertexusrrt/debugger_internal.hh>
 #include <vertexusrrt/native_handle.hh>
-#include <Windows.h>
-#include <Psapi.h>
+#include <windows.h>
+#include <psapi.h>
 
 extern native_handle& get_native_handle();
 namespace debugger

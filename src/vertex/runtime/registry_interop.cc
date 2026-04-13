@@ -12,7 +12,7 @@ namespace
 {
     std::atomic<Vertex::Runtime::IRegistry*> g_registryInstance{};
 
-    [[nodiscard]] inline Vertex::Runtime::IRegistry* get_registry_instance()
+    [[nodiscard]] Vertex::Runtime::IRegistry* get_registry_instance()
     {
         return g_registryInstance.load(std::memory_order_acquire);
     }

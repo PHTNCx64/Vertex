@@ -10,9 +10,10 @@
 
 namespace Vertex::View::Debugger
 {
-    ConsolePanel::ConsolePanel(wxWindow* parent, Language::ILanguage& languageService)
+    ConsolePanel::ConsolePanel(wxWindow* parent, Language::ILanguage& languageService, Gui::IThemeProvider& themeProvider)
         : wxPanel(parent, wxID_ANY)
         , m_languageService(languageService)
+        , m_themeProvider(themeProvider)
     {
         create_controls();
         layout_controls();
@@ -36,18 +37,18 @@ namespace Vertex::View::Debugger
 
         m_clearButton = new wxButton(this, wxID_ANY, wxString::FromUTF8(m_languageService.fetch_translation("debugger.console.clear")), wxDefaultPosition, wxSize(FromDIP(60), -1));
 
-        filterSizer->Add(m_showDebug, 0, wxALIGN_CENTER_VERTICAL | wxRIGHT, StandardWidgetValues::STANDARD_BORDER);
-        filterSizer->Add(m_showInfo, 0, wxALIGN_CENTER_VERTICAL | wxRIGHT, StandardWidgetValues::STANDARD_BORDER);
-        filterSizer->Add(m_showWarning, 0, wxALIGN_CENTER_VERTICAL | wxRIGHT, StandardWidgetValues::STANDARD_BORDER);
-        filterSizer->Add(m_showError, 0, wxALIGN_CENTER_VERTICAL | wxRIGHT, StandardWidgetValues::STANDARD_BORDER);
+        filterSizer->Add(m_showDebug, StandardWidgetValues::NO_PROPORTION, wxALIGN_CENTER_VERTICAL | wxRIGHT, StandardWidgetValues::STANDARD_BORDER);
+        filterSizer->Add(m_showInfo, StandardWidgetValues::NO_PROPORTION, wxALIGN_CENTER_VERTICAL | wxRIGHT, StandardWidgetValues::STANDARD_BORDER);
+        filterSizer->Add(m_showWarning, StandardWidgetValues::NO_PROPORTION, wxALIGN_CENTER_VERTICAL | wxRIGHT, StandardWidgetValues::STANDARD_BORDER);
+        filterSizer->Add(m_showError, StandardWidgetValues::NO_PROPORTION, wxALIGN_CENTER_VERTICAL | wxRIGHT, StandardWidgetValues::STANDARD_BORDER);
         filterSizer->AddStretchSpacer();
-        filterSizer->Add(m_clearButton, 0);
+        filterSizer->Add(m_clearButton, StandardWidgetValues::NO_PROPORTION);
 
         m_logCtrl = new wxRichTextCtrl(this, wxID_ANY, EMPTY_STRING, wxDefaultPosition, wxDefaultSize,
                                         wxRE_MULTILINE | wxRE_READONLY | wxHSCROLL | wxVSCROLL);
-        m_logCtrl->SetFont(wxFont(9, wxFONTFAMILY_TELETYPE, wxFONTSTYLE_NORMAL, wxFONTWEIGHT_NORMAL, false, "Consolas"));
-        m_logCtrl->SetBackgroundColour(wxColour(0x1E, 0x1E, 0x1E));
-        m_logCtrl->SetForegroundColour(wxColour(0xDC, 0xDC, 0xDC));
+        m_logCtrl->SetFont(wxFont{StandardWidgetValues::TELETYPE_FONT_SIZE, wxFONTFAMILY_TELETYPE, wxFONTSTYLE_NORMAL, wxFONTWEIGHT_NORMAL});
+        m_logCtrl->SetBackgroundColour(m_themeProvider.palette().background);
+        m_logCtrl->SetForegroundColour(m_themeProvider.palette().text);
 
         auto* commandSizer = new wxBoxSizer(wxHORIZONTAL);
         auto* promptLabel = new wxStaticText(this, wxID_ANY, ">");
@@ -57,12 +58,12 @@ namespace Vertex::View::Debugger
         m_commandInput->SetFont(wxFont(9, wxFONTFAMILY_TELETYPE, wxFONTSTYLE_NORMAL, wxFONTWEIGHT_NORMAL));
         m_commandInput->SetHint(wxString::FromUTF8(m_languageService.fetch_translation("debugger.console.enterCommand")));
 
-        commandSizer->Add(promptLabel, 0, wxALIGN_CENTER_VERTICAL | wxRIGHT, StandardWidgetValues::STANDARD_BORDER);
-        commandSizer->Add(m_commandInput, 1, wxEXPAND);
+        commandSizer->Add(promptLabel, StandardWidgetValues::NO_PROPORTION, wxALIGN_CENTER_VERTICAL | wxRIGHT, StandardWidgetValues::STANDARD_BORDER);
+        commandSizer->Add(m_commandInput, StandardWidgetValues::STANDARD_PROPORTION, wxEXPAND);
 
-        m_mainSizer->Add(filterSizer, 0, wxEXPAND | wxALL, StandardWidgetValues::STANDARD_BORDER);
-        m_mainSizer->Add(m_logCtrl, 1, wxEXPAND | wxLEFT | wxRIGHT, StandardWidgetValues::STANDARD_BORDER);
-        m_mainSizer->Add(commandSizer, 0, wxEXPAND | wxALL, StandardWidgetValues::STANDARD_BORDER);
+        m_mainSizer->Add(filterSizer, StandardWidgetValues::NO_PROPORTION, wxEXPAND | wxALL, StandardWidgetValues::STANDARD_BORDER);
+        m_mainSizer->Add(m_logCtrl, StandardWidgetValues::STANDARD_PROPORTION, wxEXPAND | wxLEFT | wxRIGHT, StandardWidgetValues::STANDARD_BORDER);
+        m_mainSizer->Add(commandSizer, StandardWidgetValues::NO_PROPORTION, wxEXPAND | wxALL, StandardWidgetValues::STANDARD_BORDER);
     }
 
     void ConsolePanel::layout_controls()
@@ -256,16 +257,17 @@ namespace Vertex::View::Debugger
             entry.message);
     }
 
-    wxColour ConsolePanel::get_level_color(::Vertex::Debugger::LogLevel level) const
+    wxColour ConsolePanel::get_level_color(const ::Vertex::Debugger::LogLevel level) const
     {
+        const auto& pal = m_themeProvider.palette();
         switch (level)
         {
-            case ::Vertex::Debugger::LogLevel::Debug:   return {0x80, 0x80, 0x80};
-            case ::Vertex::Debugger::LogLevel::Info:    return {0xDC, 0xDC, 0xDC};
-            case ::Vertex::Debugger::LogLevel::Warning: return {0xFF, 0xD7, 0x00};
-            case ::Vertex::Debugger::LogLevel::Error:   return {0xE5, 0x1A, 0x1A};
-            case ::Vertex::Debugger::LogLevel::Output:  return {0x4E, 0xC9, 0xB0};
-            default: return {0xDC, 0xDC, 0xDC};
+            case ::Vertex::Debugger::LogLevel::Debug:   return pal.logDebug;
+            case ::Vertex::Debugger::LogLevel::Info:    return pal.logInfo;
+            case ::Vertex::Debugger::LogLevel::Warning: return pal.logWarning;
+            case ::Vertex::Debugger::LogLevel::Error:   return pal.logError;
+            case ::Vertex::Debugger::LogLevel::Output:  return pal.logOutput;
+            default: return pal.logInfo;
         }
     }
 
@@ -293,6 +295,14 @@ namespace Vertex::View::Debugger
             case ::Vertex::Debugger::LogLevel::Output:  return true;
             default: return true;
         }
+    }
+
+    void ConsolePanel::refresh_theme()
+    {
+        const auto& pal = m_themeProvider.palette();
+        m_logCtrl->SetBackgroundColour(pal.background);
+        m_logCtrl->SetForegroundColour(pal.text);
+        refresh_display();
     }
 
 }

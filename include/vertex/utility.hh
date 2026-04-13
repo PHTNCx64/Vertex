@@ -4,6 +4,8 @@
 //
 #pragma once
 
+#include <cstddef>
+
 namespace Vertex
 {
     constexpr auto* EMPTY_STRING = "";
@@ -27,7 +29,9 @@ namespace Vertex
         constexpr int NO_PROPORTION = 0;
         constexpr int ICON_SIZE = 24;
         constexpr int GAUGE_MAX_VALUE = 100;
+        constexpr int GAUGE_HEIGHT = 16;
         constexpr int TIMER_INTERVAL_MS = 500;
+        constexpr int SCAN_PROGRESS_INTERVAL_MS = 50;
         constexpr int SPIN_MIN_VALUE = 0;
         constexpr int SPIN_MAX_VALUE = 1024;
         constexpr int SPIN_DEFAULT_VALUE = 4;
@@ -44,6 +48,12 @@ namespace Vertex
         constexpr int GRID_COLUMNS = 2;
     }
 
+    namespace MemoryViewValues
+    {
+        constexpr std::size_t BYTES_PER_ROW = 16;
+        constexpr std::size_t INTERPRETATION_MAX_STRING_BYTES = 256;
+    }
+
     namespace DisassemblyIndicatorValues
     {
         constexpr int LOADING_ANIM_INTERVAL_MS = 300;
@@ -51,10 +61,60 @@ namespace Vertex
         constexpr int INDICATOR_HEIGHT = 24;
     }
 
+    namespace NewProcessDialogValues
+    {
+        constexpr int DIALOG_WIDTH = 450;
+        constexpr int DIALOG_HEIGHT = 180;
+    }
+
+    namespace PointerScanConfigDialogValues
+    {
+        constexpr int DIALOG_WIDTH = 480;
+        constexpr int DIALOG_HEIGHT = 620;
+        constexpr int LABEL_COLUMN_WIDTH = 180;
+        constexpr int OFFSET_FILTER_LIST_HEIGHT = 80;
+    }
+
     namespace BreakpointConditionDialogValues
     {
         constexpr int DIALOG_WIDTH = 400;
         constexpr int DIALOG_HEIGHT = 350;
+    }
+
+    namespace AddAddressDialogValues
+    {
+        constexpr int DIALOG_WIDTH = 400;
+        constexpr int DIALOG_HEIGHT = 200;
+    }
+
+    namespace ScriptingViewValues
+    {
+        constexpr int EDITOR_WIDTH = 700;
+        constexpr int EDITOR_HEIGHT = 500;
+        constexpr int LINE_NUMBER_MARGIN = 0;
+        constexpr int LINE_NUMBER_MARGIN_WIDTH = 48;
+        constexpr int FOLD_MARGIN = 1;
+        constexpr int FOLD_MARGIN_WIDTH = 18;
+        constexpr int DIAGNOSTIC_MARGIN = 2;
+        constexpr int DIAGNOSTIC_MARGIN_WIDTH = 12;
+        constexpr int DIAGNOSTIC_MARKER_ERROR = 3;
+        constexpr int DIAGNOSTIC_MARKER_WARNING = 4;
+        constexpr int SCRIPT_BREAKPOINT_MARKER = 5;
+        constexpr int TAB_WIDTH = 4;
+        constexpr int CARET_WIDTH = 2;
+        constexpr int EDGE_COLUMN = 120;
+        constexpr int CONTEXT_LIST_HEIGHT = 150;
+        constexpr int VARIABLE_INSPECTOR_HEIGHT = 120;
+        constexpr int OUTPUT_PANEL_HEIGHT = 140;
+        constexpr int OUTPUT_STYLE_INFO = 20;
+        constexpr int OUTPUT_STYLE_WARNING = 21;
+        constexpr int OUTPUT_STYLE_ERROR = 22;
+        constexpr int COLUMN_WIDTH_NAME = 300;
+        constexpr int COLUMN_WIDTH_STATE = 120;
+        constexpr int COLUMN_WIDTH_VARIABLE_NAME = 160;
+        constexpr int COLUMN_WIDTH_VARIABLE_TYPE = 220;
+        constexpr int COLUMN_WIDTH_VARIABLE_VALUE = 260;
+        constexpr int MINIMAP_WIDTH = 140;
     }
 
     namespace ApplicationAppearance
@@ -76,6 +136,7 @@ namespace Vertex
         constexpr auto* POINTERSCAN_MEMORYATTRIBUTES = "PointerScanMemoryAttributesViewModel";
         constexpr auto* INJECTOR = "InjectorViewModel";
         constexpr auto* PLUGINCONFIG = "PluginConfigViewModel";
+        constexpr auto* SCRIPTING = "ScriptingViewModel";
     }
 
     enum class ViewUpdateFlags : unsigned int
@@ -88,6 +149,7 @@ namespace Vertex
         INPUT_VISIBILITY = 1 << 4,
         DATATYPES = 1 << 5,
         SCAN_MODES = 1 << 6,
+        SCAN_COMPLETED = 1 << 7,
         ALL = PROCESS_INFO | SCAN_PROGRESS | SCANNED_VALUES | BUTTON_STATES | INPUT_VISIBILITY | DATATYPES | SCAN_MODES,
 
         DEBUGGER_DISASSEMBLY = 1 << 10,
@@ -100,22 +162,25 @@ namespace Vertex
         DEBUGGER_THREADS = 1 << 17,
         DEBUGGER_WATCHPOINTS = 1 << 18,
         DEBUGGER_MODULES = 1 << 19,
+        DEBUGGER_WATCH = 1 << 20,
+        DEBUGGER_CONSOLE = 1 << 21,
         DEBUGGER_ALL = DEBUGGER_DISASSEMBLY | DEBUGGER_BREAKPOINTS | DEBUGGER_REGISTERS |
                        DEBUGGER_STACK | DEBUGGER_MEMORY | DEBUGGER_IMPORTS_EXPORTS | DEBUGGER_STATE |
-                       DEBUGGER_THREADS | DEBUGGER_WATCHPOINTS | DEBUGGER_MODULES
+                       DEBUGGER_THREADS | DEBUGGER_WATCHPOINTS | DEBUGGER_MODULES | DEBUGGER_WATCH |
+                       DEBUGGER_CONSOLE
     };
 
-    [[nodiscard]] inline ViewUpdateFlags operator|(ViewUpdateFlags a, ViewUpdateFlags b)
+    [[nodiscard]] constexpr ViewUpdateFlags operator|(ViewUpdateFlags a, ViewUpdateFlags b)
     {
         return static_cast<ViewUpdateFlags>(static_cast<unsigned int>(a) | static_cast<unsigned int>(b));
     }
 
-    [[nodiscard]] inline ViewUpdateFlags operator&(ViewUpdateFlags a, ViewUpdateFlags b)
+    [[nodiscard]] constexpr ViewUpdateFlags operator&(ViewUpdateFlags a, ViewUpdateFlags b)
     {
         return static_cast<ViewUpdateFlags>(static_cast<unsigned int>(a) & static_cast<unsigned int>(b));
     }
 
-    [[nodiscard]] inline bool has_flag(const ViewUpdateFlags flags, const ViewUpdateFlags flag)
+    [[nodiscard]] constexpr bool has_flag(const ViewUpdateFlags flags, const ViewUpdateFlags flag)
     {
         return (flags & flag) == flag;
     }
@@ -136,6 +201,7 @@ namespace Vertex
             ID_HELP_ABOUT,
             ID_ANALYTICS,
             ID_INJECTOR,
+            ID_SCRIPTING,
         };
     }
 
@@ -152,8 +218,12 @@ namespace Vertex
     {
 #if defined (_WIN32) || defined(_WIN64)
         constexpr auto* PLUGIN_EXTENSION = ".dll";
+#elif defined (__linux) || defined (linux) || defined(__linux__)
+        constexpr auto* PLUGIN_EXTENSION = ".so";
 #endif
 
         constexpr auto* CONFIGURATION_EXTENSION = ".json";
+        constexpr auto* SCRIPTING_EXTENSION = ".vscr";
+        constexpr auto* POINTERSCAN_EXTENSION = ".vxp";
     }
 }

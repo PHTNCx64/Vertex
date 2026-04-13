@@ -98,29 +98,6 @@ namespace Vertex::Thread
         return StatusCode::STATUS_OK;
     }
 
-    StatusCode VertexSPSCThread::get_last_status()
-    {
-        std::future<StatusCode> future{};
-
-        {
-            std::scoped_lock lock{m_futureMutex};
-            if (!m_lastFuture.valid())
-            {
-                return StatusCode::STATUS_ERROR_THREAD_INVALID_TASK;
-            }
-            future = std::move(m_lastFuture);
-        }
-
-        try
-        {
-            return future.get();
-        }
-        catch (...)
-        {
-            return StatusCode::STATUS_ERROR_GENERAL;
-        }
-    }
-
     bool VertexSPSCThread::is_running() const noexcept
     {
         return m_isRunning.load(std::memory_order_acquire);
@@ -152,26 +129,9 @@ namespace Vertex::Thread
             m_isBusy.store(true, std::memory_order_relaxed);
             m_pendingTasks.fetch_sub(1, std::memory_order_relaxed);
 
-            std::future<StatusCode> future {};
-            bool hasFuture {};
-
-            try
-            {
-                future = task.get_future();
-                hasFuture = true;
-            }
-            catch (const std::future_error&)
-            {
-            }
-
             try
             {
                 task();
-                if (hasFuture)
-                {
-                    std::scoped_lock lock{m_futureMutex};
-                    m_lastFuture = std::move(future);
-                }
             }
             catch (...)
             {

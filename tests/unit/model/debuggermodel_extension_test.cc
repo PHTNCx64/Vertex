@@ -132,7 +132,7 @@ protected:
     void setup_extension_result_capture()
     {
         m_model->set_extension_result_handler(
-            [this](bool isTop, ExtensionResult result)
+            [this](const bool isTop, const ExtensionResult result)
             {
                 m_capturedIsTop = isTop;
                 m_capturedResult = result;
@@ -207,7 +207,7 @@ TEST_F(DebuggerModelExtensionTest, ExtendUpBoundaryExhaustedReportsEndOfRange)
 
 TEST_F(DebuggerModelExtensionTest, ExtendUpDisasmFailureReportsError)
 {
-    Vertex::Runtime::Plugin plugin;
+    Vertex::Runtime::Plugin plugin{*m_logger};
     plugin.internal_vertex_process_disassemble_range = stub_disasm_fail;
     setup_plugin(plugin);
     setup_extension_result_capture();
@@ -222,7 +222,7 @@ TEST_F(DebuggerModelExtensionTest, ExtendUpDisasmFailureReportsError)
 
 TEST_F(DebuggerModelExtensionTest, ExtendDownDisasmFailureReportsError)
 {
-    Vertex::Runtime::Plugin plugin;
+    Vertex::Runtime::Plugin plugin{*m_logger};
     plugin.internal_vertex_process_disassemble_range = stub_disasm_fail;
     setup_plugin(plugin);
     setup_extension_result_capture();
@@ -237,7 +237,7 @@ TEST_F(DebuggerModelExtensionTest, ExtendDownDisasmFailureReportsError)
 
 TEST_F(DebuggerModelExtensionTest, ExtendUpZeroResultsReportsEndOfRange)
 {
-    Vertex::Runtime::Plugin plugin;
+    Vertex::Runtime::Plugin plugin{*m_logger};
     plugin.internal_vertex_process_disassemble_range = stub_disasm_empty;
     setup_plugin(plugin);
     setup_extension_result_capture();
@@ -252,7 +252,7 @@ TEST_F(DebuggerModelExtensionTest, ExtendUpZeroResultsReportsEndOfRange)
 
 TEST_F(DebuggerModelExtensionTest, ExtendDownZeroResultsReportsEndOfRange)
 {
-    Vertex::Runtime::Plugin plugin;
+    Vertex::Runtime::Plugin plugin{*m_logger};
     plugin.internal_vertex_process_disassemble_range = stub_disasm_empty;
     setup_plugin(plugin);
     setup_extension_result_capture();
@@ -267,7 +267,7 @@ TEST_F(DebuggerModelExtensionTest, ExtendDownZeroResultsReportsEndOfRange)
 
 TEST_F(DebuggerModelExtensionTest, ExtendUpSuccessfulDisasmReportsSuccess)
 {
-    Vertex::Runtime::Plugin plugin;
+    Vertex::Runtime::Plugin plugin{*m_logger};
     plugin.internal_vertex_process_disassemble_range = stub_disasm_one_instruction;
     setup_plugin(plugin);
     setup_extension_result_capture();
@@ -282,7 +282,7 @@ TEST_F(DebuggerModelExtensionTest, ExtendUpSuccessfulDisasmReportsSuccess)
 
 TEST_F(DebuggerModelExtensionTest, ExtendDownSuccessfulDisasmReportsSuccess)
 {
-    Vertex::Runtime::Plugin plugin;
+    Vertex::Runtime::Plugin plugin{*m_logger};
     plugin.internal_vertex_process_disassemble_range = stub_disasm_one_instruction;
     setup_plugin(plugin);
     setup_extension_result_capture();
@@ -297,7 +297,7 @@ TEST_F(DebuggerModelExtensionTest, ExtendDownSuccessfulDisasmReportsSuccess)
 
 TEST_F(DebuggerModelExtensionTest, ExtendUpNullFunctionPointerReportsError)
 {
-    Vertex::Runtime::Plugin plugin;
+    Vertex::Runtime::Plugin plugin{*m_logger};
     plugin.internal_vertex_process_disassemble_range = nullptr;
     setup_plugin(plugin);
     setup_extension_result_capture();
@@ -312,7 +312,7 @@ TEST_F(DebuggerModelExtensionTest, ExtendUpNullFunctionPointerReportsError)
 
 TEST_F(DebuggerModelExtensionTest, ExtendDownNullFunctionPointerReportsError)
 {
-    Vertex::Runtime::Plugin plugin;
+    Vertex::Runtime::Plugin plugin{*m_logger};
     plugin.internal_vertex_process_disassemble_range = nullptr;
     setup_plugin(plugin);
     setup_extension_result_capture();
@@ -359,7 +359,7 @@ TEST_F(DebuggerModelExtensionTest, ExtendDownNoActivePluginReportsError)
 
 TEST_F(DebuggerModelExtensionTest, ExtendUpDispatchFailureReportsError)
 {
-    Vertex::Runtime::Plugin plugin;
+    Vertex::Runtime::Plugin plugin{*m_logger};
     plugin.internal_vertex_process_disassemble_range = stub_disasm_one_instruction;
     setup_plugin(plugin);
     setup_extension_result_capture();
@@ -384,7 +384,7 @@ TEST_F(DebuggerModelExtensionTest, ExtendUpDispatchFailureReportsError)
 
 TEST_F(DebuggerModelExtensionTest, ExtendDownDispatchFailureReportsError)
 {
-    Vertex::Runtime::Plugin plugin;
+    Vertex::Runtime::Plugin plugin{*m_logger};
     plugin.internal_vertex_process_disassemble_range = stub_disasm_one_instruction;
     setup_plugin(plugin);
     setup_extension_result_capture();

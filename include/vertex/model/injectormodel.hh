@@ -29,7 +29,6 @@ namespace Vertex::Model
         }
 
         [[nodiscard]] StatusCode get_injection_methods(std::vector<InjectionMethod>& methods) const;
-        [[nodiscard]] StatusCode get_library_extensions(std::vector<std::string>& extensions) const;
         [[nodiscard]] StatusCode inject(const InjectionMethod& method, std::string_view libraryPath) const;
 
     private:

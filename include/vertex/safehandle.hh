@@ -7,7 +7,7 @@
 #if defined(__linux) || defined(__linux__) || defined(linux) || defined(__APPLE__) || defined(__MACH__)
 #include <unistd.h>
 #elif defined(_WIN32) || defined(_WIN64)
-#include <Windows.h>
+#include <windows.h>
 #endif
 
 #include <utility>
@@ -96,7 +96,7 @@ namespace Vertex
             return std::exchange(m_internalHandle, INVALID_NATIVE_HANDLE);
         }
 
-        void reset(NativeHandle handle = INVALID_NATIVE_HANDLE) noexcept
+        void reset(const NativeHandle handle = INVALID_NATIVE_HANDLE) noexcept
         {
             if (m_internalHandle != handle)
             {

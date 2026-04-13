@@ -84,7 +84,10 @@ namespace Vertex::ViewModel
         const auto persistResult = m_model->persist_values(panelId);
         if (persistResult != StatusCode::STATUS_OK)
         {
-            m_logService.log_warn(fmt::format("{}: Failed to persist values for panel '{}'", ViewModelName::PLUGINCONFIG, panelId));
+            m_logService.log_warn(fmt::format("{}: Failed to persist values for panel '{}' (status={})",
+                ViewModelName::PLUGINCONFIG,
+                panelId,
+                static_cast<int>(persistResult)));
         }
 
         return StatusCode::STATUS_OK;

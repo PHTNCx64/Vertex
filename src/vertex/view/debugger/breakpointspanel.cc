@@ -36,7 +36,7 @@ namespace Vertex::View::Debugger
 
     void BreakpointsPanel::layout_controls()
     {
-        m_mainSizer->Add(m_breakpointList, 1, wxEXPAND | wxALL, StandardWidgetValues::STANDARD_BORDER);
+        m_mainSizer->Add(m_breakpointList, StandardWidgetValues::STANDARD_PROPORTION, wxEXPAND | wxALL, StandardWidgetValues::STANDARD_BORDER);
         SetSizer(m_mainSizer);
     }
 
@@ -110,6 +110,11 @@ namespace Vertex::View::Debugger
         m_enableCallback = std::move(callback);
     }
 
+    void BreakpointsPanel::set_retry_callback(RetryBreakpointCallback callback)
+    {
+        m_retryCallback = std::move(callback);
+    }
+
     void BreakpointsPanel::on_item_activated(const wxListEvent& event)
     {
         const long idx = event.GetIndex();
@@ -133,6 +138,10 @@ namespace Vertex::View::Debugger
         menu.Append(1002, bp.state == ::Vertex::Debugger::BreakpointState::Enabled
             ? wxString::FromUTF8(m_languageService.fetch_translation("debugger.breakpoints.disable"))
             : wxString::FromUTF8(m_languageService.fetch_translation("debugger.breakpoints.enable")));
+        if (bp.state == ::Vertex::Debugger::BreakpointState::Error)
+        {
+            menu.Append(1005, wxString::FromUTF8("Retry"));
+        }
         menu.AppendSeparator();
         menu.Append(1003, wxString::FromUTF8(m_languageService.fetch_translation("debugger.breakpoints.remove")));
 
@@ -155,6 +164,12 @@ namespace Vertex::View::Debugger
                 if (m_removeCallback)
                 {
                     m_removeCallback(bp.id);
+                }
+                break;
+            case 1005:
+                if (m_retryCallback)
+                {
+                    m_retryCallback(bp.id);
                 }
                 break;
             default:

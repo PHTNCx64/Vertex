@@ -6,7 +6,6 @@
 #include <vertex/configuration/filesystem.hh>
 #include <fstream>
 #include <algorithm>
-#include <cstring>
 
 namespace Vertex::Configuration
 {

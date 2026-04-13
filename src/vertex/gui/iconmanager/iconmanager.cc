@@ -12,6 +12,7 @@
 #include <Icons.hh>
 #include <IconMap.hh>
 
+#include <string>
 #include <vector>
 
 namespace Vertex::Gui
@@ -55,11 +56,7 @@ namespace Vertex::Gui
             return wxNullBitmap;
         }
 
-        const std::size_t len = strlen(svgData);
-        std::vector<char> mutableSvg(len + 1);
-        memcpy(mutableSvg.data(), svgData, len);
-        mutableSvg[len] = '\0';
-
+        std::string mutableSvg{svgData};
         NSVGimage* image = nsvgParse(mutableSvg.data(), "px", DEFAULT_DPI_SCALE);
         if (!image)
         {

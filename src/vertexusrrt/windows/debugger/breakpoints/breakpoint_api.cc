@@ -6,7 +6,7 @@
 #include <vertexusrrt/debugloopcontext.hh>
 #include <sdk/api.h>
 
-#include <Windows.h>
+#include <windows.h>
 #include <ranges>
 
 extern "C"

@@ -15,10 +15,12 @@
 #include <wx/timer.h>
 #include <wx/stattext.h>
 
+#include <cstddef>
 #include <memory>
 #include <vertex/viewmodel/debuggerviewmodel.hh>
 #include <vertex/language/language.hh>
 #include <vertex/gui/iconmanager/iconmanager.hh>
+#include <vertex/gui/theme/ithemeprovider.hh>
 #include <vertex/event/eventid.hh>
 #include <vertex/event/vertexevent.hh>
 
@@ -46,7 +48,8 @@ namespace Vertex::View
             const wxString& title,
             std::unique_ptr<ViewModel::DebuggerViewModel> viewModel,
             Language::ILanguage& languageService,
-            Gui::IIconManager& iconManager
+            Gui::IIconManager& iconManager,
+            Gui::IThemeProvider& themeProvider
         );
 
         ~DebuggerView() override;
@@ -104,6 +107,7 @@ namespace Vertex::View
         void setup_aui_layout();
         void apply_pane_captions();
         void setup_panel_callbacks();
+        void ensure_disassembly_visible();
 
         void vertex_event_callback(Event::EventId eventId, const Event::VertexEvent& event);
         void update_view(ViewUpdateFlags flags = ViewUpdateFlags::DEBUGGER_ALL);
@@ -158,16 +162,19 @@ namespace Vertex::View
         wxStaticText* m_infoText{};
 
         wxTimer* m_refreshTimer{};
+        mutable int m_refreshTimerIntervalMs{};
 
         std::unique_ptr<ViewModel::DebuggerViewModel> m_viewModel{};
         Language::ILanguage& m_languageService;
         Gui::IIconManager& m_iconManager;
+        Gui::IThemeProvider& m_themeProvider;
 
         ViewUpdateFlags m_pendingUpdateFlags{ViewUpdateFlags::NONE};
         bool m_hasPendingUpdate{};
         bool m_updateScheduled{};
 
         std::uint64_t m_lastHighlightedAddress{};
+        std::size_t m_lastConsoleLogCount{};
 
         ::Vertex::Debugger::DebuggerState m_lastState{::Vertex::Debugger::DebuggerState::Detached};
     };

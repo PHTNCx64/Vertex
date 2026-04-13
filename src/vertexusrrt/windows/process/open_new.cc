@@ -4,33 +4,98 @@
 //
 #include <vertexusrrt/process_internal.hh>
 
-extern StatusCode vertex_process_open(const uint32_t processId);
+namespace
+{
+    std::wstring quote_command_line_argument(const std::wstring& argument)
+    {
+        if (argument.empty())
+        {
+            return L"\"\"";
+        }
+
+        if (argument.find_first_of(L" \t\n\v\"") == std::wstring::npos)
+        {
+            return argument;
+        }
+
+        std::wstring quoted{};
+        quoted.reserve(argument.size() + 2);
+        quoted.push_back(L'"');
+
+        std::size_t consecutiveBackslashes = 0;
+        for (const wchar_t ch : argument)
+        {
+            if (ch == L'\\')
+            {
+                ++consecutiveBackslashes;
+                continue;
+            }
+
+            if (ch == L'"')
+            {
+                quoted.append((consecutiveBackslashes * 2) + 1, L'\\');
+                quoted.push_back(L'"');
+                consecutiveBackslashes = 0;
+                continue;
+            }
+
+            quoted.append(consecutiveBackslashes, L'\\');
+            consecutiveBackslashes = 0;
+            quoted.push_back(ch);
+        }
+
+        quoted.append(consecutiveBackslashes * 2, L'\\');
+        quoted.push_back(L'"');
+
+        return quoted;
+    }
+}
 
 extern "C"
 {
-    VERTEX_EXPORT StatusCode VERTEX_API vertex_process_open_new(const char* process_path, const char* argv)
+    VERTEX_EXPORT StatusCode VERTEX_API vertex_process_open_new(const char* process_path, const int argc, const char** argv)
     {
-        if (!process_path || std::string_view{process_path}.empty())
+        if (!process_path || std::string_view{process_path}.empty() || argc < 0)
         {
             return StatusCode::STATUS_ERROR_INVALID_PARAMETER;
         }
 
-        const auto proc_path_cpp_str = ProcessInternal::utf8_to_wchar(process_path);
+        const auto procPathCppStr = ProcessInternal::utf8_to_wchar(process_path);
 
-        auto argv_cpp_str = ProcessInternal::utf8_to_wchar(argv);
-
-        if (!proc_path_cpp_str)
+        if (!procPathCppStr)
         {
             return StatusCode::STATUS_ERROR_FMT_INVALID_CONVERSION;
         }
 
-        STARTUPINFO startup_info{};
-        startup_info.cb = sizeof(STARTUPINFO);
+        std::wstring commandLine = quote_command_line_argument(*procPathCppStr);
+
+        if (argv)
+        {
+            for (int i = 0; i < argc; ++i)
+            {
+                if (!argv[i])
+                {
+                    continue;
+                }
+
+                const auto arg = ProcessInternal::utf8_to_wchar(argv[i]);
+                if (!arg)
+                {
+                    return StatusCode::STATUS_ERROR_FMT_INVALID_CONVERSION;
+                }
+
+                commandLine.push_back(L' ');
+                commandLine += quote_command_line_argument(*arg);
+            }
+        }
+
+        STARTUPINFOW startup_info{};
+        startup_info.cb = sizeof(STARTUPINFOW);
 
         PROCESS_INFORMATION process_info{};
 
-        const BOOL result = CreateProcess(proc_path_cpp_str->c_str(), (argv_cpp_str && !argv_cpp_str->empty()) ? argv_cpp_str->data() : nullptr, nullptr, nullptr, TRUE, 0, nullptr, nullptr,
-                                          &startup_info, &process_info);
+        const BOOL result = CreateProcessW(procPathCppStr->c_str(), commandLine.data(), nullptr, nullptr, TRUE, 0, nullptr, nullptr,
+                                           &startup_info, &process_info);
         if (!result)
         {
             return StatusCode::STATUS_ERROR_PROCESS_ACCESS_DENIED;

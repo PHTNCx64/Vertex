@@ -34,10 +34,9 @@ namespace Vertex::ViewModel
         void set_event_callback(std::move_only_function<void(Event::EventId, const Event::VertexEvent&) const> eventCallback);
 
         [[nodiscard]] const std::vector<InjectionMethod>& get_injection_methods() const noexcept;
-        [[nodiscard]] const std::vector<std::string>& get_library_extensions() const noexcept;
+        [[nodiscard]] std::vector<std::string_view> get_selected_method_extensions() const;
 
         void load_injection_methods();
-        void load_library_extensions();
 
         void set_selected_method_index(int index);
         [[nodiscard]] int get_selected_method_index() const noexcept;
@@ -57,7 +56,6 @@ namespace Vertex::ViewModel
         Log::ILog& m_logService;
 
         std::vector<InjectionMethod> m_injectionMethods {};
-        std::vector<std::string> m_libraryExtensions {};
         int m_selectedMethodIndex {-1};
     };
 }

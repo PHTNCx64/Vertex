@@ -10,10 +10,10 @@
 #include <vertex/scanner/scanconfig.hh>
 #include <vertex/scanner/memoryscanner/imemoryscanner.hh>
 #include <vertex/scanner/scanresult.hh>
+#include <vertex/scanner/simd/simd_scanner.hh>
 #include <vertex/io/scanresultstore.hh>
 #include <vertex/log/ilog.hh>
 #include <atomic>
-#include <cstring>
 #include <mutex>
 #include <shared_mutex>
 #include <deque>
@@ -22,7 +22,9 @@ namespace Vertex::Scanner
 {
     struct WriterAtomics final
     {
+        START_PADDING_WARNING_SUPPRESSION
         alignas(std::hardware_destructive_interference_size) std::atomic<std::size_t> resultCount{};
+        END_PADDING_WARNING_SUPPRESSION
     };
 
     struct WriterRegionMetadata final
@@ -35,7 +37,7 @@ namespace Vertex::Scanner
     struct ScanSnapshot final
     {
         int iteration{};
-        std::vector<WriterRegionMetadata> writerRegions{};
+        std::shared_ptr<std::vector<WriterRegionMetadata>> writerRegions{};
         std::uint64_t resultsCount{};
         ScanConfiguration config{};
     };
@@ -47,6 +49,8 @@ namespace Vertex::Scanner
         ~MemoryScanner() override;
 
         void set_memory_reader(std::shared_ptr<IMemoryReader> reader) override;
+        void set_scan_completion_callback(std::move_only_function<void()> callback) override;
+        void set_scan_progress_callback(std::move_only_function<void()> callback) override;
         [[nodiscard]] bool has_memory_reader() const override;
 
         StatusCode initialize_scan(const ScanConfiguration& configuration, const std::vector<ScanRegion>& memoryRegions) override;
@@ -66,47 +70,11 @@ namespace Vertex::Scanner
 
         [[nodiscard]] std::uint64_t get_regions_scanned() const noexcept override;
         [[nodiscard]] std::uint64_t get_total_regions() const noexcept override;
-        [[nodiscard]] std::uint64_t get_results_count() const noexcept override;
+        [[nodiscard]] std::uint64_t get_results_count() const override;
 
       private:
-        struct FlatRecordBuffer final
-        {
-            Memory::AlignedByteVector data{};
-            std::size_t recordCount{};
-            std::size_t valueSize{};
-            std::size_t firstValueSize{};
-            std::size_t recordSize{};
-
-            [[nodiscard]] std::uint64_t get_address(std::size_t index) const
-            {
-                std::uint64_t addr{};
-                std::memcpy(&addr, data.data() + index * recordSize, sizeof(std::uint64_t));
-                return addr;
-            }
-
-            [[nodiscard]] const std::uint8_t* get_previous_value(std::size_t index) const
-            {
-                return reinterpret_cast<const std::uint8_t*>(data.data() + index * recordSize + sizeof(std::uint64_t));
-            }
-
-            [[nodiscard]] const std::uint8_t* get_first_value(std::size_t index) const
-            {
-                if (firstValueSize == 0)
-                {
-                    return get_previous_value(index);
-                }
-                return reinterpret_cast<const std::uint8_t*>(data.data() + index * recordSize + sizeof(std::uint64_t) + valueSize);
-            }
-        };
-
-        StatusCode scan_memory_region(const ScanRegion& region, std::size_t writerIndex, Memory::AlignedByteVector& regionBuffer);
-        StatusCode scan_previous_results_from_regions(
-            const std::vector<WriterRegionMetadata>& previousRegions,
-            std::size_t globalStartIndex,
-            std::size_t totalCount,
-            std::size_t previousValueSize,
-            std::size_t previousFirstValueSize,
-            std::size_t writerIndex);
+        StatusCode scan_memory_region(const ScanRegion& region, std::size_t writerIndex, IMemoryReader& reader, Memory::AlignedByteVector& regionBuffer);
+        StatusCode scan_previous_results_from_regions(std::size_t sortedStartIndex, std::size_t totalCount, std::size_t previousValueSize, std::size_t previousFirstValueSize, std::size_t writerIndex);
 
         [[nodiscard]] bool check_value_matches(const std::uint8_t* currentData) const;
         [[nodiscard]] bool check_value_matches_with_previous(const std::uint8_t* currentData, const std::uint8_t* previousData) const;
@@ -118,24 +86,30 @@ namespace Vertex::Scanner
         StatusCode write_results_direct(const ScanResult& results, std::size_t writerIndex);
         StatusCode get_scan_results_locked(std::vector<ScanResultEntry>& results, std::size_t startIndex, std::size_t count) const;
 
-        struct AddressBundle final
+        struct ChunkDescriptor final
         {
-            std::uint64_t startAddress{};
-            std::uint64_t endAddress{};
-            std::vector<std::uint64_t> addresses{};
-            std::vector<const std::uint8_t*> previousValuePtrs{};
-            std::vector<const std::uint8_t*> firstValuePtrs{};
+            ScanRegion region{};
+            std::size_t chunkOffset{};
+            std::size_t chunkSize{};
         };
-        [[nodiscard]] std::vector<AddressBundle> bundle_adjacent_addresses(const FlatRecordBuffer& records, std::size_t maxGapBytes = 512) const;
+
+        struct SortedRecordRef final
+        {
+            std::uint64_t address{};
+            const std::byte* recordPtr{};
+        };
 
         StatusCode create_writer_regions(std::size_t writerCount);
         void cleanup_writer_regions(std::vector<WriterRegionMetadata>& regions) const;
-        void cleanup_snapshot_regions(ScanSnapshot& snapshot) const;
+        void cleanup_snapshot_regions(const ScanSnapshot& snapshot) const;
         void save_snapshot_for_undo();
+        StatusCode finalize_writer_store(std::size_t writerIndex);
         void reconcile_result_count();
-
-        [[nodiscard]] FlatRecordBuffer read_records_from_regions(const std::vector<WriterRegionMetadata>& regions, std::size_t startIndex, std::size_t count, std::size_t valueSize, std::size_t firstValueSize) const;
-
+        void notify_scan_completion();
+        void notify_scan_progress();
+        void notify_scan_progress_throttled();
+        [[nodiscard]] bool drain_active_scan();
+        StatusCode build_sorted_next_scan_records(const std::vector<WriterRegionMetadata>& previousRegions, std::size_t previousValueSize, std::size_t previousFirstValueSize);
 
         // Give each atomic enough space to hold their own CPU cache line to prevent false sharing between threads
         // since it can heavily tank performance through cache invalidation and these atomics are partly in hot paths.
@@ -143,42 +117,57 @@ namespace Vertex::Scanner
         // NOTE: It should be compiled per CPU architecture since the size of hardware_destructive_interference_size depends on the CPU's cache line size.
         // e.g. x86 usually has 64 byte cache line sizes, Apple Silicon ARM uses 128 bytes.
 
-        MSVC_SUPPRESS_PADDING_WARNING
+        START_PADDING_WARNING_SUPPRESSION
 
         alignas(std::hardware_destructive_interference_size) std::atomic<bool> m_scanAbort{};
         alignas(std::hardware_destructive_interference_size) std::atomic<bool> m_resultsReconciled{true};
         alignas(std::hardware_destructive_interference_size) std::atomic<int> m_activeReaders{};
-        alignas(std::hardware_destructive_interference_size) std::atomic<int> m_pendingWriterTasks{};
         alignas(std::hardware_destructive_interference_size) std::atomic<std::uint64_t> m_regionsScanned{};
         alignas(std::hardware_destructive_interference_size) std::atomic<std::uint64_t> m_totalRegions{};
         alignas(std::hardware_destructive_interference_size) std::atomic<std::uint64_t> m_resultsCount{};
+        alignas(std::hardware_destructive_interference_size) std::atomic<std::uint64_t> m_lastProgressNotifyTick{};
 
-        MSVC_END_WARNING_SUPPRESSION
+        END_PADDING_WARNING_SUPPRESSION
 
         int m_scanIteration{};
         ScanConfiguration m_scanConfig{};
 
-        using ScanComparatorFn = bool(*)(const void*, const void*, const void*, const void*);
+        using ScanComparatorFn = bool (*)(const void*, const void*, const void*, const void*);
         ScanComparatorFn m_resolvedComparator{};
         const void* m_resolvedInput{};
         const void* m_resolvedInput2{};
         bool m_resolvedSwapNeeded{};
         bool m_resolvedIsString{};
+        Simd::SimdScanCapability m_simdCapability{};
 
         std::size_t m_workerCount{};
+        std::vector<ChunkDescriptor> m_allChunks{};
+
+        START_PADDING_WARNING_SUPPRESSION
+        alignas(std::hardware_destructive_interference_size) std::atomic<std::size_t> m_nextChunkIndex{};
+        alignas(std::hardware_destructive_interference_size) std::atomic<std::size_t> m_totalChunks{};
+        END_PADDING_WARNING_SUPPRESSION
+
+        std::vector<SortedRecordRef> m_sortedNextScanRecords{};
 
         mutable std::shared_mutex m_writerRegionsMutex{};
         std::vector<WriterRegionMetadata> m_writerRegions{};
 
         static constexpr std::size_t MAX_UNDO_DEPTH = 10;
+        static constexpr std::size_t NEXT_SCAN_CHUNK_SIZE = 4096;
         std::deque<ScanSnapshot> m_undoHistory{};
         mutable std::mutex m_undoHistoryMutex{};
 
         std::shared_ptr<IMemoryReader> m_memoryReader{};
         mutable std::mutex m_memoryReaderMutex{};
+        std::move_only_function<void()> m_scanCompletionCallback{};
+        mutable std::mutex m_scanCompletionCallbackMutex{};
+        std::move_only_function<void()> m_scanProgressCallback{};
+        mutable std::mutex m_scanProgressCallbackMutex{};
 
         std::condition_variable m_mainThreadWaitCondition{};
         std::mutex m_mainThreadMutex{};
+        std::mutex m_scanLifecycleMutex{};
 
         Configuration::ISettings& m_settingsService;
         Log::ILog& m_logService;

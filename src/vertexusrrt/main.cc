@@ -8,6 +8,11 @@
 #include <vertexusrrt/native_handle.hh>
 #include <vertexusrrt/disassembler.hh>
 
+#if defined(__linux__)
+#include <vertexusrrt/linux/debugger_options.hh>
+#include <vertexusrrt/linux/lldb_backend.hh>
+#endif
+
 #include <string>
 
 native_handle& get_native_handle();
@@ -50,6 +55,10 @@ extern "C" VERTEX_EXPORT StatusCode VERTEX_API vertex_init(PluginInformation* pl
         g_pluginRuntime->vertex_log_info("Disassembler (Capstone) initialized successfully.");
     }
 
+#if defined(__linux__)
+    debugger_options::register_ui_panel();
+#endif
+
     g_pluginRuntime->vertex_log_info("Vertex User-Mode Runtime initialized.");
 
     return StatusCode::STATUS_OK;
@@ -57,13 +66,29 @@ extern "C" VERTEX_EXPORT StatusCode VERTEX_API vertex_init(PluginInformation* pl
 
 extern "C" VERTEX_EXPORT StatusCode VERTEX_API vertex_exit()
 {
-    PluginRuntime::cleanup_disassembler();
+    std::ignore = vertex_debugger_set_callbacks(nullptr);
+
+    const auto detachStatus = vertex_debugger_detach();
+    if (detachStatus != StatusCode::STATUS_OK &&
+        detachStatus != StatusCode::STATUS_ERROR_DEBUGGER_NOT_ATTACHED &&
+        g_pluginRuntime)
+    {
+        g_pluginRuntime->vertex_log_warn("vertex_exit: debugger detach returned status %d", static_cast<int>(detachStatus));
+    }
+
+#if defined(__linux__)
+    Debugger::terminate_lldb();
+#endif
+
     clear_module_cache();
+    PluginRuntime::cleanup_disassembler();
 
     if (g_pluginRuntime)
     {
         g_pluginRuntime->vertex_log_info("Vertex User-Mode Runtime shutting down.");
     }
+
+    g_pluginRuntime = nullptr;
     return StatusCode::STATUS_OK;
 }
 
@@ -97,4 +122,3 @@ extern "C" VERTEX_EXPORT StatusCode VERTEX_API vertex_event(const Event event, c
             return StatusCode::STATUS_OK;
     }
 }
-

@@ -9,6 +9,7 @@ find_package(capstone CONFIG REQUIRED)
 set(SOURCES
     main.cc
     arch_registers.cc
+    disassembler.cc
     ${CMAKE_SOURCE_DIR}/include/vertexusrrt/arch_registers.hh
     ${CMAKE_SOURCE_DIR}/include/vertexusrrt/debugloopcontext.hh
     ${CMAKE_SOURCE_DIR}/include/vertexusrrt/disassembler.hh
@@ -27,7 +28,6 @@ if(WIN32)
             windows/event/event_helpers.cc
             windows/event/process_opened.cc
             windows/event/debugger_attached.cc
-            windows/disassembler.cc
             windows/disassembler/disassemble_range.cc
             windows/memory/memory_helpers.cc
             windows/memory/read_process.cc
@@ -100,7 +100,40 @@ elseif(APPLE)
     )
 elseif(UNIX)
     list(APPEND SOURCES
-        linux/events.cc
+        linux/process/close.cc
+        linux/process/get_executable_extensions.cc
+        linux/process/get_injection_methods.cc
+        linux/process/get_list.cc
+        linux/process/get_module_exports.cc
+        linux/process/get_module_imports.cc
+        linux/process/get_modules_list.cc
+        linux/process/injector/detect_dll_arch.cc
+        linux/process/is_valid.cc
+        linux/process/kill.cc
+        linux/process/open.cc
+        linux/process/open_new.cc
+        linux/process/process_helpers.cc
+        linux/process/architecture_detection.cc
+        linux/memory/memory_helpers.cc
+        linux/memory/read_process.cc
+        linux/memory/write_process.cc
+        linux/memory/allocate.cc
+        linux/memory/free.cc
+        linux/memory/get_pointer_size.cc
+        linux/memory/construct_attribute_filters.cc
+        linux/memory/get_min_address.cc
+        linux/memory/get_max_address.cc
+        linux/memory/change_protection.cc
+        linux/memory/query_regions.cc
+        linux/event/event_helpers.cc
+        linux/event/process_opened.cc
+        linux/event/debugger_attached.cc
+        linux/disassembler/disassemble_range.cc
+        linux/debugger/debugger_options.cc
+        linux/debugger/lldb/lldb_backend.cc
+        linux/debugger/lldb/lldb_breakpoints.cc
+        linux/debugger/lldb/lldb_state.cc
+        linux/debugger/lldb/lldb_watchpoints.cc
     )
 endif()
 
@@ -115,6 +148,46 @@ target_include_directories(vertexusrrt PRIVATE
 
 target_link_libraries(vertexusrrt PRIVATE capstone::capstone)
 
+if(UNIX AND NOT APPLE)
+    find_package(LLDB QUIET)
+    if(LLDB_FOUND)
+        target_link_libraries(vertexusrrt PRIVATE lldb)
+    else()
+        find_library(LLDB_LIBRARY NAMES lldb lldb-22 lldb-21 lldb-20 lldb-19 lldb-18 lldb-17 lldb-16 lldb-15 lldb-14
+            PATHS
+                /usr/lib
+                /usr/lib64
+                /usr/lib/llvm/lib
+                /usr/lib/llvm-18/lib
+                /usr/lib/llvm-17/lib
+                /usr/lib/llvm-16/lib
+                /usr/lib/llvm-15/lib
+                /usr/lib/llvm-14/lib
+        )
+        find_path(LLDB_INCLUDE_DIR NAMES lldb/API/LLDB.h
+            PATHS
+                /usr/include
+                /usr/lib/llvm/include
+                /usr/lib/llvm-18/include
+                /usr/lib/llvm-17/include
+                /usr/lib/llvm-16/include
+                /usr/lib/llvm-15/include
+                /usr/lib/llvm-14/include
+        )
+        if(LLDB_LIBRARY AND LLDB_INCLUDE_DIR)
+            target_link_libraries(vertexusrrt PRIVATE ${LLDB_LIBRARY})
+            target_include_directories(vertexusrrt PRIVATE ${LLDB_INCLUDE_DIR})
+        else()
+            message(FATAL_ERROR
+                "liblldb not found. Install LLDB development files:\n"
+                "  Arch Linux: pacman -S lldb\n"
+                "  Debian/Ubuntu: apt install liblldb-dev\n"
+                "  Fedora: dnf install lldb-devel"
+            )
+        endif()
+    endif()
+endif()
+
 configure_target(vertexusrrt SUBDIR Plugins)
 
 set_target_properties(vertexusrrt PROPERTIES
@@ -122,12 +195,33 @@ set_target_properties(vertexusrrt PROPERTIES
     FOLDER "Runtime"
 )
 
+if(UNIX AND NOT APPLE)
+    set_target_properties(vertexusrrt PROPERTIES
+        INSTALL_RPATH "$ORIGIN"
+        BUILD_RPATH "$ORIGIN"
+        BUILD_WITH_INSTALL_RPATH TRUE
+    )
+endif()
+
 #-----------------------------
 #  Post-Build: Copy Dependencies
 #-----------------------------
-add_custom_command(TARGET vertexusrrt POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E copy_if_different
-        $<TARGET_FILE:capstone::capstone>
-        "${CMAKE_BINARY_DIR}"
-    COMMENT "Copying Capstone DLL to build directory"
-)
+if(WIN32)
+    add_custom_command(TARGET vertexusrrt POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            $<TARGET_FILE:capstone::capstone>
+            "${CMAKE_BINARY_DIR}"
+        COMMENT "Copying Capstone DLL to build directory"
+    )
+endif()
+
+if(UNIX AND NOT APPLE AND VERTEX_BUNDLE_LLDB)
+    add_custom_command(TARGET vertexusrrt POST_BUILD
+        COMMAND ${CMAKE_COMMAND}
+            -DTARGET_FILE=$<TARGET_FILE:vertexusrrt>
+            -DOUTPUT_DIR=$<TARGET_FILE_DIR:vertexusrrt>
+            -P "${CMAKE_SOURCE_DIR}/cmake/bundle_runtime_deps.cmake"
+        COMMENT "Bundling LLDB/LLVM runtime dependencies next to vertexusrrt"
+        VERBATIM
+    )
+endif()

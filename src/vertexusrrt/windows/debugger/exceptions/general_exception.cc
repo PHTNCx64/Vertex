@@ -4,7 +4,7 @@
 //
 #include <vertexusrrt/debugger_internal.hh>
 
-#include <Windows.h>
+#include <windows.h>
 
 #include <algorithm>
 #include <format>

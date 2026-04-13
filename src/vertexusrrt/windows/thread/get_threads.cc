@@ -7,7 +7,9 @@
 
 #include <sdk/api.h>
 
-#include <Windows.h>
+#include <cstring>
+
+#include <windows.h>
 #include <tlhelp32.h>
 
 extern native_handle& get_native_handle();

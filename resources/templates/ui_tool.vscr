@@ -1,0 +1,11 @@
+// UI tool template.
+void main()
+{
+    log_info("UI tool started.");
+
+    // Example flow:
+    // auto@ frame = ui_create_frame("Template Tool", 480, 320);
+    // auto@ layout = ui_create_box_sizer(UI_VERTICAL);
+    // frame.set_sizer(layout);
+    // frame.show();
+}

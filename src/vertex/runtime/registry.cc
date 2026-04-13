@@ -22,7 +22,7 @@ namespace Vertex::Runtime
         info.architectureName = archInfo.architectureName;
 
         m_archInfo = info;
-        return STATUS_OK;
+        return StatusCode::STATUS_OK;
     }
 
     std::optional<ArchInfo> Registry::get_architecture() const
@@ -42,7 +42,7 @@ namespace Vertex::Runtime
         info.collapsedByDefault = category.collapsedByDefault != 0;
 
         m_categories[info.categoryId] = info;
-        return STATUS_OK;
+        return StatusCode::STATUS_OK;
     }
 
     StatusCode Registry::unregister_category(const std::string_view categoryId)
@@ -53,7 +53,7 @@ namespace Vertex::Runtime
         const auto it = m_categories.find(categoryIdStr);
         if (it == m_categories.end())
         {
-            return STATUS_ERROR_GENERAL_NOT_FOUND;
+            return StatusCode::STATUS_ERROR_GENERAL_NOT_FOUND;
         }
 
         for (auto regIt = m_registers.begin(); regIt != m_registers.end();)
@@ -70,7 +70,7 @@ namespace Vertex::Runtime
 
         m_categories.erase(it);
         m_specialRegistersCached = false;
-        return STATUS_OK;
+        return StatusCode::STATUS_OK;
     }
 
     std::vector<RegisterCategoryInfo> Registry::get_categories() const
@@ -124,7 +124,7 @@ namespace Vertex::Runtime
 
         m_registers[info.name] = info;
         m_specialRegistersCached = false;
-        return STATUS_OK;
+        return StatusCode::STATUS_OK;
     }
 
     StatusCode Registry::unregister_register(const std::string_view registerName)
@@ -134,12 +134,12 @@ namespace Vertex::Runtime
         const auto it = m_registers.find(std::string{registerName});
         if (it == m_registers.end())
         {
-            return STATUS_ERROR_GENERAL_NOT_FOUND;
+            return StatusCode::STATUS_ERROR_GENERAL_NOT_FOUND;
         }
 
         m_registers.erase(it);
         m_specialRegistersCached = false;
-        return STATUS_OK;
+        return StatusCode::STATUS_OK;
     }
 
     std::vector<RegisterInfo> Registry::get_registers() const
@@ -221,7 +221,7 @@ namespace Vertex::Runtime
                 return a.bitPosition < b.bitPosition;
             });
 
-        return STATUS_OK;
+        return StatusCode::STATUS_OK;
     }
 
     std::vector<FlagBitInfo> Registry::get_flag_bits(const std::string_view flagsRegisterName) const
@@ -247,7 +247,7 @@ namespace Vertex::Runtime
         info.isFatal = exceptionType.isFatal != 0;
 
         m_exceptionTypes[info.exceptionCode] = info;
-        return STATUS_OK;
+        return StatusCode::STATUS_OK;
     }
 
     std::vector<ExceptionTypeInfo> Registry::get_exception_types() const
@@ -295,7 +295,7 @@ namespace Vertex::Runtime
         }
 
         m_callingConventions.push_back(info);
-        return STATUS_OK;
+        return StatusCode::STATUS_OK;
     }
 
     std::vector<CallingConventionInfo> Registry::get_calling_conventions() const
@@ -333,7 +333,7 @@ namespace Vertex::Runtime
             register_calling_convention(snapshot.callingConventions[i]);
         }
 
-        return STATUS_OK;
+        return StatusCode::STATUS_OK;
     }
 
     void Registry::clear()

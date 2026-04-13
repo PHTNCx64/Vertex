@@ -6,6 +6,7 @@
 
 #include <vertex/utility.hh>
 #include <vertex/event/types/viewevent.hh>
+#include <vertex/gui/theme/themeprovider.hh>
 #include <wx/app.h>
 #include <wx/filedlg.h>
 #include <wx/msgdlg.h>
@@ -15,7 +16,7 @@
 
 namespace Vertex::View
 {
-    InjectorView::InjectorView(Language::ILanguage& languageService, std::unique_ptr<ViewModel::InjectorViewModel> viewModel)
+    InjectorView::InjectorView(Language::ILanguage& languageService, std::unique_ptr<ViewModel::InjectorViewModel> viewModel, Gui::IThemeProvider& themeProvider)
         : wxDialog(wxTheApp->GetTopWindow(),
                    wxID_ANY,
                    wxString::FromUTF8(languageService.fetch_translation("injectorView.ui.title")),
@@ -23,7 +24,8 @@ namespace Vertex::View
                    wxSize(FromDIP(StandardWidgetValues::INJECTOR_X_DIP), FromDIP(StandardWidgetValues::INJECTOR_Y_DIP)),
                    wxDEFAULT_DIALOG_STYLE | wxRESIZE_BORDER),
           m_viewModel{std::move(viewModel)},
-          m_languageService{languageService}
+          m_languageService{languageService},
+          m_themeProvider{themeProvider}
     {
         m_viewModel->set_event_callback(
           [this](const Event::EventId eventId, const Event::VertexEvent& event)
@@ -50,7 +52,6 @@ namespace Vertex::View
         }
 
         m_viewModel->load_injection_methods();
-        m_viewModel->load_library_extensions();
         populate_methods();
 
         Show();
@@ -82,7 +83,7 @@ namespace Vertex::View
 
     wxString InjectorView::build_file_filter() const
     {
-        const auto& extensions = m_viewModel->get_library_extensions();
+        const auto extensions = m_viewModel->get_selected_method_extensions();
 
         if (extensions.empty())
         {
@@ -98,7 +99,7 @@ namespace Vertex::View
             {
                 wildcards += ";";
             }
-            wildcards += wxString::Format("*%s", wxString::FromUTF8(ext));
+            wildcards += wxString::Format("*%s", wxString::FromUTF8(std::string{ext}));
         }
 
         return wxString::Format("%s (%s)|%s",
@@ -173,6 +174,14 @@ namespace Vertex::View
 
     void InjectorView::bind_events()
     {
+        Bind(wxEVT_SYS_COLOUR_CHANGED, [this](wxSysColourChangedEvent& event)
+        {
+            m_themeProvider.refresh();
+            Gui::ThemeProvider::apply_palette_to_tree(this, m_themeProvider.palette());
+            Refresh();
+            event.Skip();
+        });
+
         m_methodComboBox->Bind(wxEVT_COMBOBOX,
             [this](const wxCommandEvent& event)
             {

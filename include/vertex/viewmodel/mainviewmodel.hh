@@ -12,6 +12,7 @@
 #include <thread>
 #include <atomic>
 #include <mutex>
+#include <optional>
 
 #include <vertex/thread/ithreaddispatcher.hh>
 #include <vertex/event/eventbus.hh>
@@ -77,7 +78,6 @@ namespace Vertex::ViewModel
         void open_project() const;
         void exit_application() const;
         void open_memory_view() const;
-        void add_address_manually() const;
         void open_memory_region_settings() const;
         void open_process_list_window() const;
         void open_settings_window() const;
@@ -85,7 +85,9 @@ namespace Vertex::ViewModel
         void open_activity_window() const;
         void open_debugger_window() const;
         void open_injector_window() const;
+        void open_scripting_window() const;
         void get_file_executable_extensions(std::vector<std::string>& extensions) const;
+        [[nodiscard]] StatusCode open_new_process(std::string_view processPath, int argc, const char** argv) const;
 
         void set_process_information(std::string_view informationText);
         [[nodiscard]] std::string get_process_information() const;
@@ -96,6 +98,7 @@ namespace Vertex::ViewModel
         void refresh_visible_range(int startIndex, int endIndex);
         void update_cache_window(int visibleStart, int visibleEnd);
         [[nodiscard]] bool is_scan_complete() const;
+        [[nodiscard]] bool has_scan_initialization_error() const;
 
         [[nodiscard]] std::vector<std::string> get_value_type_names() const;
         [[nodiscard]] std::vector<std::string> get_scan_mode_names() const;
@@ -138,6 +141,7 @@ namespace Vertex::ViewModel
         [[nodiscard]] std::uint64_t get_max_process_address() const;
 
         [[nodiscard]] bool is_process_opened() const;
+        [[nodiscard]] std::optional<std::reference_wrapper<Log::ILog>> get_log_service() const;
         void kill_process() const;
 
         [[nodiscard]] int get_endianness_type_index() const;
@@ -147,6 +151,7 @@ namespace Vertex::ViewModel
         [[nodiscard]] SavedAddress get_saved_address_at(int index) const;
         [[nodiscard]] bool has_saved_address(std::uint64_t address) const;
         void add_saved_address(std::uint64_t address);
+        void add_saved_address(std::uint64_t address, int valueTypeIndex);
         void remove_saved_address(int index);
         void set_saved_address_frozen(int index, bool frozen);
         void set_saved_address_value(int index, std::string_view value);
@@ -155,7 +160,7 @@ namespace Vertex::ViewModel
         void refresh_saved_address(int index);
         void refresh_all_saved_addresses();
         void refresh_saved_addresses_range(int startIndex, int endIndex);
-        void process_frozen_addresses();
+        void process_frozen_addresses() const;
 
     private:
         void load_ui_state_from_settings();
@@ -167,7 +172,7 @@ namespace Vertex::ViewModel
         void notify_view_update(ViewUpdateFlags flags) const;
         void start_freeze_timer();
         void stop_freeze_timer();
-        void freeze_timer_loop();
+        void freeze_timer_loop() const;
         void update_frozen_addresses_flag();
 
         [[nodiscard]] std::uint8_t get_actual_scan_mode_value() const;
@@ -177,6 +182,7 @@ namespace Vertex::ViewModel
         bool m_isNextScanAvailable {};
         bool m_isHexadecimal {};
         bool m_isUnknownScanMode {};
+        bool m_scanInitializationFailed {};
         bool m_alignmentEnabled {true};
 
         int m_valueTypeIndex {2};
@@ -209,6 +215,7 @@ namespace Vertex::ViewModel
 
         std::unique_ptr<Model::MainModel> m_model {};
         std::unique_ptr<std::thread> m_freezeTimerThread {};
+        std::future<StatusCode> m_nextScanInitFuture {};
         std::move_only_function<void(Event::EventId, const Event::VertexEvent&) const> m_eventCallback {};
 
         std::atomic<bool> m_freezeTimerRunning {};

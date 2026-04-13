@@ -6,7 +6,7 @@
 
 #include <cstdint>
 
-#include <Windows.h>
+#include <windows.h>
 
 extern "C" VERTEX_EXPORT StatusCode VERTEX_API vertex_memory_get_min_process_address(std::uint64_t* address)
 {

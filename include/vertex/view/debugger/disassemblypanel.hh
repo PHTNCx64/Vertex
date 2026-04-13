@@ -12,6 +12,7 @@
 #include <vertex/debugger/debuggertypes.hh>
 #include <vertex/language/language.hh>
 #include <vertex/gui/iconmanager/iconmanager.hh>
+#include <vertex/gui/theme/ithemeprovider.hh>
 #include <vertex/view/debugger/disassemblycontrol.hh>
 
 namespace Vertex::View::Debugger
@@ -26,12 +27,14 @@ namespace Vertex::View::Debugger
         using BreakpointEditConditionCallback = std::function<void(std::uint32_t id, const ::Vertex::Debugger::Breakpoint& bp)>;
         using RunToCursorCallback = std::function<void(std::uint64_t address)>;
         using ScrollBoundaryCallback = std::function<void(std::uint64_t boundaryAddress, bool isTop)>;
+        using ShowInMemoryCallback = std::function<void(std::uint64_t address)>;
         using XrefQueryCallback = DisassemblyControl::XrefQueryCallback;
 
         DisassemblyPanel(
             wxWindow* parent,
             Language::ILanguage& languageService,
-            Gui::IIconManager& iconManager
+            Gui::IIconManager& iconManager,
+            Gui::IThemeProvider& themeProvider
         );
 
         void update_disassembly(const ::Vertex::Debugger::DisassemblyRange& range) const;
@@ -47,10 +50,12 @@ namespace Vertex::View::Debugger
         void set_breakpoint_edit_condition_callback(BreakpointEditConditionCallback callback);
         void set_run_to_cursor_callback(RunToCursorCallback callback);
         void set_scroll_boundary_callback(ScrollBoundaryCallback callback);
+        void set_show_in_memory_callback(ShowInMemoryCallback callback);
         void set_xref_query_callback(XrefQueryCallback callback);
 
         [[nodiscard]] std::uint64_t get_selected_address() const;
         [[nodiscard]] DisassemblyHeader* get_header() const { return m_disassemblyHeader; }
+        void refresh_theme();
 
     private:
         void create_controls();
@@ -74,5 +79,6 @@ namespace Vertex::View::Debugger
 
         Language::ILanguage& m_languageService;
         Gui::IIconManager& m_iconManager;
+        Gui::IThemeProvider& m_themeProvider;
     };
 }

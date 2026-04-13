@@ -82,6 +82,7 @@ extern "C" {
 
         VertexRegisterUIPanel_t vertex_register_ui_panel;
         VertexGetUIValue_t vertex_get_ui_value;
+        VertexSetUIValue_t vertex_set_ui_value;
     } Runtime;
 
     // ===============================================================================================================//
@@ -99,7 +100,7 @@ extern "C" {
     VERTEX_EXPORT StatusCode VERTEX_API vertex_process_kill();
     VERTEX_EXPORT StatusCode VERTEX_API vertex_process_get_executable_extensions(char** extensions, uint32_t* count);
     VERTEX_EXPORT StatusCode VERTEX_API vertex_process_get_library_extensions(char** extensions, uint32_t* count);
-    VERTEX_EXPORT StatusCode VERTEX_API vertex_process_open_new(const char* process_path, const char* argv);
+    VERTEX_EXPORT StatusCode VERTEX_API vertex_process_open_new(const char* process_path, const int argc, const char** argv);
     VERTEX_EXPORT StatusCode VERTEX_API vertex_process_get_list(ProcessInformation** list, uint32_t* count);
     VERTEX_EXPORT StatusCode VERTEX_API vertex_process_get_modules_list(ModuleInformation** list, uint32_t* count);
     VERTEX_EXPORT StatusCode VERTEX_API vertex_process_get_injection_methods(InjectionMethod** methods, uint32_t* count);
@@ -113,7 +114,10 @@ extern "C" {
     // PROCESS MEMORY RELATED API FUNCTIONS                                                                           //
     // ===============================================================================================================//
     VERTEX_EXPORT StatusCode VERTEX_API vertex_memory_read_process(uint64_t address, uint64_t size, char* buffer);
+    VERTEX_EXPORT StatusCode VERTEX_API vertex_memory_read_process_bulk(const BulkReadRequest* requests, BulkReadResult* results, uint32_t count);
+    VERTEX_EXPORT StatusCode VERTEX_API vertex_memory_get_bulk_request_limit(uint32_t* maxRequestCount);
     VERTEX_EXPORT StatusCode VERTEX_API vertex_memory_write_process(uint64_t address, uint64_t size, const char* buffer);
+    VERTEX_EXPORT StatusCode VERTEX_API vertex_memory_write_process_bulk(const BulkWriteRequest* requests, BulkWriteResult* results, uint32_t count);
     VERTEX_EXPORT StatusCode VERTEX_API vertex_memory_allocate(uint64_t address, uint64_t size, const MemoryAttributeOption** protection, size_t attributeSize, uint64_t* targetAddress);
     VERTEX_EXPORT StatusCode VERTEX_API vertex_memory_change_protection(uint64_t address, uint64_t size, MemoryAttributeOption option);
     VERTEX_EXPORT StatusCode VERTEX_API vertex_memory_query_regions(MemoryRegion** regions, uint64_t* size);

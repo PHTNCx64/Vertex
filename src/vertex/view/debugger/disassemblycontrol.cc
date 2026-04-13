@@ -4,6 +4,7 @@
 //
 #include <vertex/view/debugger/disassemblycontrol.hh>
 #include <vertex/utility.hh>
+#include <vertex/gui/theme/themeprovider.hh>
 #include <wx/menu.h>
 #include <wx/clipbrd.h>
 #include <wx/dialog.h>
@@ -21,14 +22,17 @@ namespace Vertex::View::Debugger
 {
     DisassemblyHeader::DisassemblyHeader(
         wxWindow* parent,
-        Language::ILanguage& languageService
+        Language::ILanguage& languageService,
+        Gui::IThemeProvider& themeProvider
     )
-        : wxPanel(parent, wxID_ANY, wxDefaultPosition, wxDefaultSize, wxFULL_REPAINT_ON_RESIZE)
+        : wxPanel()
+        , m_themeProvider(themeProvider)
     {
-        wxWindowBase::SetBackgroundStyle(wxBG_STYLE_PAINT);
+        wxWindow::SetBackgroundStyle(wxBG_STYLE_PAINT);
+        Create(parent, wxID_ANY, wxDefaultPosition, wxDefaultSize, wxFULL_REPAINT_ON_RESIZE);
+        refresh_theme();
 
         m_codeFont = wxFont(10, wxFONTFAMILY_TELETYPE, wxFONTSTYLE_NORMAL, wxFONTWEIGHT_NORMAL);
-        m_codeFont.SetFaceName("Consolas");
         m_codeFontBold = m_codeFont.Bold();
 
         wxClientDC dc(this);
@@ -105,6 +109,18 @@ namespace Vertex::View::Debugger
     void DisassemblyHeader::set_column_reorder_callback(ColumnReorderCallback callback)
     {
         m_columnReorderCallback = std::move(callback);
+    }
+
+    void DisassemblyHeader::refresh_theme()
+    {
+        const auto& pal = m_themeProvider.palette();
+        m_colors.headerBackground = pal.panel;
+        m_colors.headerBorder = pal.border;
+        m_colors.headerText = pal.textHeader;
+        m_colors.separatorHover = pal.accent;
+        m_colors.dragIndicator = pal.dragIndicator;
+        m_colors.draggedColumn = pal.draggedColumn;
+        Refresh();
     }
 
     void DisassemblyHeader::set_left_offset(const int offset)
@@ -401,10 +417,10 @@ namespace Vertex::View::Debugger
         if (m_leftOffset > 0)
         {
             dc.SetPen(*wxTRANSPARENT_PEN);
-            dc.SetBrush(wxBrush(wxColour(0x2D, 0x2D, 0x2D)));
+            dc.SetBrush(wxBrush(m_colors.headerBackground));
             dc.DrawRectangle(0, 0, m_leftOffset, size.GetHeight());
 
-            dc.SetPen(wxPen(wxColour(0x3E, 0x3E, 0x3E), 1));
+            dc.SetPen(wxPen(m_colors.headerBorder, 1));
             dc.DrawLine(m_leftOffset, 0, m_leftOffset, size.GetHeight());
         }
 
@@ -465,17 +481,19 @@ namespace Vertex::View::Debugger
     {
     }
 
-    DisassemblyControl::DisassemblyControl(wxWindow* parent, Language::ILanguage& languageService, DisassemblyHeader* header)
-        : wxScrolledWindow(parent, wxID_ANY, wxDefaultPosition, wxDefaultSize,
-                           wxVSCROLL | wxHSCROLL | wxFULL_REPAINT_ON_RESIZE | wxWANTS_CHARS)
+    DisassemblyControl::DisassemblyControl(wxWindow* parent, Language::ILanguage& languageService, Gui::IThemeProvider& themeProvider, DisassemblyHeader* header)
+        : wxScrolledWindow()
         , m_loadingAnimTimer(this)
         , m_header(header)
         , m_languageService(languageService)
+        , m_themeProvider(themeProvider)
     {
-        wxWindowBase::SetBackgroundStyle(wxBG_STYLE_PAINT);
+        SetBackgroundStyle(wxBG_STYLE_PAINT);
+        Create(parent, wxID_ANY, wxDefaultPosition, wxDefaultSize,
+               wxVSCROLL | wxHSCROLL | wxFULL_REPAINT_ON_RESIZE | wxWANTS_CHARS);
+        refresh_theme();
 
         m_codeFont = wxFont(10, wxFONTFAMILY_TELETYPE, wxFONTSTYLE_NORMAL, wxFONTWEIGHT_NORMAL);
-        m_codeFont.SetFaceName("Consolas");
         m_codeFontBold = m_codeFont.Bold();
 
         wxClientDC dc(this);
@@ -530,6 +548,55 @@ namespace Vertex::View::Debugger
     void DisassemblyControl::on_columns_changed()
     {
         update_virtual_size();
+        Refresh();
+    }
+
+    void DisassemblyControl::refresh_theme()
+    {
+        const auto& pal = m_themeProvider.palette();
+        m_colors.background = pal.background;
+        m_colors.backgroundAlt = pal.backgroundAlt;
+        m_colors.selectedLine = pal.selection;
+        m_colors.currentLine = pal.currentLine;
+        m_colors.breakpointLine = pal.breakpointLine;
+
+        m_colors.address = pal.accent;
+        m_colors.bytes = pal.textSecondary;
+        m_colors.mnemonicNormal = pal.text;
+        m_colors.mnemonicJump = pal.syntaxFlowJump;
+        m_colors.mnemonicCall = pal.syntaxFlowCall;
+        m_colors.mnemonicRet = pal.syntaxFlowReturn;
+        m_colors.mnemonicMov = pal.syntaxMove;
+        m_colors.mnemonicArith = pal.syntaxArithmetic;
+        m_colors.operands = pal.syntaxOperand;
+        m_colors.operandReg = pal.syntaxRegister;
+        m_colors.operandImm = pal.syntaxImmediate;
+        m_colors.operandMem = pal.syntaxMemory;
+        m_colors.comment = pal.syntaxComment;
+        m_colors.symbolLabel = pal.syntaxSymbol;
+        m_colors.moduleContext = pal.textSecondary;
+        m_colors.functionEntryLine = pal.functionEntryLine;
+
+        m_colors.arrowUnconditional = pal.arrowUnconditional;
+        m_colors.arrowConditional = pal.arrowConditional;
+        m_colors.arrowCall = pal.arrowCall;
+        m_colors.arrowLoop = pal.arrowLoop;
+
+        m_colors.breakpointMarker = pal.markerBreakpoint;
+        m_colors.breakpointMarkerDisabled = pal.markerBreakpointDisabled;
+        m_colors.breakpointMarkerPending = pal.markerBreakpointPending;
+        m_colors.breakpointLineDisabled = pal.breakpointLineDisabled;
+        m_colors.breakpointLinePending = pal.breakpointLinePending;
+        m_colors.currentMarker = pal.markerCurrent;
+
+        m_colors.gutter = pal.gutterBackground;
+        m_colors.gutterBorder = pal.gutterBorder;
+
+        m_colors.loadingText = pal.loadingText;
+        m_colors.endOfRangeText = pal.endOfRangeText;
+        m_colors.errorText = pal.error;
+        m_colors.errorRetryText = pal.errorRetryText;
+        m_colors.edgeIndicatorBg = pal.edgeIndicatorBg;
         Refresh();
     }
 
@@ -730,6 +797,11 @@ namespace Vertex::View::Debugger
     void DisassemblyControl::set_scroll_boundary_callback(ScrollBoundaryCallback callback)
     {
         m_scrollBoundaryCallback = std::move(callback);
+    }
+
+    void DisassemblyControl::set_show_in_memory_callback(ShowInMemoryCallback callback)
+    {
+        m_showInMemoryCallback = std::move(callback);
     }
 
     void DisassemblyControl::set_xref_query_callback(XrefQueryCallback callback)
@@ -1006,6 +1078,7 @@ namespace Vertex::View::Debugger
 
             menu.Append(MENU_ID_XREFS_TO, wxString::FromUTF8(m_languageService.fetch_translation("debugger.contextMenu.xrefsTo")));
             menu.Append(MENU_ID_XREFS_FROM, wxString::FromUTF8(m_languageService.fetch_translation("debugger.contextMenu.xrefsFrom")));
+            menu.Append(MENU_ID_SHOW_IN_MEMORY, wxString::FromUTF8("Show in Memory View"));
             menu.AppendSeparator();
 
             menu.Append(MENU_ID_COPY_ADDRESS, wxString::FromUTF8(m_languageService.fetch_translation("debugger.contextMenu.copyAddress")));
@@ -1084,6 +1157,15 @@ namespace Vertex::View::Debugger
                                 if (weak.expired()) { return; }
                                 show_xrefs_dialog(xrefs, ::Vertex::Debugger::XrefDirection::From);
                             });
+                    }
+                    break;
+                }
+                case MENU_ID_SHOW_IN_MEMORY:
+                {
+                    if (m_showInMemoryCallback)
+                    {
+                        const auto targetAddress = line.branchTarget.value_or(line.address);
+                        m_showInMemoryCallback(targetAddress);
                     }
                     break;
                 }
@@ -1689,7 +1771,7 @@ namespace Vertex::View::Debugger
 
                 if (i < DisassemblyHeader::COLUMN_COUNT - 1)
                 {
-                    dc.SetPen(wxPen(m_separatorColor, 1));
+                    dc.SetPen(wxPen(m_colors.gutterBorder, 1));
                     dc.DrawLine(x - padding / 2, y, x - padding / 2, y + m_lineHeight);
                 }
             }
@@ -1844,10 +1926,10 @@ namespace Vertex::View::Debugger
             {
                 return !a.targetOutOfBounds;
             }
-            const auto spanA = std::abs(static_cast<long long>(a.targetLineIndex) -
-                                        static_cast<long long>(a.sourceLineIndex));
-            const auto spanB = std::abs(static_cast<long long>(b.targetLineIndex) -
-                                        static_cast<long long>(b.sourceLineIndex));
+            const auto spanA = std::abs(static_cast<std::int64_t>(a.targetLineIndex) -
+                                        static_cast<std::int64_t>(a.sourceLineIndex));
+            const auto spanB = std::abs(static_cast<std::int64_t>(b.targetLineIndex) -
+                                        static_cast<std::int64_t>(b.sourceLineIndex));
             return spanA < spanB;
         });
 
@@ -2124,8 +2206,8 @@ namespace Vertex::View::Debugger
             auto* noResultsLabel = new wxStaticText(
                 &dialog, wxID_ANY,
                 wxString::FromUTF8(m_languageService.fetch_translation("debugger.xrefs.noResults")));
-            sizer->Add(noResultsLabel, 0, wxALL | wxALIGN_CENTER, StandardWidgetValues::BORDER_TWICE);
-            sizer->Add(dialog.CreateStdDialogButtonSizer(wxOK), 0, wxEXPAND | wxALL, StandardWidgetValues::STANDARD_BORDER);
+            sizer->Add(noResultsLabel, StandardWidgetValues::NO_PROPORTION, wxALL | wxALIGN_CENTER, StandardWidgetValues::BORDER_TWICE);
+            sizer->Add(dialog.CreateStdDialogButtonSizer(wxOK), StandardWidgetValues::NO_PROPORTION, wxEXPAND | wxALL, StandardWidgetValues::STANDARD_BORDER);
             dialog.SetSizer(sizer);
             dialog.ShowModal();
             return;
@@ -2218,13 +2300,14 @@ namespace Vertex::View::Debugger
 
         auto* buttonSizer = new wxBoxSizer(wxHORIZONTAL);
         buttonSizer->AddStretchSpacer();
-        buttonSizer->Add(goButton, 0, wxRIGHT, StandardWidgetValues::STANDARD_BORDER);
-        buttonSizer->Add(cancelButton, 0);
+        buttonSizer->Add(goButton, StandardWidgetValues::NO_PROPORTION, wxRIGHT, StandardWidgetValues::STANDARD_BORDER);
+        buttonSizer->Add(cancelButton, StandardWidgetValues::NO_PROPORTION);
 
-        sizer->Add(listCtrl, 1, wxEXPAND | wxALL, StandardWidgetValues::STANDARD_BORDER);
-        sizer->Add(buttonSizer, 0, wxEXPAND | wxALL, StandardWidgetValues::STANDARD_BORDER);
+        sizer->Add(listCtrl, StandardWidgetValues::STANDARD_PROPORTION, wxEXPAND | wxALL, StandardWidgetValues::STANDARD_BORDER);
+        sizer->Add(buttonSizer, StandardWidgetValues::NO_PROPORTION, wxEXPAND | wxALL, StandardWidgetValues::STANDARD_BORDER);
 
         dialog.SetSizer(sizer);
+        Gui::ThemeProvider::apply_palette_to_tree(&dialog, m_themeProvider.palette());
 
         goButton->Bind(wxEVT_BUTTON,
             [listCtrl, &navigateTarget, &dialog, resolve_navigate_target](wxCommandEvent&)

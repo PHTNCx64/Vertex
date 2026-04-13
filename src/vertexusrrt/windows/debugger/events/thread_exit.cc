@@ -3,7 +3,7 @@
 // Licensed under LGPLv3.0+
 //
 #include <vertexusrrt/debugger_internal.hh>
-#include <Windows.h>
+#include <windows.h>
 namespace debugger
 {
     TickEventResult handle_exit_thread(TickState& state, const DEBUG_EVENT& event)

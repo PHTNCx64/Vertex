@@ -3,7 +3,7 @@
 // Licensed under LGPLv3.0+
 //
 
-#include <Windows.h>
+#include <windows.h>
 
 BOOL WINAPI DllMain(const HINSTANCE hDll, const DWORD fdwReason, [[maybe_unused]] LPVOID lpvReserved)
 {
@@ -11,7 +11,7 @@ BOOL WINAPI DllMain(const HINSTANCE hDll, const DWORD fdwReason, [[maybe_unused]
     {
     case DLL_PROCESS_ATTACH:
         DisableThreadLibraryCalls(hDll);
-        MessageBox(nullptr, TEXT("Hello from the remote target!"), TEXT("DLL Injected"), MB_OK | MB_ICONINFORMATION);
+        MessageBox(nullptr, TEXT("Libtest up and running"), TEXT("DLL Injected"), MB_OK | MB_ICONINFORMATION);
         break;
     case DLL_PROCESS_DETACH:
         break;

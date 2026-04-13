@@ -4,11 +4,49 @@
 //
 #include <vertexusrrt/process_internal.hh>
 
+#include <algorithm>
+#include <cstdint>
+#include <unordered_map>
+#include <vector>
+
+namespace
+{
+    StatusCode copy_to_user_buffer(const std::vector<ModuleExport>& source,
+        ModuleExport** exports, std::uint32_t* count)
+    {
+        const auto actualCount = static_cast<std::uint32_t>(source.size());
+
+        if (!exports)
+        {
+            *count = actualCount;
+            return StatusCode::STATUS_OK;
+        }
+
+        if (!*exports || *count == 0)
+        {
+            return StatusCode::STATUS_ERROR_INVALID_PARAMETER;
+        }
+
+        const std::uint32_t capacity = *count;
+        const std::uint32_t copyCount = std::min(capacity, actualCount);
+
+        std::copy_n(source.begin(), copyCount, *exports);
+        *count = copyCount;
+
+        if (actualCount > capacity)
+        {
+            return StatusCode::STATUS_ERROR_MEMORY_BUFFER_TOO_SMALL;
+        }
+
+        return StatusCode::STATUS_OK;
+    }
+}
+
 extern "C"
 {
     VERTEX_EXPORT StatusCode VERTEX_API vertex_process_get_module_exports(const ModuleInformation* module, ModuleExport** exports, uint32_t* count)
     {
-        if (!module || !exports || !count)
+        if (!module || !count)
         {
             return StatusCode::STATUS_ERROR_INVALID_PARAMETER;
         }
@@ -21,9 +59,7 @@ extern "C"
             auto it = cache.exportCache.find(baseAddress);
             if (it != cache.exportCache.end())
             {
-                *exports = it->second.exports.data();
-                *count = static_cast<uint32_t>(it->second.exports.size());
-                return StatusCode::STATUS_OK;
+                return copy_to_user_buffer(it->second.exports, exports, count);
             }
         }
 
@@ -91,9 +127,7 @@ extern "C"
                 it->second.exports.swap(builtCache.exports);
                 it->second.stringStorage.swap(builtCache.stringStorage);
             }
-            *exports = it->second.exports.empty() ? nullptr : it->second.exports.data();
-            *count = static_cast<uint32_t>(it->second.exports.size());
-            return StatusCode::STATUS_OK;
+            return copy_to_user_buffer(it->second.exports, exports, count);
         };
 
         newCache.stringStorage.emplace_back(module->moduleName);

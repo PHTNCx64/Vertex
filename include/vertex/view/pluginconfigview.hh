@@ -15,6 +15,7 @@
 #include <wx/button.h>
 #include <wx/statbox.h>
 #include <wx/scrolwin.h>
+#include <wx/timer.h>
 
 #include <memory>
 #include <string>
@@ -56,7 +57,9 @@ namespace Vertex::View
 
         void on_apply_clicked(wxCommandEvent& event);
         void on_reset_clicked(wxCommandEvent& event);
+        void on_refresh_timer(wxTimerEvent& event);
         void on_field_changed(const std::string& panelId, const std::string& fieldId, UIFieldType type);
+        void schedule_value_refresh();
 
         [[nodiscard]] UIValue read_control_value(const FieldControl& fieldCtrl) const;
         void write_control_value(const FieldControl& fieldCtrl, const UIValue& value) const;
@@ -76,5 +79,7 @@ namespace Vertex::View
 
         std::unique_ptr<ViewModel::PluginConfigViewModel> m_viewModel{};
         Language::ILanguage& m_languageService;
+        std::unique_ptr<wxTimer> m_refreshTimer{};
+        int m_refreshTimerId{};
     };
 }

@@ -31,7 +31,7 @@ namespace Vertex::View::Debugger
         void layout_controls();
         void bind_events();
 
-        void on_item_selected(wxListEvent& event);
+        void on_item_selected(const wxListEvent& event);
 
         wxListCtrl* m_stackList{};
         wxBoxSizer* m_mainSizer{};

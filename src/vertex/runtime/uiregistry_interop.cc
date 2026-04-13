@@ -61,7 +61,7 @@ extern "C"
             return StatusCode::STATUS_ERROR_INVALID_PARAMETER;
         }
 
-        auto value = registry->get_value(panelId, fieldId);
+        const auto value = registry->get_value(panelId, fieldId);
         if (!value.has_value())
         {
             return StatusCode::STATUS_ERROR_GENERAL_NOT_FOUND;
@@ -69,5 +69,21 @@ extern "C"
 
         *outValue = *value;
         return StatusCode::STATUS_OK;
+    }
+
+    StatusCode VERTEX_API vertex_set_ui_value(const char* panelId, const char* fieldId, const UIValue* value)
+    {
+        auto* registry = get_ui_registry_instance();
+        if (!registry)
+        {
+            return StatusCode::STATUS_ERROR_INVALID_HANDLE;
+        }
+
+        if (!panelId || !fieldId || !value)
+        {
+            return StatusCode::STATUS_ERROR_INVALID_PARAMETER;
+        }
+
+        return registry->set_value(panelId, fieldId, *value);
     }
 }

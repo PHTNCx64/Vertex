@@ -65,7 +65,14 @@ namespace Vertex::Model
 
     StatusCode SettingsModel::set_active_language(const std::string_view choice) const
     {
-        const std::string language = fmt::format("{}{}", choice, FileTypes::CONFIGURATION_EXTENSION);
+        const auto& languages = m_languageService.fetch_all_languages();
+        const auto it = languages.find(std::string{choice});
+        if (it == languages.end()) [[unlikely]]
+        {
+            return StatusCode::STATUS_ERROR_GENERAL;
+        }
+
+        const std::string language = fmt::format("{}{}", it->second.stem().string(), FileTypes::CONFIGURATION_EXTENSION);
         m_settingsService.set_value("language.activeLanguage", language);
         m_hasUnsavedChanges = true;
         return StatusCode::STATUS_OK;
@@ -146,7 +153,7 @@ namespace Vertex::Model
 
     StatusCode SettingsModel::get_thread_buffer_size(int& sizeMB) const
     {
-        sizeMB = m_settingsService.get_int("memoryScan.threadBufferSizeMB", 32);
+        sizeMB = m_settingsService.get_int("memoryScan.threadBufferSizeMB", 8);
         return StatusCode::STATUS_OK;
     }
 
@@ -168,7 +175,9 @@ namespace Vertex::Model
 
         return pluginPathsJson
             | std::views::filter([](const auto& item) { return item.is_string(); })
-            | std::views::transform([](const auto& item) { return std::filesystem::path{item.template get<std::string>()}; })
+            | std::views::transform([](const auto& item) {
+                return Configuration::Filesystem::resolve_path(std::filesystem::path{item.template get<std::string>()});
+            })
             | std::ranges::to<std::vector>();
     }
 
@@ -181,7 +190,7 @@ namespace Vertex::Model
             pluginPathsJson = nlohmann::json::array();
         }
 
-        const std::string pathStr = path.string();
+        const std::string pathStr = Configuration::Filesystem::make_relative(path).string();
         const auto exists = std::ranges::any_of(pluginPathsJson, [&pathStr](const auto& item) {
             return item.is_string() && item.template get<std::string>() == pathStr;
         });
@@ -207,7 +216,7 @@ namespace Vertex::Model
             return StatusCode::STATUS_ERROR_FS_JSON_TYPE_MISMATCH;
         }
 
-        const std::string pathStr = path.string();
+        const std::string pathStr = Configuration::Filesystem::make_relative(path).string();
 
         const auto found = std::ranges::any_of(pluginPathsJson, [&pathStr](const auto& item) {
             return item.is_string() && item.template get<std::string>() == pathStr;
@@ -243,7 +252,7 @@ namespace Vertex::Model
 
         if (languagePathJson.is_string())
         {
-            paths.emplace_back(languagePathJson.get<std::string>());
+            paths.emplace_back(Configuration::Filesystem::resolve_path(std::filesystem::path{languagePathJson.get<std::string>()}));
         }
 
         return paths;
@@ -251,7 +260,7 @@ namespace Vertex::Model
 
     StatusCode SettingsModel::add_language_path(const std::filesystem::path& path) const
     {
-        m_settingsService.set_value("language.languagePath", path.string());
+        m_settingsService.set_value("language.languagePath", Configuration::Filesystem::make_relative(path).string());
         m_hasUnsavedChanges = true;
         return StatusCode::STATUS_OK;
     }
@@ -259,8 +268,9 @@ namespace Vertex::Model
     StatusCode SettingsModel::remove_language_path(const std::filesystem::path& path) const
     {
         const auto currentPath = m_settingsService.get_string("language.languagePath");
+        const auto relativePath = Configuration::Filesystem::make_relative(path).string();
 
-        if (currentPath == path.string())
+        if (currentPath == relativePath)
         {
             m_settingsService.set_value("language.languagePath", EMPTY_STRING);
             m_hasUnsavedChanges = true;
@@ -326,7 +336,7 @@ namespace Vertex::Model
         const auto result = m_loaderService.set_active_plugin(index);
         if (result == StatusCode::STATUS_OK)
         {
-            m_settingsService.set_value("plugins.activePluginPath", plugins[index].get_path());
+            m_settingsService.set_value("plugins.activePluginPath", Configuration::Filesystem::make_relative(plugins[index].get_path()).string());
             m_hasUnsavedChanges = true;
         }
         return result;

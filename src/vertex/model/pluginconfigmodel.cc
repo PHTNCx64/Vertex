@@ -5,7 +5,6 @@
 #include <vertex/model/pluginconfigmodel.hh>
 
 #include <fmt/format.h>
-#include <functional>
 #include <future>
 #include <span>
 
@@ -117,7 +116,7 @@ namespace Vertex::Model
 
     StatusCode PluginConfigModel::persist_values(const std::string_view panelId) const
     {
-        auto snapshot = m_uiRegistry.get_panel(panelId);
+        const auto snapshot = m_uiRegistry.get_panel(panelId);
         if (!snapshot.has_value())
         {
             return StatusCode::STATUS_ERROR_GENERAL_NOT_FOUND;
@@ -142,7 +141,7 @@ namespace Vertex::Model
 
     StatusCode PluginConfigModel::load_persisted_values(const std::string_view panelId) const
     {
-        auto snapshot = m_uiRegistry.get_panel(panelId);
+        const auto snapshot = m_uiRegistry.get_panel(panelId);
         if (!snapshot.has_value())
         {
             return StatusCode::STATUS_ERROR_GENERAL_NOT_FOUND;

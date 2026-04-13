@@ -3,6 +3,7 @@
 #include <vertex/view/debugger/registerspanel.hh>
 #include <vertex/debugger/debuggertypes.hh>
 #include "../../mocks/MockILanguage.hh"
+#include "../../mocks/MockIThemeProvider.hh"
 
 #include <wx/app.h>
 #include <wx/frame.h>
@@ -34,14 +35,19 @@ protected:
     void SetUp() override
     {
         m_language = std::make_unique<NiceMock<MockILanguage>>();
+        m_themeProvider = std::make_unique<NiceMock<MockIThemeProvider>>();
         ON_CALL(*m_language, fetch_translation(_))
             .WillByDefault(ReturnRef(m_emptyString));
+        ON_CALL(*m_themeProvider, palette())
+            .WillByDefault(ReturnRef(m_defaultPalette));
+        ON_CALL(*m_themeProvider, is_dark())
+            .WillByDefault(Return(true));
 
         m_frame = new wxFrame(nullptr, wxID_ANY, "RegistersPanelRegressionTest");
         m_frame->SetClientSize(wxSize(260, 180));
 
         auto* sizer = new wxBoxSizer(wxVERTICAL);
-        m_panel = new RegistersPanel(m_frame, *m_language);
+        m_panel = new RegistersPanel(m_frame, *m_language, *m_themeProvider);
         sizer->Add(m_panel, 1, wxEXPAND);
         m_frame->SetSizer(sizer);
         m_frame->Show();
@@ -100,10 +106,12 @@ protected:
     }
 
     std::unique_ptr<NiceMock<MockILanguage>> m_language;
+    std::unique_ptr<NiceMock<MockIThemeProvider>> m_themeProvider;
     wxFrame* m_frame {};
     RegistersPanel* m_panel {};
     wxListCtrl* m_list {};
     std::string m_emptyString;
+    Vertex::Gui::ColorPalette m_defaultPalette {};
 };
 
 TEST_F(RegistersPanelRegressionTest, RefreshKeepsSelectedRowInFallbackMode)

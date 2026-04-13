@@ -4,11 +4,7 @@
 //
 #pragma once
 
-#include <string>
-#include <unordered_set>
-
 #include <wx/dataview.h>
-#include <wx/timer.h>
 
 #include <vertex/viewmodel/processlistviewmodel.hh>
 #include <vertex/customwidgets/processlistdatamodel.hh>
@@ -26,9 +22,6 @@ namespace Vertex::CustomWidgets
         [[nodiscard]] std::size_t get_selected_node_index() const;
 
     private:
-        void save_ui_state(const wxDataViewItem& parent, std::unordered_set<std::string>& expandedPids, std::string& selectedPid);
-        void restore_ui_state(const wxDataViewItem& parent, const std::unordered_set<std::string>& expandedPids, const std::string& selectedPid);
-
         static constexpr int COLUMN_WIDTH_DEFAULT = 100;
 
         Language::ILanguage& m_languageService;

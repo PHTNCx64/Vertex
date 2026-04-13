@@ -4,7 +4,7 @@
 //
 #include <sdk/api.h>
 
-#include <Windows.h>
+#include <windows.h>
 #include <array>
 #include <cstdint>
 #include <ranges>

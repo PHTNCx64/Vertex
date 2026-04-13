@@ -62,6 +62,10 @@ namespace Vertex::View
     {
         m_applyButton->Bind(wxEVT_BUTTON, &PluginConfigView::on_apply_clicked, this);
         m_resetButton->Bind(wxEVT_BUTTON, &PluginConfigView::on_reset_clicked, this);
+
+        m_refreshTimer = std::make_unique<wxTimer>(this);
+        m_refreshTimerId = m_refreshTimer->GetId();
+        Bind(wxEVT_TIMER, &PluginConfigView::on_refresh_timer, this, m_refreshTimerId);
     }
 
     bool PluginConfigView::has_panels() const
@@ -105,8 +109,6 @@ namespace Vertex::View
     {
         const std::string panelId{panel.panelId};
         m_panelIds.push_back(panelId);
-
-        std::ignore = m_viewModel->load_persisted(panelId);
 
         auto* panelBox = new wxStaticBox(m_scrollPanel, wxID_ANY, wxString::FromUTF8(panel.title));
         auto* panelSizer = new wxStaticBoxSizer(panelBox, wxVERTICAL);
@@ -176,6 +178,11 @@ namespace Vertex::View
             auto* label = new wxStaticText(parent, wxID_ANY, wxString::FromUTF8(field.label));
             gridSizer->Add(label, StandardWidgetValues::NO_PROPORTION, wxALIGN_CENTER_VERTICAL | wxALL, StandardWidgetValues::STANDARD_BORDER);
             gridSizer->AddSpacer(0);
+
+            if (field.fieldId[0] != '\0')
+            {
+                m_fieldControls.push_back({fieldPanelId, fieldId, field.type, label});
+            }
             return;
         }
         case VERTEX_UI_FIELD_BUTTON:
@@ -190,8 +197,14 @@ namespace Vertex::View
             button->Bind(wxEVT_BUTTON,
                 [this, fieldPanelId, fieldId](wxCommandEvent&)
                 {
+                    // Flush unsaved edits in the same panel before dispatching
+                    // the button action, so callbacks see the latest UI values.
+                    std::ignore = m_viewModel->apply_all(fieldPanelId);
+
                     UIValue empty {};
                     std::ignore = m_viewModel->apply_field(fieldPanelId, fieldId, empty);
+                    m_applyButton->Enable(m_viewModel->has_pending_changes());
+                    schedule_value_refresh();
                 });
 
             gridSizer->Add(button, StandardWidgetValues::NO_PROPORTION, wxEXPAND | wxALL, StandardWidgetValues::STANDARD_BORDER);
@@ -437,8 +450,14 @@ namespace Vertex::View
             button->Bind(wxEVT_BUTTON,
                 [this, fieldPanelId, fieldId](wxCommandEvent&)
                 {
+                    // Flush unsaved edits in the same panel before dispatching
+                    // the button action, so callbacks see the latest UI values.
+                    std::ignore = m_viewModel->apply_all(fieldPanelId);
+
                     UIValue empty {};
                     std::ignore = m_viewModel->apply_field(fieldPanelId, fieldId, empty);
+                    m_applyButton->Enable(m_viewModel->has_pending_changes());
+                    schedule_value_refresh();
                 });
 
             hSizer->Add(button, proportion, wxALL, border);
@@ -608,6 +627,11 @@ namespace Vertex::View
         {
             auto* label = new wxStaticText(parent, wxID_ANY, wxString::FromUTF8(field.label));
             hSizer->Add(label, proportion, wxALIGN_CENTER_VERTICAL | wxALL, border);
+
+            if (field.fieldId[0] != '\0')
+            {
+                m_fieldControls.push_back({fieldPanelId, fieldId, field.type, label});
+            }
             break;
         }
         default:
@@ -645,8 +669,9 @@ namespace Vertex::View
             if (textCtrl)
             {
                 auto str = textCtrl->GetValue().ToUTF8();
-                std::strncpy(value.stringValue, str.data(), VERTEX_UI_MAX_STRING_VALUE_LENGTH - 1);
-                value.stringValue[VERTEX_UI_MAX_STRING_VALUE_LENGTH - 1] = '\0';
+                const auto len = std::min(str.length(), static_cast<std::size_t>(VERTEX_UI_MAX_STRING_VALUE_LENGTH - 1));
+                std::copy_n(str.data(), len, value.stringValue);
+                value.stringValue[len] = '\0';
             }
             break;
         }
@@ -683,8 +708,9 @@ namespace Vertex::View
             if (choice)
             {
                 auto selection = choice->GetStringSelection().ToUTF8();
-                std::strncpy(value.stringValue, selection.data(), VERTEX_UI_MAX_STRING_VALUE_LENGTH - 1);
-                value.stringValue[VERTEX_UI_MAX_STRING_VALUE_LENGTH - 1] = '\0';
+                const auto len = std::min(selection.length(), static_cast<std::size_t>(VERTEX_UI_MAX_STRING_VALUE_LENGTH - 1));
+                std::copy_n(selection.data(), len, value.stringValue);
+                value.stringValue[len] = '\0';
             }
             break;
         }
@@ -703,6 +729,18 @@ namespace Vertex::View
             if (slider)
             {
                 value.floatValue = static_cast<double>(slider->GetValue()) / StandardWidgetValues::SLIDER_SCALE_FACTOR;
+            }
+            break;
+        }
+        case VERTEX_UI_FIELD_LABEL:
+        {
+            auto* label = dynamic_cast<wxStaticText*>(fieldCtrl.control);
+            if (label)
+            {
+                auto str = label->GetLabel().ToUTF8();
+                const auto len = std::min(str.length(), static_cast<std::size_t>(VERTEX_UI_MAX_STRING_VALUE_LENGTH - 1));
+                std::copy_n(str.data(), len, value.stringValue);
+                value.stringValue[len] = '\0';
             }
             break;
         }
@@ -782,6 +820,16 @@ namespace Vertex::View
             }
             break;
         }
+        case VERTEX_UI_FIELD_LABEL:
+        {
+            auto* label = dynamic_cast<wxStaticText*>(fieldCtrl.control);
+            if (label)
+            {
+                label->SetLabel(wxString::FromUTF8(value.stringValue));
+                label->GetParent()->Layout();
+            }
+            break;
+        }
         default:
             break;
         }
@@ -819,5 +867,18 @@ namespace Vertex::View
 
         load_values_from_viewmodel();
         m_applyButton->Enable(false);
+    }
+
+    void PluginConfigView::schedule_value_refresh()
+    {
+        if (m_refreshTimer)
+        {
+            m_refreshTimer->StartOnce(500);
+        }
+    }
+
+    void PluginConfigView::on_refresh_timer([[maybe_unused]] wxTimerEvent& event)
+    {
+        load_values_from_viewmodel();
     }
 }

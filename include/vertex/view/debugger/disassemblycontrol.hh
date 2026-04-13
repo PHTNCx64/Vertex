@@ -20,6 +20,7 @@
 
 #include <vertex/debugger/debuggertypes.hh>
 #include <vertex/language/language.hh>
+#include <vertex/gui/theme/ithemeprovider.hh>
 
 namespace Vertex::View::Debugger
 {
@@ -54,13 +55,15 @@ namespace Vertex::View::Debugger
 
         explicit DisassemblyHeader(
             wxWindow* parent,
-            Language::ILanguage& languageService
+            Language::ILanguage& languageService,
+            Gui::IThemeProvider& themeProvider
         );
 
         void set_horizontal_scroll_offset(int offset);
         void set_column_resize_callback(ColumnResizeCallback callback);
         void set_column_reorder_callback(ColumnReorderCallback callback);
         void set_left_offset(int offset);
+        void refresh_theme();
 
         [[nodiscard]] int get_header_height() const { return m_headerHeight; }
         [[nodiscard]] int get_char_width() const { return m_charWidth; }
@@ -122,6 +125,7 @@ namespace Vertex::View::Debugger
 
         ColumnResizeCallback m_columnResizeCallback{};
         ColumnReorderCallback m_columnReorderCallback{};
+        Gui::IThemeProvider& m_themeProvider;
 
         struct Colors
         {
@@ -145,14 +149,16 @@ namespace Vertex::View::Debugger
         using RunToCursorCallback = std::function<void(std::uint64_t address)>;
         using SelectionChangeCallback = std::function<void(std::uint64_t address)>;
         using ScrollBoundaryCallback = std::function<void(std::uint64_t boundaryAddress, bool isTop)>;
+        using ShowInMemoryCallback = std::function<void(std::uint64_t address)>;
         using XrefResultHandler = std::function<void(std::vector<::Vertex::Debugger::XrefEntry>)>;
         using XrefQueryCallback = std::function<void(std::uint64_t address,
             ::Vertex::Debugger::XrefDirection direction, XrefResultHandler onResult)>;
 
-        explicit DisassemblyControl(wxWindow* parent, Language::ILanguage& languageService, DisassemblyHeader* header = nullptr);
+        explicit DisassemblyControl(wxWindow* parent, Language::ILanguage& languageService, Gui::IThemeProvider& themeProvider, DisassemblyHeader* header = nullptr);
         ~DisassemblyControl() override = default;
 
         void set_header(DisassemblyHeader* header);
+        void refresh_theme();
         [[nodiscard]] DisassemblyHeader* get_header() const { return m_header; }
 
         void on_columns_changed();
@@ -182,6 +188,7 @@ namespace Vertex::View::Debugger
         void set_run_to_cursor_callback(RunToCursorCallback callback);
         void set_selection_change_callback(SelectionChangeCallback callback);
         void set_scroll_boundary_callback(ScrollBoundaryCallback callback);
+        void set_show_in_memory_callback(ShowInMemoryCallback callback);
         void set_xref_query_callback(XrefQueryCallback callback);
 
         void set_extension_result(bool isTop, ::Vertex::Debugger::ExtensionResult result);
@@ -266,6 +273,7 @@ namespace Vertex::View::Debugger
         static constexpr int MENU_ID_ENABLE_BREAKPOINT = 1008;
         static constexpr int MENU_ID_REMOVE_BREAKPOINT = 1009;
         static constexpr int MENU_ID_EDIT_CONDITION = 1010;
+        static constexpr int MENU_ID_SHOW_IN_MEMORY = 1011;
 
         struct Colors
         {
@@ -333,6 +341,7 @@ namespace Vertex::View::Debugger
         RunToCursorCallback m_runToCursorCallback{};
         SelectionChangeCallback m_selectionChangeCallback{};
         ScrollBoundaryCallback m_scrollBoundaryCallback{};
+        ShowInMemoryCallback m_showInMemoryCallback{};
         XrefQueryCallback m_xrefQueryCallback{};
 
         bool m_fetchingMore{};
@@ -348,7 +357,6 @@ namespace Vertex::View::Debugger
 
         DisassemblyHeader* m_header{};
         Language::ILanguage& m_languageService;
-
-        wxColour m_separatorColor{0x3E, 0x3E, 0x3E};
+        Gui::IThemeProvider& m_themeProvider;
     };
 } // namespace Vertex::View::Debugger

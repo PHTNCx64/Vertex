@@ -24,6 +24,7 @@ namespace Vertex::View::Debugger
         using RemoveWatchCallback = std::function<void(std::uint32_t id)>;
         using ModifyWatchCallback = std::function<void(std::uint32_t id, const std::string& newValue)>;
         using ExpandWatchCallback = std::function<void(std::uint32_t id, bool expand)>;
+        using ShowInMemoryCallback = std::function<void(std::uint64_t address)>;
 
         WatchPanel(wxWindow* parent, Language::ILanguage& languageService);
 
@@ -34,6 +35,7 @@ namespace Vertex::View::Debugger
         void set_remove_watch_callback(RemoveWatchCallback callback);
         void set_modify_watch_callback(ModifyWatchCallback callback);
         void set_expand_watch_callback(ExpandWatchCallback callback);
+        void set_show_in_memory_callback(ShowInMemoryCallback callback);
 
     private:
         void create_controls();
@@ -42,8 +44,9 @@ namespace Vertex::View::Debugger
 
         void on_add_watch(wxCommandEvent& event);
         void on_tree_item_activated(wxTreeEvent& event);
-        void on_tree_item_right_click(wxTreeEvent& event);
-        void on_tree_item_expanding(wxTreeEvent& event);
+        void on_tree_item_right_click(const wxTreeEvent& event);
+        void on_tree_item_expanding(const wxTreeEvent& event);
+        void on_tree_item_collapsing(const wxTreeEvent& event);
 
         void populate_tree(wxTreeCtrl* tree, wxTreeItemId parent,
                           const std::vector<::Vertex::Debugger::WatchVariable>& vars);
@@ -64,11 +67,13 @@ namespace Vertex::View::Debugger
 
         std::vector<::Vertex::Debugger::WatchVariable> m_watches{};
         std::vector<::Vertex::Debugger::LocalVariable> m_locals{};
+        bool m_rebuildingWatchTree{};
 
         AddWatchCallback m_addWatchCallback{};
         RemoveWatchCallback m_removeWatchCallback{};
         ModifyWatchCallback m_modifyWatchCallback{};
         ExpandWatchCallback m_expandWatchCallback{};
+        ShowInMemoryCallback m_showInMemoryCallback{};
 
         Language::ILanguage& m_languageService;
     };

@@ -3,25 +3,31 @@
 // Licensed under GPLv3.0 with Plugin Interface exceptions.
 //
 #include <vertex/runtime/plugin.hh>
-#include <vertex/runtime/libraryloader.hh>
+
 #include <vertex/runtime/caller.hh>
+
+#include <fmt/format.h>
 
 namespace Vertex::Runtime
 {
     void Plugin::unload()
     {
-        const auto result = Runtime::safe_call(internal_vertex_exit);
-        if (!Runtime::status_ok(result))
+        if (m_library.has_value())
         {
-            // TODO: add logging
+            const auto result = safe_call(internal_vertex_exit);
+            if (!status_ok(result))
+            {
+                m_logService.get().log_error(fmt::format("[Plugin Unload] vertex_exit failed for: {}", get_filename()));
+            }
+
+            if (!m_library->unload())
+            {
+                m_logService.get().log_error(fmt::format("[Plugin Unload] Failed to unload library: {}", get_filename()));
+            }
+            m_library.reset();
         }
 
-        if (m_pluginHandle)
-        {
-            Vertex::Runtime::LibraryLoader::unload_library(m_pluginHandle);
-            m_pluginHandle = nullptr;
-        }
-
+        reset_function_pointers();
         m_pluginInfo = {};
         m_runtime = {};
     }

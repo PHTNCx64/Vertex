@@ -4,11 +4,47 @@
 //
 #include <vertexusrrt/process_internal.hh>
 
+#include <algorithm>
+#include <cstdint>
+
+namespace
+{
+    StatusCode copy_to_user_buffer(const std::vector<ModuleImport>& source,
+        ModuleImport** imports, std::uint32_t* count)
+    {
+        const auto actualCount = static_cast<std::uint32_t>(source.size());
+
+        if (!imports)
+        {
+            *count = actualCount;
+            return StatusCode::STATUS_OK;
+        }
+
+        if (!*imports || *count == 0)
+        {
+            return StatusCode::STATUS_ERROR_INVALID_PARAMETER;
+        }
+
+        const std::uint32_t capacity = *count;
+        const std::uint32_t copyCount = std::min(capacity, actualCount);
+
+        std::copy_n(source.begin(), copyCount, *imports);
+        *count = copyCount;
+
+        if (actualCount > capacity)
+        {
+            return StatusCode::STATUS_ERROR_MEMORY_BUFFER_TOO_SMALL;
+        }
+
+        return StatusCode::STATUS_OK;
+    }
+}
+
 extern "C"
 {
     VERTEX_EXPORT StatusCode VERTEX_API vertex_process_get_module_imports(const ModuleInformation* module, ModuleImport** imports, uint32_t* count)
     {
-        if (!module || !imports || !count)
+        if (!module || !count)
         {
             return StatusCode::STATUS_ERROR_INVALID_PARAMETER;
         }
@@ -21,9 +57,7 @@ extern "C"
             auto it = cache.importCache.find(baseAddress);
             if (it != cache.importCache.end())
             {
-                *imports = it->second.imports.data();
-                *count = static_cast<uint32_t>(it->second.imports.size());
-                return StatusCode::STATUS_OK;
+                return copy_to_user_buffer(it->second.imports, imports, count);
             }
         }
 
@@ -89,9 +123,7 @@ extern "C"
                 it->second.imports.swap(builtCache.imports);
                 it->second.stringStorage.swap(builtCache.stringStorage);
             }
-            *imports = it->second.imports.empty() ? nullptr : it->second.imports.data();
-            *count = static_cast<uint32_t>(it->second.imports.size());
-            return StatusCode::STATUS_OK;
+            return copy_to_user_buffer(it->second.imports, imports, count);
         };
 
         if (importRva == 0)

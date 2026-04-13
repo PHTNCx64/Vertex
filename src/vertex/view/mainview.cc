@@ -3,25 +3,25 @@
 // Licensed under GPLv3.0 with Plugin Interface exceptions.
 //
 
-#include <vertex/resettable_call_once.hh>
 #include <vertex/event/types/viewupdateevent.hh>
 #include <vertex/scanner/valuetypes.hh>
 #include <fmt/format.h>
-#include <fmt/ranges.h>
 #include <vertex/view/mainview.hh>
 #include <vertex/view/aboutview.hh>
-#include <wx/filedlg.h>
-#include <ranges>
+#include <vertex/view/newprocessdialog.hh>
+#include <vertex/customwidgets/addaddressdialog.hh>
+#include <vertex/gui/theme/themeprovider.hh>
 
 #include <wx/spinctrl.h>
 
 namespace Vertex::View
 {
-    MainView::MainView(const wxString& title, std::unique_ptr<ViewModel::MainViewModel> viewModel, Language::ILanguage& languageService, Gui::IIconManager& iconManager)
+    MainView::MainView(const wxString& title, std::unique_ptr<ViewModel::MainViewModel> viewModel, Language::ILanguage& languageService, Gui::IIconManager& iconManager, Gui::IThemeProvider& themeProvider)
         : wxFrame(nullptr, wxID_ANY, title, wxDefaultPosition, wxSize(StandardWidgetValues::STANDARD_X_DIP, StandardWidgetValues::STANDARD_Y_DIP)),
-          m_viewModel(std::move(viewModel)),
-          m_languageService(languageService),
-          m_iconManager(iconManager)
+          m_viewModel{std::move(viewModel)},
+          m_languageService{languageService},
+          m_iconManager{iconManager},
+          m_themeProvider{themeProvider}
     {
         wxTheApp->SetTopWindow(this);
         m_auiManager.SetManagedWindow(this);
@@ -88,17 +88,19 @@ namespace Vertex::View
         m_auiToolBar->AddTool(StandardMenuIds::MainViewIds::ID_INJECTOR, wxString::FromUTF8(m_languageService.fetch_translation("mainWindow.toolbar.injector")),
                               m_iconManager.get_icon("injector", FromDIP(StandardWidgetValues::ICON_SIZE), theme),
                               wxString::FromUTF8(m_languageService.fetch_translation("mainWindow.toolbar.injectorDescription")));
+        m_auiToolBar->AddTool(StandardMenuIds::MainViewIds::ID_SCRIPTING, wxString::FromUTF8(m_languageService.fetch_translation("mainWindow.toolbar.code")),
+                              m_iconManager.get_icon("code", FromDIP(StandardWidgetValues::ICON_SIZE), theme), wxString::FromUTF8(m_languageService.fetch_translation("mainWindow.toolbar.codeDescription")));
         m_auiToolBar->Realize();
 
-        m_scannedValuesAndScanOptionsSizer = new wxFlexGridSizer(1, 2, StandardWidgetValues::STANDARD_BORDER, StandardWidgetValues::STANDARD_BORDER);
+        m_scannedValuesAndScanOptionsSizer = new wxBoxSizer(wxHORIZONTAL);
         m_processInformationAndStatusText = new wxStaticText(m_mainPanel, wxID_ANY, wxString::FromUTF8(m_languageService.fetch_translation("mainWindow.ui.noProcessSelected")));
         m_initialScanButton = new wxButton(m_mainPanel, wxID_ANY, wxString::FromUTF8(m_languageService.fetch_translation("mainWindow.buttons.initialScan")));
         m_nextScanButton = new wxButton(m_mainPanel, wxID_ANY, wxString::FromUTF8(m_languageService.fetch_translation("mainWindow.buttons.nextScan")));
         m_undoScanButton = new wxButton(m_mainPanel, wxID_ANY, wxString::FromUTF8(m_languageService.fetch_translation("mainWindow.buttons.undoScan")));
         m_buttonSizer = new wxBoxSizer(wxHORIZONTAL);
-        m_scanProgressBar = new wxGauge(m_mainPanel, wxID_ANY, StandardWidgetValues::GAUGE_MAX_VALUE, wxDefaultPosition, wxDefaultSize, wxGA_HORIZONTAL);
+        m_scanProgressBar = new wxGauge(m_mainPanel, wxID_ANY, StandardWidgetValues::GAUGE_MAX_VALUE, wxDefaultPosition, wxSize(-1, FromDIP(StandardWidgetValues::GAUGE_HEIGHT)), wxGA_HORIZONTAL);
         m_scannedValuesAmountText = new wxStaticText(m_mainPanel, wxID_ANY, wxString::FromUTF8(m_languageService.fetch_translation("mainWindow.ui.valuesFound")));
-        m_scannedValuesPanel = new CustomWidgets::ScannedValuesPanel(m_mainPanel, m_languageService,
+        m_scannedValuesPanel = new CustomWidgets::ScannedValuesPanel(m_mainPanel, m_languageService, m_themeProvider,
                                                                      std::shared_ptr<ViewModel::MainViewModel>(m_viewModel.get(),
                                                                                                                [](auto*)
                                                                                                                {
@@ -140,20 +142,13 @@ namespace Vertex::View
         m_alignmentCheckBox = new wxCheckBox(m_scanOptionsStaticBox, wxID_ANY, wxString::FromUTF8(m_languageService.fetch_translation("mainWindow.ui.alignedScan")));
         m_memoryRegionSettingsSizer = new wxBoxSizer(wxHORIZONTAL);
         m_memoryRegionSettingsButton = new wxButton(m_scanOptionsStaticBox, wxID_ANY, wxString::FromUTF8(m_languageService.fetch_translation("mainWindow.ui.memoryRegionSettings")));
-        m_minAddressSizer = new wxBoxSizer(wxVERTICAL);
-        m_minAddressLabel = new wxStaticText(m_scanOptionsStaticBox, wxID_ANY, wxString::FromUTF8(m_languageService.fetch_translation("mainWindow.ui.minimumAddress")));
-        m_minAddressTextControl = new wxTextCtrl(m_scanOptionsStaticBox, wxID_ANY, wxEmptyString);
-        m_maxAddressSizer = new wxBoxSizer(wxVERTICAL);
-        m_maxAddressLabel = new wxStaticText(m_scanOptionsStaticBox, wxID_ANY, wxString::FromUTF8(m_languageService.fetch_translation("mainWindow.ui.maximumAddress")));
-        m_maxAddressTextControl = new wxTextCtrl(m_scanOptionsStaticBox, wxID_ANY, wxEmptyString);
         m_addAddressManuallyButton = new wxButton(m_mainPanel, wxID_ANY, wxString::FromUTF8(m_languageService.fetch_translation("mainWindow.ui.addAddressManually")));
-        m_savedAddressesPanel = new CustomWidgets::SavedAddressesPanel(m_mainPanel, m_languageService,
+        m_savedAddressesPanel = new CustomWidgets::SavedAddressesPanel(m_mainPanel, m_languageService, m_themeProvider,
                                                                        std::shared_ptr<ViewModel::MainViewModel>(m_viewModel.get(),
                                                                                                                  [](auto*)
                                                                                                                  {
                                                                                                                  }));
         m_processValidityCheck = new wxTimer(this, wxID_ANY);
-        m_scanProgressTimer = new wxTimer(this, wxID_ANY);
 
         m_scannedValuesPanel->set_add_to_table_callback(
           [this]([[maybe_unused]] int index, const std::uint64_t address)
@@ -196,12 +191,9 @@ namespace Vertex::View
         m_topSectionSizer->Add(m_processInformationAndStatusText, StandardWidgetValues::NO_PROPORTION, wxEXPAND | wxALL, StandardWidgetValues::STANDARD_BORDER);
         m_topSectionSizer->Add(m_scanProgressBar, StandardWidgetValues::NO_PROPORTION, wxEXPAND | wxLEFT | wxRIGHT | wxBOTTOM, StandardWidgetValues::STANDARD_BORDER);
         m_mainBoxSizer->Add(m_topSectionSizer, StandardWidgetValues::NO_PROPORTION, wxEXPAND);
-        m_scannedValuesAndScanOptionsSizer->AddGrowableRow(StandardWidgetValues::NO_PROPORTION);
-        m_scannedValuesAndScanOptionsSizer->AddGrowableCol(StandardWidgetValues::NO_PROPORTION, StandardWidgetValues::COLUMN_PROPORTION_LARGE);
-        m_scannedValuesAndScanOptionsSizer->AddGrowableCol(StandardWidgetValues::STANDARD_PROPORTION, StandardWidgetValues::STANDARD_PROPORTION);
         m_valuesSizer->Add(m_scannedValuesAmountText, StandardWidgetValues::NO_PROPORTION, wxEXPAND | wxBOTTOM, StandardWidgetValues::STANDARD_BORDER);
         m_valuesSizer->Add(m_scannedValuesPanel, StandardWidgetValues::STANDARD_PROPORTION, wxEXPAND);
-        m_scannedValuesAndScanOptionsSizer->Add(m_valuesSizer, StandardWidgetValues::STANDARD_PROPORTION, wxEXPAND | wxALL, StandardWidgetValues::STANDARD_BORDER);
+        m_scannedValuesAndScanOptionsSizer->Add(m_valuesSizer, StandardWidgetValues::COLUMN_PROPORTION_LARGE, wxEXPAND | wxALL, StandardWidgetValues::STANDARD_BORDER);
         m_valueInputControlsSizer->Add(m_valueInputTextControl, StandardWidgetValues::STANDARD_PROPORTION, wxALIGN_CENTER_VERTICAL);
         m_valueInputControlsSizer->Add(m_valueInputText2, StandardWidgetValues::NO_PROPORTION, wxALIGN_CENTER_VERTICAL | wxLEFT | wxRIGHT, StandardWidgetValues::STANDARD_BORDER);
         m_valueInputControlsSizer->Add(m_valueInputTextControl2, StandardWidgetValues::STANDARD_PROPORTION, wxALIGN_CENTER_VERTICAL);
@@ -226,12 +218,6 @@ namespace Vertex::View
         m_scanOptionsSizer->Add(m_alignmentBoxSizer, StandardWidgetValues::NO_PROPORTION, wxEXPAND | wxLEFT | wxRIGHT | wxTOP, StandardWidgetValues::STANDARD_BORDER);
         m_memoryRegionSettingsSizer->Add(m_memoryRegionSettingsButton, StandardWidgetValues::NO_PROPORTION, wxEXPAND);
         m_scanOptionsSizer->Add(m_memoryRegionSettingsSizer, StandardWidgetValues::NO_PROPORTION, wxEXPAND | wxLEFT | wxRIGHT | wxTOP, StandardWidgetValues::STANDARD_BORDER);
-        m_minAddressSizer->Add(m_minAddressLabel, StandardWidgetValues::NO_PROPORTION, wxBOTTOM, StandardWidgetValues::STANDARD_BORDER);
-        m_minAddressSizer->Add(m_minAddressTextControl, StandardWidgetValues::NO_PROPORTION, wxEXPAND);
-        m_scanOptionsSizer->Add(m_minAddressSizer, StandardWidgetValues::NO_PROPORTION, wxEXPAND | wxLEFT | wxRIGHT | wxTOP, StandardWidgetValues::STANDARD_BORDER);
-        m_maxAddressSizer->Add(m_maxAddressLabel, StandardWidgetValues::NO_PROPORTION, wxBOTTOM, StandardWidgetValues::STANDARD_BORDER);
-        m_maxAddressSizer->Add(m_maxAddressTextControl, StandardWidgetValues::NO_PROPORTION, wxEXPAND);
-        m_scanOptionsSizer->Add(m_maxAddressSizer, StandardWidgetValues::NO_PROPORTION, wxEXPAND | wxLEFT | wxRIGHT | wxTOP, StandardWidgetValues::STANDARD_BORDER);
         m_buttonSizer->Add(m_initialScanButton, StandardWidgetValues::STANDARD_PROPORTION, wxEXPAND | wxRIGHT, StandardWidgetValues::STANDARD_BORDER);
         m_buttonSizer->Add(m_nextScanButton, StandardWidgetValues::STANDARD_PROPORTION, wxEXPAND | wxRIGHT, StandardWidgetValues::STANDARD_BORDER);
         m_buttonSizer->Add(m_undoScanButton, StandardWidgetValues::STANDARD_PROPORTION, wxEXPAND);
@@ -250,25 +236,48 @@ namespace Vertex::View
         switch (eventId)
         {
         case Event::PROCESS_CLOSED_EVENT:
-            CallAfter([this]()
-            {
-                handle_process_closed();
-            });
+            CallAfter(
+              [this]()
+              {
+                  handle_process_closed();
+              });
             break;
         case Event::VIEW_UPDATE_EVENT:
         {
             const auto flags = static_cast<const Event::ViewUpdateEvent&>(event).get_update_flags();
-            CallAfter([this, flags]()
-            {
-                update_view(flags);
-            });
+            const bool scanCompleted = has_flag(flags, ViewUpdateFlags::SCAN_COMPLETED);
+            const ViewUpdateFlags filteredFlags = static_cast<ViewUpdateFlags>(static_cast<unsigned int>(flags) & ~static_cast<unsigned int>(ViewUpdateFlags::SCAN_COMPLETED));
+
+            CallAfter(
+              [this, filteredFlags, scanCompleted]()
+              {
+                  ViewUpdateFlags remainingFlags = filteredFlags;
+
+                  if (has_flag(remainingFlags, ViewUpdateFlags::SCAN_PROGRESS))
+                  {
+                      on_scan_progress_update();
+                      remainingFlags = static_cast<ViewUpdateFlags>(static_cast<unsigned int>(remainingFlags) & ~static_cast<unsigned int>(ViewUpdateFlags::SCAN_PROGRESS) &
+                                                                    ~static_cast<unsigned int>(ViewUpdateFlags::SCANNED_VALUES));
+                  }
+
+                  if (remainingFlags != ViewUpdateFlags::NONE)
+                  {
+                      update_view(remainingFlags);
+                  }
+
+                  if (scanCompleted)
+                  {
+                      on_scan_completed();
+                  }
+              });
         }
         break;
         case Event::PROCESS_OPEN_EVENT:
-            CallAfter([this]()
-            {
-                update_view(ViewUpdateFlags::PROCESS_INFO);
-            });
+            CallAfter(
+              [this]()
+              {
+                  update_view(ViewUpdateFlags::PROCESS_INFO);
+              });
             break;
         default:;
         }
@@ -291,7 +300,6 @@ namespace Vertex::View
         m_alignmentValue->Bind(wxEVT_SPINCTRL, &MainView::on_alignment_value_changed, this);
 
         Bind(wxEVT_TIMER, &MainView::on_process_validity_check, this, m_processValidityCheck->GetId());
-        Bind(wxEVT_TIMER, &MainView::on_scan_progress_update, this, m_scanProgressTimer->GetId());
         Bind(wxEVT_CLOSE_WINDOW, &MainView::on_close, this);
 
         m_auiToolBar->Bind(
@@ -335,14 +343,22 @@ namespace Vertex::View
           StandardMenuIds::MainViewIds::ID_DEBUGGER);
 
         m_auiToolBar->Bind(
-            wxEVT_MENU,
-            [this](wxCommandEvent&)
-            {
-                m_viewModel->open_injector_window();
-            },
-            StandardMenuIds::MainViewIds::ID_INJECTOR);
+          wxEVT_MENU,
+          [this](wxCommandEvent&)
+          {
+              m_viewModel->open_injector_window();
+          },
+          StandardMenuIds::MainViewIds::ID_INJECTOR);
 
         m_auiToolBar->Bind(wxEVT_MENU, &MainView::on_activity_clicked, this, StandardMenuIds::MainViewIds::ID_ANALYTICS);
+
+        m_auiToolBar->Bind(
+          wxEVT_MENU,
+          [this](wxCommandEvent&)
+          {
+              m_viewModel->open_scripting_window();
+          },
+          StandardMenuIds::MainViewIds::ID_SCRIPTING);
 
         m_auiToolBar->Bind(
           wxEVT_MENU,
@@ -351,28 +367,56 @@ namespace Vertex::View
               std::vector<std::string> extensions{};
               m_viewModel->get_file_executable_extensions(extensions);
 
-              std::string extensionFilter{};
-              if (!extensions.empty())
+              NewProcessDialog dialog(this, m_languageService, std::move(extensions));
+              Gui::ThemeProvider::apply_palette_to_tree(&dialog, m_themeProvider.palette());
+              if (dialog.ShowModal() != wxID_OK)
               {
-                  auto wildcarded = extensions | std::views::transform(
-                                                   [](const std::string& ext)
-                                                   {
-                                                       return "*" + ext;
-                                                   });
-                  extensionFilter = fmt::format("Executable files|{}|All files|*.*", fmt::join(wildcarded, ";"));
-              }
-              else
-              {
-                  extensionFilter = "All files|*.*";
+                  return;
               }
 
-              wxFileDialog fileDialog(this, wxString::FromUTF8(m_languageService.fetch_translation("mainWindow.ui.selectExecutable")), wxEmptyString, wxEmptyString,
-                                      wxString::FromUTF8(extensionFilter), wxFD_OPEN | wxFD_FILE_MUST_EXIST);
+              std::string path{dialog.get_process_path().utf8_string()};
+              std::string argsString{dialog.get_start_arguments().utf8_string()};
 
-              if (fileDialog.ShowModal() == wxID_OK)
+              std::vector<std::string> tokens{};
+              bool inQuotes{};
+              std::string current{};
+              for (const char ch : argsString)
               {
-                  // TODO: Setup project file structures and do the handling here!!!
-                  [[maybe_unused]] wxString path = fileDialog.GetPath();
+                  if (ch == '"')
+                  {
+                      inQuotes = !inQuotes;
+                  }
+                  else if (ch == ' ' && !inQuotes)
+                  {
+                      if (!current.empty())
+                      {
+                          tokens.emplace_back(std::move(current));
+                          current.clear();
+                      }
+                  }
+                  else
+                  {
+                      current += ch;
+                  }
+              }
+              if (!current.empty())
+              {
+                  tokens.emplace_back(std::move(current));
+              }
+
+              std::vector<const char*> argv{};
+              argv.reserve(tokens.size() + 1);
+              argv.emplace_back(path.c_str());
+              for (const auto& token : tokens)
+              {
+                  argv.emplace_back(token.c_str());
+              }
+
+              const auto status = m_viewModel->open_new_process(path, static_cast<int>(argv.size()), argv.data());
+              if (status != StatusCode::STATUS_OK)
+              {
+                  wxMessageBox(wxString::FromUTF8(m_languageService.fetch_translation("mainWindow.ui.failedToOpenProcess")), wxString::FromUTF8(m_languageService.fetch_translation("general.error")),
+                               wxICON_ERROR | wxOK);
               }
           },
           StandardMenuIds::MainViewIds::ID_NEW_PROCESS);
@@ -400,6 +444,29 @@ namespace Vertex::View
               show_about_dialog();
           },
           StandardMenuIds::MainViewIds::ID_HELP_ABOUT);
+
+        Bind(wxEVT_SYS_COLOUR_CHANGED,
+             [this]([[maybe_unused]] wxSysColourChangedEvent& event)
+             {
+                 m_themeProvider.refresh();
+                 Gui::ThemeProvider::apply_palette_to_tree(this, m_themeProvider.palette());
+
+                 if (m_scannedValuesPanel)
+                 {
+                     m_scannedValuesPanel->get_header()->refresh_theme();
+                     m_scannedValuesPanel->get_control()->refresh_theme();
+                 }
+                 if (m_savedAddressesPanel)
+                 {
+                     m_savedAddressesPanel->get_header()->refresh_theme();
+                     m_savedAddressesPanel->get_control()->refresh_theme();
+                 }
+
+                 refresh_toolbar_icons();
+                 Gui::ThemeProvider::apply_palette_to_aui(m_auiManager, m_themeProvider.palette());
+                 Refresh();
+                 event.Skip();
+             });
     }
 
     void MainView::update_view(const ViewUpdateFlags flags)
@@ -412,24 +479,23 @@ namespace Vertex::View
                 set_control_status(ControlStatus::PROCESS_OPENED);
                 m_processValidityCheck->Start(StandardWidgetValues::TIMER_INTERVAL_MS);
                 m_savedAddressesPanel->start_auto_refresh();
-
-                const auto minAddr = m_viewModel->get_min_process_address();
-                const auto maxAddr = m_viewModel->get_max_process_address();
-                m_minAddressTextControl->SetValue(wxString::Format("0x%llX", minAddr));
-                m_maxAddressTextControl->SetValue(wxString::Format("0x%llX", maxAddr));
             }
         }
 
         if (has_flag(flags, ViewUpdateFlags::SCAN_PROGRESS))
         {
             const auto progress = m_viewModel->get_scan_progress();
-            constexpr std::int64_t GAUGE_MAX = 10000;
             if (progress.total > 0)
             {
+                constexpr std::int64_t GAUGE_MAX = 10000;
                 const int scaledTotal = static_cast<int>(std::min(progress.total, GAUGE_MAX));
                 const int scaledCurrent = static_cast<int>(progress.current * scaledTotal / progress.total);
                 m_scanProgressBar->SetRange(scaledTotal);
                 m_scanProgressBar->SetValue(std::min(scaledCurrent, scaledTotal));
+            }
+            else if (!m_viewModel->is_scan_complete())
+            {
+                m_scanProgressBar->Pulse();
             }
         }
 
@@ -499,9 +565,10 @@ namespace Vertex::View
             update_input_visibility_based_on_scan_type(m_scanTypeComboBox->GetSelection());
         }
 
-        if (flags != ViewUpdateFlags::NONE)
+        constexpr auto LAYOUT_FLAGS = ViewUpdateFlags::PROCESS_INFO | ViewUpdateFlags::INPUT_VISIBILITY | ViewUpdateFlags::DATATYPES | ViewUpdateFlags::SCAN_MODES;
+        if ((flags & LAYOUT_FLAGS) != ViewUpdateFlags::NONE)
         {
-            Layout();
+            m_mainPanel->Layout();
         }
     }
 
@@ -541,8 +608,6 @@ namespace Vertex::View
         m_processValidityCheck->Stop();
         m_savedAddressesPanel->stop_auto_refresh();
         m_scannedValuesPanel->stop_auto_refresh();
-        m_minAddressTextControl->Clear();
-        m_maxAddressTextControl->Clear();
         set_control_status(ControlStatus::NO_PROCESS_OPENED);
         m_viewModel->close_process_state();
     }
@@ -557,7 +622,7 @@ namespace Vertex::View
             m_valueInputTextControl->Show(true);
             m_valueInputText2->Show(false);
             m_valueInputTextControl2->Show(false);
-            Layout();
+            m_mainPanel->Layout();
             return;
         }
 
@@ -572,7 +637,7 @@ namespace Vertex::View
         m_valueInputText2->Show(isInBetween);
         m_valueInputTextControl2->Show(isInBetween);
 
-        Layout();
+        m_mainPanel->Layout();
     }
 
     void MainView::set_control_status(const ControlStatus controlStatus) const
@@ -592,8 +657,6 @@ namespace Vertex::View
             m_alignmentCheckBox->Disable();
             m_alignmentValue->Disable();
             m_memoryRegionSettingsButton->Disable();
-            m_minAddressTextControl->Disable();
-            m_maxAddressTextControl->Disable();
             m_addAddressManuallyButton->Disable();
             break;
 
@@ -611,8 +674,6 @@ namespace Vertex::View
             m_alignmentCheckBox->Enable();
             m_alignmentValue->Enable();
             m_memoryRegionSettingsButton->Enable();
-            m_minAddressTextControl->Enable();
-            m_maxAddressTextControl->Enable();
             m_addAddressManuallyButton->Enable();
             break;
         }
@@ -632,6 +693,8 @@ namespace Vertex::View
 
         m_scannedValuesPanel->stop_auto_refresh();
         m_scannedValuesPanel->clear_list();
+        m_scanProgressBar->SetRange(StandardWidgetValues::GAUGE_MAX_VALUE);
+        m_scanProgressBar->SetValue(0);
         m_viewModel->initial_scan();
 
         if (m_viewModel->is_unknown_scan_mode())
@@ -639,18 +702,15 @@ namespace Vertex::View
             m_initialScanButton->SetLabel(wxString::FromUTF8(m_languageService.fetch_translation("mainWindow.buttons.newScan")));
             update_view(ViewUpdateFlags::SCAN_MODES);
         }
-
-        m_timerReset.reset();
-        m_scanProgressTimer->Start();
     }
 
     void MainView::on_next_scan_clicked([[maybe_unused]] wxCommandEvent& event)
     {
         m_scannedValuesPanel->stop_auto_refresh();
         m_scannedValuesPanel->clear_list();
+        m_scanProgressBar->SetRange(StandardWidgetValues::GAUGE_MAX_VALUE);
+        m_scanProgressBar->SetValue(0);
         m_viewModel->next_scan();
-        m_timerReset.reset();
-        m_scanProgressTimer->Start();
     }
 
     void MainView::on_undo_scan_clicked([[maybe_unused]] wxCommandEvent& event) { m_viewModel->undo_scan(); }
@@ -680,7 +740,37 @@ namespace Vertex::View
 
     void MainView::on_alignment_value_changed([[maybe_unused]] wxSpinEvent& event) { m_viewModel->set_alignment_value(m_alignmentValue->GetValue()); }
 
-    void MainView::on_add_address_manually_clicked([[maybe_unused]] wxCommandEvent& event) { m_viewModel->add_address_manually(); }
+    void MainView::on_add_address_manually_clicked([[maybe_unused]] wxCommandEvent& event)
+    {
+        const auto valueTypeNames = m_viewModel->get_value_type_names();
+        const auto defaultTypeIndex = m_viewModel->get_value_type_index();
+
+        CustomWidgets::AddAddressDialog dialog(this, m_languageService, valueTypeNames, defaultTypeIndex,
+            [this](const std::uint64_t addr) { return m_viewModel->has_saved_address(addr); },
+            m_viewModel->get_log_service());
+
+        if (dialog.ShowModal() != wxID_OK)
+        {
+            return;
+        }
+
+        const auto address = dialog.get_address();
+        const auto typeIndex = dialog.get_value_type_index();
+
+        if (m_viewModel->has_saved_address(address))
+        {
+            wxMessageBox(
+                wxString::FromUTF8(wxString::Format(
+                    m_languageService.fetch_translation("mainWindow.errors.addressAlreadyAdded").c_str(), address)),
+                wxString::FromUTF8(m_languageService.fetch_translation("general.error")),
+                wxOK | wxICON_ERROR);
+            return;
+        }
+
+        m_viewModel->add_saved_address(address, typeIndex);
+        m_savedAddressesPanel->refresh_list();
+        m_savedAddressesPanel->start_auto_refresh();
+    }
 
     void MainView::on_memory_region_settings_clicked([[maybe_unused]] wxCommandEvent& event) { m_viewModel->open_memory_region_settings(); }
 
@@ -698,29 +788,29 @@ namespace Vertex::View
         }
     }
 
-    void MainView::on_scan_progress_update([[maybe_unused]] wxTimerEvent& event)
+    void MainView::on_scan_progress_update()
     {
         m_viewModel->update_scan_progress();
-        const auto progress = m_viewModel->get_scan_progress();
         update_view(ViewUpdateFlags::SCAN_PROGRESS | ViewUpdateFlags::SCANNED_VALUES);
 
-        const bool scanComplete = (progress.current >= progress.total && progress.total > 0) && m_viewModel->is_scan_complete();
-
-        if (scanComplete)
+        if (m_viewModel->has_scan_initialization_error())
         {
-            m_scanProgressTimer->Stop();
-            m_viewModel->finalize_scan_results();
-            update_view(ViewUpdateFlags::SCANNED_VALUES | ViewUpdateFlags::BUTTON_STATES);
+            update_view(ViewUpdateFlags::BUTTON_STATES);
+            return;
+        }
+    }
 
-            m_scannedValuesPanel->refresh_list();
-            m_scannedValuesPanel->start_auto_refresh();
+    void MainView::on_scan_completed()
+    {
+        if (!m_viewModel->is_scan_complete())
+        {
+            return;
         }
 
-        m_timerReset.call(
-          [this]
-          {
-              m_scanProgressTimer->Start(1);
-          });
+        m_viewModel->finalize_scan_results();
+        m_viewModel->update_scan_progress();
+        update_view(ViewUpdateFlags::SCAN_PROGRESS | ViewUpdateFlags::SCANNED_VALUES | ViewUpdateFlags::BUTTON_STATES);
+        m_scannedValuesPanel->start_auto_refresh();
     }
 
     void MainView::on_close([[maybe_unused]] wxCloseEvent& event)
@@ -728,10 +818,6 @@ namespace Vertex::View
         if (m_processValidityCheck)
         {
             m_processValidityCheck->Stop();
-        }
-        if (m_scanProgressTimer)
-        {
-            m_scanProgressTimer->Stop();
         }
         m_savedAddressesPanel->stop_auto_refresh();
         m_scannedValuesPanel->stop_auto_refresh();
@@ -742,17 +828,32 @@ namespace Vertex::View
         Destroy();
     }
 
+    void MainView::refresh_toolbar_icons()
+    {
+        const Theme theme = m_themeProvider.current_theme();
+        const int iconSize = FromDIP(StandardWidgetValues::ICON_SIZE);
+        m_auiToolBar->SetToolBitmap(StandardMenuIds::MainViewIds::ID_PROCESS_LIST, m_iconManager.get_icon("search", iconSize, theme));
+        m_auiToolBar->SetToolBitmap(StandardMenuIds::MainViewIds::ID_KILL_PROCESS, m_iconManager.get_icon("close", iconSize, theme));
+        m_auiToolBar->SetToolBitmap(StandardMenuIds::MainViewIds::ID_NEW_PROCESS, m_iconManager.get_icon("new_window", iconSize, theme));
+        m_auiToolBar->SetToolBitmap(StandardMenuIds::MainViewIds::ID_CLOSE_PROCESS, m_iconManager.get_icon("close", iconSize, theme));
+        m_auiToolBar->SetToolBitmap(StandardMenuIds::MainViewIds::ID_DEBUGGER, m_iconManager.get_icon("memory", iconSize, theme));
+        m_auiToolBar->SetToolBitmap(StandardMenuIds::MainViewIds::ID_SETTINGS, m_iconManager.get_icon("settings", iconSize, theme));
+        m_auiToolBar->SetToolBitmap(StandardMenuIds::MainViewIds::ID_ANALYTICS, m_iconManager.get_icon("analytics", iconSize, theme));
+        m_auiToolBar->SetToolBitmap(StandardMenuIds::MainViewIds::ID_INJECTOR, m_iconManager.get_icon("injector", iconSize, theme));
+        m_auiToolBar->Realize();
+    }
+
     void MainView::show_about_dialog()
     {
-        AboutInfo aboutInfo;
+        AboutInfo aboutInfo{};
         aboutInfo.description = m_languageService.fetch_translation("aboutWindow.description");
 
         aboutInfo.add_developer("PHTNC<>", m_languageService.fetch_translation("aboutWindow.roles.leadDeveloper"))
-          .add_tester("Dragon", "Testing and Feedback for Windows")
+          .add_tester("Dragon", m_languageService.fetch_translation("aboutWindow.roles.testerWindows"))
           .add_special_thanks("wxWidgets Team", m_languageService.fetch_translation("aboutWindow.thanks.uiFramework"))
-          .add_special_thanks("Open Source Community", m_languageService.fetch_translation("aboutWindow.thanks.community"));
+          .add_special_thanks("You", m_languageService.fetch_translation("aboutWindow.thanks.community"));
 
-        AboutView aboutDialog(this, m_languageService, aboutInfo);
+        AboutView aboutDialog(this, m_languageService, m_themeProvider, aboutInfo);
         aboutDialog.ShowModal();
     }
 
@@ -793,11 +894,8 @@ namespace Vertex::View
             return true;
         }
 
-        const auto result = wxMessageBox(
-            wxString::FromUTF8(m_languageService.fetch_translation("mainWindow.debugger.attachPrompt")),
-            wxString::FromUTF8(m_languageService.fetch_translation("mainWindow.debugger.attachTitle")),
-            wxYES_NO | wxICON_QUESTION
-        );
+        const auto result = wxMessageBox(wxString::FromUTF8(m_languageService.fetch_translation("mainWindow.debugger.attachPrompt")),
+                                         wxString::FromUTF8(m_languageService.fetch_translation("mainWindow.debugger.attachTitle")), wxYES_NO | wxICON_QUESTION);
 
         if (result == wxYES && m_attachDebugger)
         {

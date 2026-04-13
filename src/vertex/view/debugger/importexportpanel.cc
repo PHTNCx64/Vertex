@@ -35,7 +35,7 @@ namespace Vertex::View::Debugger
         m_importsList->InsertColumn(0, wxString::FromUTF8(m_languageService.fetch_translation("debugger.importsExports.columnFunction")), wxLIST_FORMAT_LEFT, FromDIP(StandardWidgetValues::COLUMN_WIDTH_FUNCTION));
         m_importsList->InsertColumn(1, wxString::FromUTF8(m_languageService.fetch_translation("debugger.importsExports.columnAddress")), wxLIST_FORMAT_LEFT, FromDIP(StandardWidgetValues::COLUMN_WIDTH_ADDRESS));
         m_importsList->InsertColumn(2, wxString::FromUTF8(m_languageService.fetch_translation("debugger.importsExports.columnModule")), wxLIST_FORMAT_LEFT, FromDIP(StandardWidgetValues::COLUMN_WIDTH_MODULE));
-        m_importsSizer->Add(m_importsList, 1, wxEXPAND);
+        m_importsSizer->Add(m_importsList, StandardWidgetValues::STANDARD_PROPORTION, wxEXPAND);
         m_importsPanel->SetSizer(m_importsSizer);
         m_notebook->AddPage(m_importsPanel, wxString::FromUTF8(m_languageService.fetch_translation("debugger.importsExports.tabImports")));
 
@@ -46,16 +46,16 @@ namespace Vertex::View::Debugger
         m_exportsList->InsertColumn(0, wxString::FromUTF8(m_languageService.fetch_translation("debugger.importsExports.columnFunction")), wxLIST_FORMAT_LEFT, FromDIP(StandardWidgetValues::COLUMN_WIDTH_FUNCTION));
         m_exportsList->InsertColumn(1, wxString::FromUTF8(m_languageService.fetch_translation("debugger.importsExports.columnAddress")), wxLIST_FORMAT_LEFT, FromDIP(StandardWidgetValues::COLUMN_WIDTH_ADDRESS));
         m_exportsList->InsertColumn(2, wxString::FromUTF8(m_languageService.fetch_translation("debugger.importsExports.columnOrdinal")), wxLIST_FORMAT_LEFT, FromDIP(StandardWidgetValues::COLUMN_WIDTH_ORDINAL));
-        m_exportsSizer->Add(m_exportsList, 1, wxEXPAND);
+        m_exportsSizer->Add(m_exportsList, StandardWidgetValues::STANDARD_PROPORTION, wxEXPAND);
         m_exportsPanel->SetSizer(m_exportsSizer);
         m_notebook->AddPage(m_exportsPanel, wxString::FromUTF8(m_languageService.fetch_translation("debugger.importsExports.tabExports")));
     }
 
     void ImportExportPanel::layout_controls()
     {
-        m_mainSizer->Add(new wxStaticText(this, wxID_ANY, wxString::FromUTF8(m_languageService.fetch_translation("debugger.importsExports.module"))), 0, wxLEFT | wxTOP, StandardWidgetValues::STANDARD_BORDER);
-        m_mainSizer->Add(m_moduleComboBox, 0, wxEXPAND | wxALL, StandardWidgetValues::STANDARD_BORDER);
-        m_mainSizer->Add(m_notebook, 1, wxEXPAND | wxLEFT | wxRIGHT | wxBOTTOM, StandardWidgetValues::STANDARD_BORDER);
+        m_mainSizer->Add(new wxStaticText(this, wxID_ANY, wxString::FromUTF8(m_languageService.fetch_translation("debugger.importsExports.module"))), StandardWidgetValues::NO_PROPORTION, wxLEFT | wxTOP, StandardWidgetValues::STANDARD_BORDER);
+        m_mainSizer->Add(m_moduleComboBox, StandardWidgetValues::NO_PROPORTION, wxEXPAND | wxALL, StandardWidgetValues::STANDARD_BORDER);
+        m_mainSizer->Add(m_notebook, StandardWidgetValues::STANDARD_PROPORTION, wxEXPAND | wxLEFT | wxRIGHT | wxBOTTOM, StandardWidgetValues::STANDARD_BORDER);
 
         SetSizer(m_mainSizer);
     }

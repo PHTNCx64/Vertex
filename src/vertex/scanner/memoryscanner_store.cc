@@ -6,6 +6,7 @@
 #include <vertex/scanner/memoryscanner/memoryscanner.hh>
 #include <vertex/scanner/valueconverter.hh>
 #include <vertex/memory/scannerallocator.hh>
+#include <span>
 
 namespace Vertex::Scanner
 {
@@ -57,7 +58,6 @@ namespace Vertex::Scanner
         }
 
         writerMeta.atomics->resultCount.fetch_add(results.matchesFound, std::memory_order_release);
-        m_resultsCount.fetch_add(results.matchesFound, std::memory_order_release);
 
         return StatusCode::STATUS_OK;
     }
@@ -71,10 +71,9 @@ namespace Vertex::Scanner
             return StatusCode::STATUS_ERROR_FILE_NOT_FOUND;
         }
 
-        const std::uint64_t totalResults = m_resultsCount.load(std::memory_order_acquire);
-        const std::size_t resultsToRead = std::min(maxResults, static_cast<std::size_t>(totalResults));
-
-        return get_scan_results_locked(results, 0, resultsToRead);
+        // Keep this path consistent with get_scan_results_range() by relying on
+        // per-region readable counts inside get_scan_results_locked().
+        return get_scan_results_locked(results, 0, maxResults);
     }
 
     StatusCode MemoryScanner::get_scan_results_range(std::vector<ScanResultEntry>& results, const std::size_t startIndex, const std::size_t count) const
@@ -85,14 +84,27 @@ namespace Vertex::Scanner
 
     StatusCode MemoryScanner::get_scan_results_locked(std::vector<ScanResultEntry>& results, const std::size_t startIndex, const std::size_t count) const
     {
-        const std::uint64_t totalResults = m_resultsCount.load(std::memory_order_acquire);
+        std::uint64_t readableResults = 0;
+        for (const auto& writerMeta : m_writerRegions)
+        {
+            if (writerMeta.store.is_valid() && writerMeta.store.base() != nullptr)
+            {
+                readableResults += writerMeta.atomics->resultCount.load(std::memory_order_acquire);
+            }
+        }
 
-        if (startIndex >= totalResults)
+        if (readableResults == 0)
+        {
+            results.clear();
+            return StatusCode::STATUS_OK;
+        }
+
+        if (startIndex >= readableResults)
         {
             return StatusCode::STATUS_ERROR_INVALID_PARAMETER;
         }
 
-        const std::size_t actualCount = std::min(count, totalResults - startIndex);
+        const std::size_t actualCount = std::min(count, static_cast<std::size_t>(readableResults - startIndex));
         results.clear();
         results.reserve(actualCount);
 
@@ -102,8 +114,6 @@ namespace Vertex::Scanner
         std::size_t remainingToRead = actualCount;
         std::size_t currentGlobalIndex = startIndex;
         std::size_t cumulativeResults = 0;
-
-        Memory::AlignedByteVector currentValueBuffer(dataSize);
 
         std::shared_ptr<IMemoryReader> reader;
         {
@@ -157,17 +167,6 @@ namespace Vertex::Scanner
                     readPtr += firstValueSize;
                 }
 
-                if (reader)
-                {
-                    const StatusCode memReadStatus = reader->read_memory(entry.address, dataSize, currentValueBuffer.data());
-
-                    if (memReadStatus == StatusCode::STATUS_OK)
-                    {
-                        entry.value.assign(currentValueBuffer.begin(), currentValueBuffer.begin() + dataSize);
-                        entry.formattedValue = ValueConverter::format(m_scanConfig.valueType, currentValueBuffer.data(), dataSize, m_scanConfig.hexDisplay, m_scanConfig.endianness);
-                    }
-                }
-
                 results.push_back(std::move(entry));
             }
 
@@ -177,6 +176,113 @@ namespace Vertex::Scanner
 
             if (remainingToRead == 0)
                 break;
+        }
+
+        if (reader && !results.empty() && dataSize > 0)
+        {
+            if (reader->supports_bulk_read())
+            {
+                std::size_t maxBulkRequests = static_cast<std::size_t>(std::max(1, m_settingsService.get_int("bulk.maxRequestSize", 4096)));
+                const std::uint32_t readerLimit = reader->bulk_request_limit();
+                if (readerLimit > 0)
+                {
+                    maxBulkRequests = std::min(maxBulkRequests, static_cast<std::size_t>(readerLimit));
+                }
+                maxBulkRequests = std::max<std::size_t>(1, maxBulkRequests);
+
+                std::vector<std::vector<std::uint8_t>> bulkValueBuffers(results.size(), std::vector<std::uint8_t>(dataSize));
+                std::vector<BulkReadRequest> bulkRequests(results.size());
+                std::vector<BulkReadResult> bulkResults(results.size());
+                std::vector<std::uint8_t> readSuccess(results.size(), 0);
+
+                for (std::size_t i{}; i < results.size(); ++i)
+                {
+                    bulkRequests[i] = {
+                        results[i].address,
+                        dataSize,
+                        bulkValueBuffers[i].data()
+                    };
+                    bulkResults[i].status = StatusCode::STATUS_OK;
+                }
+
+                std::size_t offset{};
+                while (offset < results.size())
+                {
+                    const std::size_t chunkCount = std::min(maxBulkRequests, results.size() - offset);
+                    const auto requestSpan = std::span<const BulkReadRequest>(bulkRequests.data() + offset, chunkCount);
+                    auto resultSpan = std::span<BulkReadResult>(bulkResults.data() + offset, chunkCount);
+                    const StatusCode bulkStatus = reader->read_memory_bulk(requestSpan, resultSpan);
+
+                    if (bulkStatus != StatusCode::STATUS_OK)
+                    {
+                        Memory::AlignedByteVector singleReadBuffer(dataSize);
+                        for (std::size_t i = offset; i < offset + chunkCount; ++i)
+                        {
+                            const StatusCode readStatus = reader->read_memory(results[i].address, dataSize, singleReadBuffer.data());
+                            if (readStatus != StatusCode::STATUS_OK)
+                            {
+                                continue;
+                            }
+
+                            std::copy_n(singleReadBuffer.begin(), dataSize, bulkValueBuffers[i].begin());
+                            readSuccess[i] = 1;
+                        }
+                    }
+                    else
+                    {
+                        for (std::size_t i = offset; i < offset + chunkCount; ++i)
+                        {
+                            if (bulkResults[i].status == StatusCode::STATUS_OK)
+                            {
+                                readSuccess[i] = 1;
+                            }
+                        }
+                    }
+
+                    offset += chunkCount;
+                }
+
+                for (std::size_t i{}; i < results.size(); ++i)
+                {
+                    if (readSuccess[i] == 0)
+                    {
+                        continue;
+                    }
+
+                    results[i].value = bulkValueBuffers[i];
+                    results[i].formattedValue = ValueConverter::format(
+                        m_scanConfig.valueType,
+                        bulkValueBuffers[i].data(),
+                        dataSize,
+                        m_scanConfig.hexDisplay,
+                        m_scanConfig.endianness);
+                }
+            }
+            else
+            {
+                Memory::AlignedByteVector currentValueBuffer(dataSize);
+                for (auto& entry : results)
+                {
+                    const StatusCode memReadStatus = reader->read_memory(entry.address, dataSize, currentValueBuffer.data());
+                    if (memReadStatus != StatusCode::STATUS_OK)
+                    {
+                        continue;
+                    }
+
+                    entry.value.assign(currentValueBuffer.begin(), currentValueBuffer.begin() + dataSize);
+                    entry.formattedValue = ValueConverter::format(
+                        m_scanConfig.valueType,
+                        currentValueBuffer.data(),
+                        dataSize,
+                        m_scanConfig.hexDisplay,
+                        m_scanConfig.endianness);
+                }
+            }
+        }
+
+        if (results.size() != actualCount)
+        {
+            return StatusCode::STATUS_ERROR_THREAD_IS_BUSY;
         }
 
         return StatusCode::STATUS_OK;

@@ -9,7 +9,6 @@
 namespace Vertex
 {
     // not thread safe.
-    // TODO: Evaluate whether this will be used in the future? This was used in past private implementations.
     class ResettableCallOnce
     {
     public:

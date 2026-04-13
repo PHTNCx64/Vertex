@@ -3,7 +3,7 @@
 // Licensed under LGPLv3.0+
 //
 #include <vertexusrrt/debugger_internal.hh>
-#include <Windows.h>
+#include <windows.h>
 #include <algorithm>
 namespace debugger
 {

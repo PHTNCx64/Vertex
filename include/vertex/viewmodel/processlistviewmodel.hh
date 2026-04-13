@@ -26,7 +26,7 @@ namespace Vertex::ViewModel
             std::string name = ViewModelName::PROCESSLIST);
 
         void set_event_callback(std::move_only_function<void(Event::EventId, const Event::VertexEvent&) const> eventCallback);
-        void update_process_list() const;
+        void update_process_list(std::move_only_function<void() const> onComplete = {}) const;
         void set_filter_type(Enums::FilterType filterType) const;
         void set_sort_order() const;
         void set_filter_text(std::string_view text) const;
@@ -37,6 +37,7 @@ namespace Vertex::ViewModel
         void set_selected_process_from_node(std::size_t nodeIndex) const;
         void clear_selected_process() const;
         void open_process() const;
+        void open_process_by_pid(std::uint32_t pid) const;
         void broadcast_process_opened(std::uint32_t processId, std::string processName) const;
 
         [[nodiscard]] std::size_t get_root_count() const;
@@ -47,6 +48,7 @@ namespace Vertex::ViewModel
         [[nodiscard]] std::size_t get_parent_node_index(std::size_t nodeIndex) const;
         [[nodiscard]] bool node_has_parent(std::size_t nodeIndex) const;
         [[nodiscard]] bool node_is_visible(std::size_t nodeIndex) const;
+        [[nodiscard]] std::size_t get_node_index_for_pid(std::uint32_t pid) const;
         [[nodiscard]] bool consume_tree_dirty() const noexcept;
 
         [[nodiscard]] int get_filter_type_index() const;

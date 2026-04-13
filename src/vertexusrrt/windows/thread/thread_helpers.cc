@@ -6,7 +6,7 @@
 #include <vertexusrrt/native_handle.hh>
 #include <sdk/api.h>
 
-#include <Windows.h>
+#include <windows.h>
 #include <algorithm>
 #include <array>
 #include <string_view>

@@ -10,6 +10,7 @@
 #include <vertex/customwidgets/savedaddressescontrol.hh>
 #include <vertex/viewmodel/mainviewmodel.hh>
 #include <vertex/language/language.hh>
+#include <vertex/gui/theme/ithemeprovider.hh>
 
 namespace Vertex::CustomWidgets
 {
@@ -19,6 +20,7 @@ namespace Vertex::CustomWidgets
         explicit SavedAddressesPanel(
             wxWindow* parent,
             Language::ILanguage& languageService,
+            Gui::IThemeProvider& themeProvider,
             const std::shared_ptr<ViewModel::MainViewModel>& viewModel
         );
         ~SavedAddressesPanel() override = default;
@@ -56,6 +58,7 @@ namespace Vertex::CustomWidgets
         wxBoxSizer* m_sizer{};
 
         Language::ILanguage& m_languageService;
+        Gui::IThemeProvider& m_themeProvider;
         std::shared_ptr<ViewModel::MainViewModel> m_viewModel{};
     };
 }

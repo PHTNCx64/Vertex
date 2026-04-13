@@ -2,7 +2,6 @@
 // Copyright (C) 2026 PHTNC<>.
 // Licensed under LGPLv3.0+
 //
-
 #include <sdk/api.h>
 
 #include <algorithm>
@@ -10,8 +9,6 @@
 
 extern "C"
 {
-    // TODO: Unify implementation with the executable version of the extensions function, helper function needs to be added.
-
     VERTEX_EXPORT StatusCode VERTEX_API vertex_process_get_library_extensions(char** extensions, uint32_t* count)
     {
         if (!count)
@@ -21,7 +18,7 @@ extern "C"
 
         static constexpr std::array kLibraryExtensions = {
             ".dll",
-          };
+        };
 
         constexpr auto kActualCount = static_cast<uint32_t>(std::size(kLibraryExtensions));
 

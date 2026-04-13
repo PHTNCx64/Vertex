@@ -21,7 +21,7 @@ namespace ProcessInternal
 {
     ModuleCache& get_module_cache()
     {
-        static ModuleCache cache;
+        static ModuleCache cache{};
         return cache;
     }
 
@@ -178,11 +178,11 @@ namespace ProcessInternal
 
     const char* find_section_for_rva(const std::vector<SectionEntry>& sections, const std::uint64_t rva)
     {
-        for (const auto& sec : sections)
+        for (const auto& [name, virtualAddress, virtualSize] : sections)
         {
-            if (rva >= sec.virtualAddress && rva < sec.virtualAddress + sec.virtualSize)
+            if (rva >= virtualAddress && rva < virtualAddress + virtualSize)
             {
-                return sec.name;
+                return name;
             }
         }
         return nullptr;
@@ -193,10 +193,10 @@ extern "C"
 {
     void clear_module_cache()
     {
-        auto& cache = ProcessInternal::get_module_cache();
-        std::scoped_lock lock{cache.cacheMutex};
-        cache.importCache.clear();
-        cache.exportCache.clear();
-        cache.sectionCache.clear();
+        auto& [importCache, exportCache, sectionCache, cacheMutex] = ProcessInternal::get_module_cache();
+        std::scoped_lock lock{cacheMutex};
+        importCache.clear();
+        exportCache.clear();
+        sectionCache.clear();
     }
 }

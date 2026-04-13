@@ -5,7 +5,7 @@
 #include <vertexusrrt/debugger_internal.hh>
 #include <vertexusrrt/debugloopcontext.hh>
 
-#include <Windows.h>
+#include <windows.h>
 
 #include <format>
 #include <mutex>
@@ -83,7 +83,7 @@ namespace debugger
         {
         case PauseReason::UserBreakpoint:
         {
-            if (!set_trap_flag(threadId, state.isWow64, true))
+            if (!set_trap_flag(threadId, true))
             {
                 return DBG_EXCEPTION_NOT_HANDLED;
             }
@@ -91,11 +91,11 @@ namespace debugger
             std::optional<std::uint64_t> precomputed{};
             if (cmd == DebugCommand::StepOver)
             {
-                precomputed = get_step_over_target(threadId, state.isWow64);
+                precomputed = get_step_over_target(threadId);
             }
             else if (cmd == DebugCommand::StepOut)
             {
-                precomputed = get_step_out_target(threadId, state.isWow64);
+                precomputed = get_step_out_target(threadId);
             }
 
             set_breakpoint_step_over(state.lastPauseAddress, threadId, cmd, precomputed);
@@ -111,7 +111,7 @@ namespace debugger
                     std::ignore = temporarily_disable_watchpoint_on_all_threads(state.lastPauseWatchpointId);
                     set_watchpoint_step_over(state.lastPauseWatchpointId, wpData.registerIndex, threadId);
 
-                    if (!set_trap_flag(threadId, state.isWow64, true))
+                    if (!set_trap_flag(threadId, true))
                     {
                         return DBG_EXCEPTION_NOT_HANDLED;
                     }
@@ -224,7 +224,7 @@ namespace debugger
 
             if (!ContinueDebugEvent(debugEvent.dwProcessId, debugEvent.dwThreadId, continueStatus))
             {
-                auto errMsg = std::format("[Vertex] ContinueDebugEvent FAILED: error={}\n", GetLastError());
+                const auto errMsg = std::format("[Vertex] ContinueDebugEvent FAILED: error={}\n", GetLastError());
                 OutputDebugStringA(errMsg.c_str());
                 return STATUS_DEBUG_TICK_ERROR;
             }

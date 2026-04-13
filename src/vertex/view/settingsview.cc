@@ -7,6 +7,7 @@
 
 #include <vertex/utility.hh>
 #include <vertex/event/types/viewevent.hh>
+#include <vertex/gui/theme/themeprovider.hh>
 #include <wx/app.h>
 
 #include <wx/spinctrl.h>
@@ -15,12 +16,13 @@
 #include <wx/statbox.h>
 #include <wx/dirdlg.h>
 #include <wx/msgdlg.h>
+#include <wx/window.h>
 #include <ranges>
 
 namespace Vertex::View
 {
     SettingsView::SettingsView(Language::ILanguage& languageService, std::unique_ptr<ViewModel::SettingsViewModel> viewModel,
-                               PluginConfigViewFactory pluginConfigFactory)
+                               Gui::IThemeProvider& themeProvider, PluginConfigViewFactory pluginConfigFactory)
         : wxDialog(wxTheApp->GetTopWindow(),
                    wxID_ANY,
                    wxString::FromUTF8(languageService.fetch_translation("settingsWindow.title")),
@@ -29,6 +31,7 @@ namespace Vertex::View
                    wxDEFAULT_DIALOG_STYLE | wxRESIZE_BORDER | wxMINIMIZE_BOX | wxMAXIMIZE_BOX | wxCLOSE_BOX),
           m_viewModel(std::move(viewModel)),
           m_languageService(languageService),
+          m_themeProvider(themeProvider),
           m_pluginConfigFactory(std::move(pluginConfigFactory))
     {
         m_viewModel->set_event_callback(
@@ -69,6 +72,7 @@ namespace Vertex::View
         m_rememberWindowPosCheckbox->SetValue(m_viewModel->get_remember_window_position());
         m_enableLoggingCheckbox->SetValue(m_viewModel->get_logging_status());
         m_themeChoice->SetSelection(m_viewModel->get_theme());
+        apply_selected_theme(m_themeChoice->GetSelection());
 
         m_readerThreadsSpinCtrl->SetValue(m_viewModel->get_reader_threads());
         m_threadBufferSizeSpinCtrl->SetValue(m_viewModel->get_thread_buffer_size());
@@ -78,6 +82,8 @@ namespace Vertex::View
 
         refresh_language_choice();
         refresh_language_paths_list();
+
+        update_plugin_config_tab();
 
         m_applyButton->Enable(m_viewModel->has_pending_changes());
 
@@ -90,6 +96,14 @@ namespace Vertex::View
 
     void SettingsView::bind_events()
     {
+        Bind(wxEVT_SYS_COLOUR_CHANGED, [this](wxSysColourChangedEvent& event)
+        {
+            m_themeProvider.refresh();
+            Gui::ThemeProvider::apply_palette_to_tree(this, m_themeProvider.palette());
+            Refresh();
+            event.Skip();
+        });
+
         m_okButton->Bind(wxEVT_BUTTON,
                          [this]([[maybe_unused]] wxCommandEvent& event)
                          {
@@ -148,7 +162,9 @@ namespace Vertex::View
         m_themeChoice->Bind(wxEVT_CHOICE,
                             [this](const wxCommandEvent& event)
                             {
-                                m_viewModel->set_theme(event.GetSelection());
+                                const int selection = event.GetSelection();
+                                m_viewModel->set_theme(selection);
+                                apply_selected_theme(selection);
                                 m_applyButton->Enable(true);
                             });
 
@@ -191,6 +207,29 @@ namespace Vertex::View
                                 m_viewModel->set_last_tab_index(event.GetSelection());
                                 event.Skip();
                             });
+    }
+
+    void SettingsView::apply_selected_theme(const int selection)
+    {
+        if (selection < ApplicationAppearance::SYSTEM || selection > ApplicationAppearance::DARK)
+        {
+            return;
+        }
+
+        m_themeProvider.set_theme(static_cast<Theme>(selection));
+
+        auto appearance = wxAppBase::Appearance::System;
+        if (selection == ApplicationAppearance::LIGHT)
+        {
+            appearance = wxAppBase::Appearance::Light;
+        }
+        else if (selection == ApplicationAppearance::DARK)
+        {
+            appearance = wxAppBase::Appearance::Dark;
+        }
+
+        std::ignore = wxTheApp->SetAppearance(appearance);
+        Gui::ThemeProvider::apply_theme_to_all_windows(m_themeProvider);
     }
 
     void SettingsView::create_controls()
@@ -237,6 +276,7 @@ namespace Vertex::View
 
             if (m_pluginConfigView->has_panels())
             {
+                m_pluginConfigPanel->Show();
                 m_tabNotebook->AddPage(m_pluginConfigPanel, wxString::FromUTF8(m_languageService.fetch_translation("settingsWindow.pluginConfig")));
             }
         }
@@ -413,7 +453,7 @@ namespace Vertex::View
         for (const auto& [i, plugin] : plugins | std::views::enumerate)
         {
             const std::string dllName = std::filesystem::path(plugin.get_path()).filename().string();
-            const long itemIndex = m_pluginListCtrl->InsertItem(static_cast<long>(i), wxString::FromUTF8(dllName));
+            const long itemIndex = m_pluginListCtrl->InsertItem(i, wxString::FromUTF8(dllName));
 
             wxString status;
             if (m_viewModel->is_plugin_active(static_cast<int>(i)))
@@ -458,7 +498,7 @@ namespace Vertex::View
         else
         {
             m_pluginNameLabel->SetLabel(wxString::FromUTF8(plugin.get_plugin_info().pluginName));
-            m_pluginVersionLabel->SetLabel(std::to_string(plugin.get_plugin_info().apiVersion));
+            m_pluginVersionLabel->SetLabel(wxString::FromUTF8(plugin.get_plugin_info().pluginVersion));
             m_pluginAuthorLabel->SetLabel(wxString::FromUTF8(plugin.get_plugin_info().pluginAuthor));
             m_pluginDescriptionLabel->SetLabel(wxString::FromUTF8(plugin.get_plugin_info().pluginDescription));
             m_informationText->SetLabel(wxString::FromUTF8(m_languageService.fetch_translation("settingsWindow.pluginsTab.loadedMsgInfo")));
@@ -539,8 +579,10 @@ namespace Vertex::View
 
         if (hasPanels && pageIndex == wxNOT_FOUND)
         {
+            m_pluginConfigPanel->Show();
             m_tabNotebook->AddPage(m_pluginConfigPanel,
                 wxString::FromUTF8(m_languageService.fetch_translation("settingsWindow.pluginConfig")));
+            m_pluginConfigPanel->Layout();
         }
         else if (!hasPanels && pageIndex != wxNOT_FOUND)
         {
@@ -743,7 +785,7 @@ namespace Vertex::View
         m_readerThreadsSpinCtrl = new wxSpinCtrl(m_readerThreadsStaticBox, wxID_ANY, wxEmptyString, wxDefaultPosition, wxDefaultSize, wxSP_ARROW_KEYS, 1, 64, 1);
         m_threadBufferSizeStaticBox = new wxStaticBox(m_memoryScannerPanel, wxID_ANY, wxString::FromUTF8(m_languageService.fetch_translation("settingsWindow.memoryScannerTab.threadBufferSize")));
         m_threadBufferSizeGroup = new wxStaticBoxSizer(m_threadBufferSizeStaticBox, wxVERTICAL);
-        m_threadBufferSizeSpinCtrl = new wxSpinCtrl(m_threadBufferSizeStaticBox, wxID_ANY, wxEmptyString, wxDefaultPosition, wxDefaultSize, wxSP_ARROW_KEYS, 1, 512, 32);
+        m_threadBufferSizeSpinCtrl = new wxSpinCtrl(m_threadBufferSizeStaticBox, wxID_ANY, wxEmptyString, wxDefaultPosition, wxDefaultSize, wxSP_ARROW_KEYS, 1, 512, 8);
         m_threadBufferSizeSpinCtrl->SetToolTip(wxString::FromUTF8(m_languageService.fetch_translation("settingsWindow.memoryScannerTab.threadBufferSizeDescription")));
     }
 

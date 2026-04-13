@@ -4,10 +4,13 @@
 //
 #include <vertex/view/debugger/watchpanel.hh>
 #include <vertex/utility.hh>
+#include <wx/clipbrd.h>
+#include <wx/dataobj.h>
 #include <wx/menu.h>
 #include <wx/textdlg.h>
 #include <wx/stattext.h>
 #include <fmt/format.h>
+#include <string_view>
 
 namespace Vertex::View::Debugger
 {
@@ -39,8 +42,8 @@ namespace Vertex::View::Debugger
         m_expressionInput->SetHint(wxString::FromUTF8(m_languageService.fetch_translation("debugger.watch.enterExpression")));
         m_addButton = new wxButton(this, wxID_ANY, "+", wxDefaultPosition, wxSize(FromDIP(30), -1));
 
-        inputSizer->Add(m_expressionInput, 1, wxEXPAND | wxRIGHT, StandardWidgetValues::STANDARD_BORDER);
-        inputSizer->Add(m_addButton, 0);
+        inputSizer->Add(m_expressionInput, StandardWidgetValues::STANDARD_PROPORTION, wxEXPAND | wxRIGHT, StandardWidgetValues::STANDARD_BORDER);
+        inputSizer->Add(m_addButton, StandardWidgetValues::NO_PROPORTION);
 
         m_splitter = new wxSplitterWindow(this, wxID_ANY, wxDefaultPosition, wxDefaultSize,
                                            wxSP_3D | wxSP_LIVE_UPDATE);
@@ -55,8 +58,8 @@ namespace Vertex::View::Debugger
         m_watchTree->SetFont(wxFont(9, wxFONTFAMILY_TELETYPE, wxFONTSTYLE_NORMAL, wxFONTWEIGHT_NORMAL));
         m_watchTree->AddRoot(wxString::FromUTF8(m_languageService.fetch_translation("debugger.watch.watches")));
 
-        watchesSizer->Add(watchesLabel, 0, wxEXPAND | wxALL, StandardWidgetValues::STANDARD_BORDER);
-        watchesSizer->Add(m_watchTree, 1, wxEXPAND | wxLEFT | wxRIGHT | wxBOTTOM, StandardWidgetValues::STANDARD_BORDER);
+        watchesSizer->Add(watchesLabel, StandardWidgetValues::NO_PROPORTION, wxEXPAND | wxALL, StandardWidgetValues::STANDARD_BORDER);
+        watchesSizer->Add(m_watchTree, StandardWidgetValues::STANDARD_PROPORTION, wxEXPAND | wxLEFT | wxRIGHT | wxBOTTOM, StandardWidgetValues::STANDARD_BORDER);
         m_watchesPanel->SetSizer(watchesSizer);
 
         m_localsPanel = new wxPanel(m_splitter);
@@ -69,15 +72,15 @@ namespace Vertex::View::Debugger
         m_localsTree->SetFont(wxFont(9, wxFONTFAMILY_TELETYPE, wxFONTSTYLE_NORMAL, wxFONTWEIGHT_NORMAL));
         m_localsTree->AddRoot(wxString::FromUTF8(m_languageService.fetch_translation("debugger.watch.locals")));
 
-        localsSizer->Add(localsLabel, 0, wxEXPAND | wxALL, StandardWidgetValues::STANDARD_BORDER);
-        localsSizer->Add(m_localsTree, 1, wxEXPAND | wxLEFT | wxRIGHT | wxBOTTOM, StandardWidgetValues::STANDARD_BORDER);
+        localsSizer->Add(localsLabel, StandardWidgetValues::NO_PROPORTION, wxEXPAND | wxALL, StandardWidgetValues::STANDARD_BORDER);
+        localsSizer->Add(m_localsTree, StandardWidgetValues::STANDARD_PROPORTION, wxEXPAND | wxLEFT | wxRIGHT | wxBOTTOM, StandardWidgetValues::STANDARD_BORDER);
         m_localsPanel->SetSizer(localsSizer);
 
         m_splitter->SplitHorizontally(m_watchesPanel, m_localsPanel);
         m_splitter->SetSashGravity(0.5);
 
-        m_mainSizer->Add(inputSizer, 0, wxEXPAND | wxALL, StandardWidgetValues::STANDARD_BORDER);
-        m_mainSizer->Add(m_splitter, 1, wxEXPAND | wxLEFT | wxRIGHT | wxBOTTOM, StandardWidgetValues::STANDARD_BORDER);
+        m_mainSizer->Add(inputSizer, StandardWidgetValues::NO_PROPORTION, wxEXPAND | wxALL, StandardWidgetValues::STANDARD_BORDER);
+        m_mainSizer->Add(m_splitter, StandardWidgetValues::STANDARD_PROPORTION, wxEXPAND | wxLEFT | wxRIGHT | wxBOTTOM, StandardWidgetValues::STANDARD_BORDER);
     }
 
     void WatchPanel::layout_controls()
@@ -92,16 +95,19 @@ namespace Vertex::View::Debugger
         m_watchTree->Bind(wxEVT_TREE_ITEM_ACTIVATED, &WatchPanel::on_tree_item_activated, this);
         m_watchTree->Bind(wxEVT_TREE_ITEM_RIGHT_CLICK, &WatchPanel::on_tree_item_right_click, this);
         m_watchTree->Bind(wxEVT_TREE_ITEM_EXPANDING, &WatchPanel::on_tree_item_expanding, this);
+        m_watchTree->Bind(wxEVT_TREE_ITEM_COLLAPSING, &WatchPanel::on_tree_item_collapsing, this);
     }
 
     void WatchPanel::update_watches(const std::vector<::Vertex::Debugger::WatchVariable>& watches)
     {
         m_watches = watches;
+        m_rebuildingWatchTree = true;
         m_watchTree->DeleteAllItems();
         const wxTreeItemId root = m_watchTree->AddRoot(wxString::FromUTF8(m_languageService.fetch_translation("debugger.watch.watches")));
 
         populate_tree(m_watchTree, root, watches);
         m_watchTree->Expand(root);
+        m_rebuildingWatchTree = false;
     }
 
     void WatchPanel::update_locals(const std::vector<::Vertex::Debugger::LocalVariable>& locals)
@@ -134,6 +140,11 @@ namespace Vertex::View::Debugger
         m_expandWatchCallback = std::move(callback);
     }
 
+    void WatchPanel::set_show_in_memory_callback(ShowInMemoryCallback callback)
+    {
+        m_showInMemoryCallback = std::move(callback);
+    }
+
     void WatchPanel::on_add_watch([[maybe_unused]] wxCommandEvent& event)
     {
         const wxString expr = m_expressionInput->GetValue().Trim();
@@ -155,7 +166,7 @@ namespace Vertex::View::Debugger
         event.Skip();
     }
 
-    void WatchPanel::on_tree_item_right_click(wxTreeEvent& event)
+    void WatchPanel::on_tree_item_right_click(const wxTreeEvent& event)
     {
         const wxTreeItemId item = event.GetItem();
         if (!item.IsOk() || item == m_watchTree->GetRootItem())
@@ -167,6 +178,7 @@ namespace Vertex::View::Debugger
         menu.Append(1001, wxString::FromUTF8(m_languageService.fetch_translation("debugger.watch.editValue")));
         menu.Append(1002, wxString::FromUTF8(m_languageService.fetch_translation("debugger.watch.copyValue")));
         menu.Append(1003, wxString::FromUTF8(m_languageService.fetch_translation("debugger.watch.copyExpression")));
+        menu.Append(1005, wxString::FromUTF8("Show in Memory View"));
         menu.AppendSeparator();
         menu.Append(1004, wxString::FromUTF8(m_languageService.fetch_translation("debugger.watch.removeWatch")));
 
@@ -179,6 +191,45 @@ namespace Vertex::View::Debugger
         }
 
         const std::uint32_t watchId = data->get_id();
+
+        const auto find_watch_by_id = [](const auto& self,
+                                         const std::vector<::Vertex::Debugger::WatchVariable>& vars,
+                                         const std::uint32_t id) -> const ::Vertex::Debugger::WatchVariable*
+        {
+            for (const auto& var : vars)
+            {
+                if (var.id == id)
+                {
+                    return &var;
+                }
+
+                if (!var.children.empty())
+                {
+                    if (const auto* found = self(self, var.children, id); found != nullptr)
+                    {
+                        return found;
+                    }
+                }
+            }
+
+            return nullptr;
+        };
+
+        const auto copy_to_clipboard = [](const std::string_view text)
+        {
+            if (text.empty() || wxTheClipboard == nullptr)
+            {
+                return;
+            }
+
+            if (!wxTheClipboard->Open())
+            {
+                return;
+            }
+
+            wxTheClipboard->SetData(new wxTextDataObject(wxString::FromUTF8(std::string{text})));
+            wxTheClipboard->Close();
+        };
 
         switch (selection)
         {
@@ -193,6 +244,31 @@ namespace Vertex::View::Debugger
                 }
                 break;
             }
+            case 1002:
+            {
+                if (const auto* watch = find_watch_by_id(find_watch_by_id, m_watches, watchId); watch != nullptr)
+                {
+                    copy_to_clipboard(watch->value);
+                }
+                break;
+            }
+            case 1003:
+            {
+                if (const auto* watch = find_watch_by_id(find_watch_by_id, m_watches, watchId); watch != nullptr)
+                {
+                    copy_to_clipboard(watch->expression);
+                }
+                break;
+            }
+            case 1005:
+            {
+                if (const auto* watch = find_watch_by_id(find_watch_by_id, m_watches, watchId);
+                    watch != nullptr && watch->address != 0 && m_showInMemoryCallback)
+                {
+                    m_showInMemoryCallback(watch->address);
+                }
+                break;
+            }
             case 1004:
                 if (m_removeWatchCallback)
                 {
@@ -204,8 +280,13 @@ namespace Vertex::View::Debugger
         }
     }
 
-    void WatchPanel::on_tree_item_expanding(wxTreeEvent& event)
+    void WatchPanel::on_tree_item_expanding(const wxTreeEvent& event)
     {
+        if (m_rebuildingWatchTree)
+        {
+            return;
+        }
+
         const wxTreeItemId item = event.GetItem();
         if (!item.IsOk())
         {
@@ -216,6 +297,26 @@ namespace Vertex::View::Debugger
         if (data && m_expandWatchCallback)
         {
             m_expandWatchCallback(data->get_id(), true);
+        }
+    }
+
+    void WatchPanel::on_tree_item_collapsing(const wxTreeEvent& event)
+    {
+        if (m_rebuildingWatchTree)
+        {
+            return;
+        }
+
+        const wxTreeItemId item = event.GetItem();
+        if (!item.IsOk())
+        {
+            return;
+        }
+
+        const auto* data = dynamic_cast<WatchItemData*>(m_watchTree->GetItemData(item));
+        if (data && m_expandWatchCallback)
+        {
+            m_expandWatchCallback(data->get_id(), false);
         }
     }
 
@@ -244,6 +345,11 @@ namespace Vertex::View::Debugger
             else if (var.hasChildren)
             {
                 tree->AppendItem(item, wxString::FromUTF8(m_languageService.fetch_translation("debugger.ui.loading")));
+            }
+
+            if (var.isExpanded && var.hasChildren)
+            {
+                tree->Expand(item);
             }
         }
     }

@@ -14,14 +14,17 @@ namespace Vertex::CustomWidgets
 {
     ScannedValuesHeader::ScannedValuesHeader(
         wxWindow* parent,
-        Language::ILanguage& languageService
+        Language::ILanguage& languageService,
+        Gui::IThemeProvider& themeProvider
     )
-        : wxPanel(parent, wxID_ANY, wxDefaultPosition, wxDefaultSize, wxFULL_REPAINT_ON_RESIZE)
+        : wxPanel()
+        , m_themeProvider(themeProvider)
     {
-        wxWindowBase::SetBackgroundStyle(wxBG_STYLE_PAINT);
+        SetBackgroundStyle(wxBG_STYLE_PAINT);
+        Create(parent, wxID_ANY, wxDefaultPosition, wxDefaultSize, wxFULL_REPAINT_ON_RESIZE);
+        refresh_theme();
 
         m_codeFont = wxFont(10, wxFONTFAMILY_TELETYPE, wxFONTSTYLE_NORMAL, wxFONTWEIGHT_NORMAL);
-        m_codeFont.SetFaceName("Consolas");
         m_codeFontBold = m_codeFont.Bold();
 
         wxClientDC dc(this);
@@ -64,6 +67,16 @@ namespace Vertex::CustomWidgets
     void ScannedValuesHeader::set_column_resize_callback(ColumnResizeCallback callback)
     {
         m_columnResizeCallback = std::move(callback);
+    }
+
+    void ScannedValuesHeader::refresh_theme()
+    {
+        const auto& pal = m_themeProvider.palette();
+        m_colors.headerBackground = pal.panel;
+        m_colors.headerBorder = pal.border;
+        m_colors.headerText = pal.textHeader;
+        m_colors.separatorHover = pal.accent;
+        Refresh();
     }
 
     int ScannedValuesHeader::get_separator_x(const int separatorIndex) const
@@ -247,19 +260,22 @@ namespace Vertex::CustomWidgets
     ScannedValuesControl::ScannedValuesControl(
         wxWindow* parent,
         Language::ILanguage& languageService,
+        Gui::IThemeProvider& themeProvider,
         const std::shared_ptr<ViewModel::MainViewModel>& viewModel,
         ScannedValuesHeader* header
     )
-        : wxScrolledWindow(parent, wxID_ANY, wxDefaultPosition, wxDefaultSize,
-                           wxVSCROLL | wxHSCROLL | wxFULL_REPAINT_ON_RESIZE | wxWANTS_CHARS)
+        : wxScrolledWindow()
         , m_languageService(languageService)
+        , m_themeProvider(themeProvider)
         , m_viewModel(viewModel)
         , m_header(header)
     {
         SetBackgroundStyle(wxBG_STYLE_PAINT);
+        Create(parent, wxID_ANY, wxDefaultPosition, wxDefaultSize,
+               wxVSCROLL | wxHSCROLL | wxFULL_REPAINT_ON_RESIZE | wxWANTS_CHARS);
+        refresh_theme();
 
         m_codeFont = wxFont(10, wxFONTFAMILY_TELETYPE, wxFONTSTYLE_NORMAL, wxFONTWEIGHT_NORMAL);
-        m_codeFont.SetFaceName("Consolas");
 
         wxClientDC dc(this);
         dc.SetFont(m_codeFont);
@@ -306,11 +322,35 @@ namespace Vertex::CustomWidgets
         }
     }
 
-    void ScannedValuesControl::refresh_list()
+    int ScannedValuesControl::get_model_item_count() const
     {
-        m_itemCount = static_cast<int>(std::min(
+        return static_cast<int>(std::min(
             m_viewModel->get_scanned_values_count(),
             static_cast<std::int64_t>(MAX_DISPLAYED_ITEMS)));
+    }
+
+    bool ScannedValuesControl::sync_item_count_with_model()
+    {
+        const int newItemCount = get_model_item_count();
+        if (newItemCount == m_itemCount)
+        {
+            return false;
+        }
+
+        m_itemCount = newItemCount;
+
+        if (m_selectedLine >= m_itemCount)
+        {
+            m_selectedLine = (m_itemCount > 0) ? (m_itemCount - 1) : -1;
+        }
+
+        update_virtual_size();
+        return true;
+    }
+
+    void ScannedValuesControl::refresh_list()
+    {
+        m_itemCount = get_model_item_count();
 
         Scroll(0, 0);
         sync_header_scroll();
@@ -728,6 +768,17 @@ namespace Vertex::CustomWidgets
 
     void ScannedValuesControl::refresh_visible_items()
     {
+        const bool itemCountChanged = sync_item_count_with_model();
+
+        if (m_itemCount <= 0)
+        {
+            if (itemCountChanged)
+            {
+                Refresh(false);
+            }
+            return;
+        }
+
         int scrollX{};
         int scrollY{};
         GetViewStart(&scrollX, &scrollY);
@@ -833,9 +884,9 @@ namespace Vertex::CustomWidgets
 
         std::array<char, 17> formattedAddress{};
         const std::size_t padCount = (addressView.size() < 16) ? (16 - addressView.size()) : 0;
-        std::memset(formattedAddress.data(), '0', padCount);
-        std::memcpy(formattedAddress.data() + padCount, addressView.data(),
-                    std::min(addressView.size(), std::size_t{16}));
+        std::fill_n(formattedAddress.data(), padCount, '0');
+        std::copy_n(addressView.data(), std::min(addressView.size(), std::size_t{16}),
+                    formattedAddress.data() + padCount);
         formattedAddress[16] = '\0';
 
         dc.DrawText(formattedAddress.data(), x, y + (m_lineHeight - dc.GetCharHeight()) / 2);
@@ -923,5 +974,20 @@ namespace Vertex::CustomWidgets
     {
         update_virtual_size();
         Refresh(false);
+    }
+
+    void ScannedValuesControl::refresh_theme()
+    {
+        const auto& pal = m_themeProvider.palette();
+        m_colors.background = pal.background;
+        m_colors.backgroundAlt = pal.backgroundAlt;
+        m_colors.selectedLine = pal.selection;
+        m_colors.address = pal.accent;
+        m_colors.value = pal.syntaxArithmetic;
+        m_colors.firstValue = pal.syntaxMove;
+        m_colors.previousValue = pal.textSecondary;
+        m_colors.changedValue = pal.markerChanged;
+        m_colors.separator = pal.border;
+        Refresh();
     }
 }

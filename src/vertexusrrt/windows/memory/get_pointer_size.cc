@@ -10,7 +10,7 @@
 
 extern ProcessArchitecture get_process_architecture();
 
-extern "C" VERTEX_EXPORT StatusCode vertex_memory_get_process_pointer_size(std::uint64_t* size)
+extern "C" VERTEX_EXPORT StatusCode VERTEX_API vertex_memory_get_process_pointer_size(std::uint64_t* size)
 {
     const auto arch = get_process_architecture();
     if (arch == ProcessArchitecture::X86)

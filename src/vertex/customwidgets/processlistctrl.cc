@@ -12,7 +12,7 @@ namespace Vertex::CustomWidgets
         , m_viewModel(viewModel)
         , m_dataModel(new ProcessListDataModel(viewModel))
     {
-        AssociateModel(m_dataModel.get());
+        wxDataViewCtrl::AssociateModel(m_dataModel.get());
 
         AppendTextColumn(
             wxString::FromUTF8(m_languageService.fetch_translation("processListView.columns.processId")),
@@ -34,63 +34,7 @@ namespace Vertex::CustomWidgets
 
     void ProcessListControl::refresh_list()
     {
-        std::unordered_set<std::string> expandedPids{};
-        std::string selectedPid{};
-
-        save_ui_state(wxDataViewItem{nullptr}, expandedPids, selectedPid);
-
-        if (m_dataModel->rebuild())
-        {
-            restore_ui_state(wxDataViewItem{nullptr}, expandedPids, selectedPid);
-        }
-    }
-
-    void ProcessListControl::save_ui_state(const wxDataViewItem& parent, std::unordered_set<std::string>& expandedPids, std::string& selectedPid)
-    {
-        wxDataViewItemArray children{};
-        m_dataModel->GetChildren(parent, children);
-
-        const auto selection = GetSelection();
-
-        for (const auto& child : children)
-        {
-            const auto nodeIndex = ProcessListDataModel::item_to_node_index(child);
-            const auto pid = m_viewModel->get_node_column_value(nodeIndex, 0);
-
-            if (child == selection)
-            {
-                selectedPid = pid;
-            }
-
-            if (IsExpanded(child))
-            {
-                expandedPids.insert(pid);
-                save_ui_state(child, expandedPids, selectedPid);
-            }
-        }
-    }
-
-    void ProcessListControl::restore_ui_state(const wxDataViewItem& parent, const std::unordered_set<std::string>& expandedPids, const std::string& selectedPid)
-    {
-        wxDataViewItemArray children{};
-        m_dataModel->GetChildren(parent, children);
-
-        for (const auto& child : children)
-        {
-            const auto nodeIndex = ProcessListDataModel::item_to_node_index(child);
-            const auto pid = m_viewModel->get_node_column_value(nodeIndex, 0);
-
-            if (!selectedPid.empty() && pid == selectedPid)
-            {
-                Select(child);
-            }
-
-            if (expandedPids.contains(pid))
-            {
-                Expand(child);
-                restore_ui_state(child, expandedPids, selectedPid);
-            }
-        }
+        m_dataModel->rebuild();
     }
 
     std::size_t ProcessListControl::get_selected_node_index() const
@@ -100,6 +44,8 @@ namespace Vertex::CustomWidgets
         {
             return ViewModel::ProcessListViewModel::INVALID_NODE_INDEX;
         }
-        return ProcessListDataModel::item_to_node_index(selection);
+
+        const auto pid = ProcessListDataModel::item_to_pid(selection);
+        return m_viewModel->get_node_index_for_pid(pid);
     }
 }

@@ -9,6 +9,7 @@
 #include <string>
 #include <vector>
 #include <optional>
+#include <cstdint>
 
 namespace Vertex::Debugger
 {
@@ -209,12 +210,20 @@ namespace Vertex::Debugger
         std::uint32_t currentFrameIndex {};
     };
 
+    struct MemoryRegionSlice final
+    {
+        std::uint64_t startAddress {};
+        std::uint64_t endAddress {};
+        std::string moduleName {};
+    };
+
     struct MemoryBlock final
     {
         std::uint64_t baseAddress {};
         std::vector<std::uint8_t> data {};
         std::vector<bool> readable {};
         std::vector<bool> modified {};
+        std::vector<MemoryRegionSlice> regions {};
     };
 
     struct ImportEntry final

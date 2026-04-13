@@ -61,7 +61,7 @@ namespace Vertex::Language
         if (!std::filesystem::exists(path))
         {
             m_loggerService.log_error(fmt::format("Translation file not found: {}", path.string()));
-            return STATUS_ERROR_FILE_NOT_FOUND;
+            return StatusCode::STATUS_ERROR_FILE_NOT_FOUND;
         }
 
         m_translations.clear();
@@ -73,7 +73,7 @@ namespace Vertex::Language
             if (!file.is_open())
             {
                 m_loggerService.log_error(fmt::format("Failed to open translation file: {}", path.string()));
-                return STATUS_ERROR_FS_FILE_OPEN_FAILED;
+                return StatusCode::STATUS_ERROR_FS_FILE_OPEN_FAILED;
             }
 
             const std::streamsize fileSize = file.tellg();
@@ -97,23 +97,23 @@ namespace Vertex::Language
             m_activeLanguagePath = path;
             m_loggerService.log_info(fmt::format("Successfully loaded translation: {}", path.string()));
 
-            return STATUS_OK;
+            return StatusCode::STATUS_OK;
         }
         catch (const nlohmann::json::parse_error& e)
         {
             m_loggerService.log_error(fmt::format("JSON parse error in translation file '{}': {}", path.string(), e.what()));
-            return STATUS_ERROR_FS_FILE_READ_FAILED;
+            return StatusCode::STATUS_ERROR_FS_FILE_READ_FAILED;
         }
         catch (const std::exception& e)
         {
             m_loggerService.log_error(fmt::format("Error reading translation file '{}': {}", path.string(), e.what()));
-            return STATUS_ERROR_FS_FILE_READ_FAILED;
+            return StatusCode::STATUS_ERROR_FS_FILE_READ_FAILED;
         }
     }
 
     StatusCode Language::is_active_language(const std::filesystem::path& path) const noexcept
     {
-        return path == m_activeLanguagePath ? STATUS_OK : STATUS_ERROR_GENERAL;
+        return path == m_activeLanguagePath ? StatusCode::STATUS_OK : StatusCode::STATUS_ERROR_GENERAL;
     }
 
     std::unordered_map<std::string, std::filesystem::path> Language::fetch_all_languages()
@@ -165,9 +165,23 @@ namespace Vertex::Language
                     continue;
                 }
 
-                const auto stem = filePath.stem();
-                const std::string languageName = stem.string();
-                languages[languageName] = std::filesystem::absolute(filePath);
+                std::string displayName = filePath.stem().string();
+
+                try
+                {
+                    std::ifstream metaFile(filePath);
+                    if (metaFile.is_open())
+                    {
+                        const nlohmann::json metaJson = nlohmann::json::parse(metaFile);
+                        if (metaJson.contains("metadata") && metaJson["metadata"].contains("name"))
+                        {
+                            displayName = metaJson["metadata"]["name"].get<std::string>();
+                        }
+                    }
+                }
+                catch (const std::exception&) {}
+
+                languages[displayName] = std::filesystem::absolute(filePath);
             }
 
             m_loggerService.log_info(fmt::format("Found {} language file(s)", languages.size()));

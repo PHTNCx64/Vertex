@@ -14,7 +14,9 @@ namespace Vertex::Thread
         Freeze,
         ProcessList,
         Debugger,
-        Scanner
+        Scanner,
+        Script,
+        PointerScanner
     };
 }
 

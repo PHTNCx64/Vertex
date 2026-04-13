@@ -36,6 +36,8 @@ namespace Vertex::View::Debugger
         void layout_controls();
         void bind_events();
         void update_field_states();
+        void on_ok_clicked(wxCommandEvent& event);
+        [[nodiscard]] bool is_expression_valid(const wxString& expression) const;
 
         Language::ILanguage& m_languageService;
         ::Vertex::Debugger::Breakpoint m_breakpoint;

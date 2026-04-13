@@ -6,23 +6,23 @@
 #include <sdk/registry.h>
 #include <sdk/ui.h>
 #include <vertex/runtime/loader.hh>
-
-#include "vertex/runtime/caller.hh"
-
+#include <vertex/runtime/caller.hh>
 #include <vertex/runtime/function_registry.hh>
-#include <vertex/log/log.hh>
 #include <vertex/utility.hh>
+#include <vertex/configuration/filesystem.hh>
 #include <plugin_function_registration.hh>
 
 #include <unordered_set>
+#include <span>
+#include <exception>
 #include <fmt/format.h>
 #include <algorithm>
 
 namespace Vertex::Runtime
 {
 
-    Loader::Loader(Configuration::ISettings& settingsService, Log::ILog& loggerService, Thread::IThreadDispatcher& threadDispatcher)
-        : m_settingsService(settingsService), m_loggerService(loggerService), m_threadDispatcher(threadDispatcher)
+    Loader::Loader(Configuration::ISettings& settingsService, Configuration::IPluginConfig& pluginConfigService, Log::ILog& loggerService, Thread::IThreadDispatcher& threadDispatcher)
+        : m_settingsService(settingsService), m_pluginConfigService(pluginConfigService), m_loggerService(loggerService), m_threadDispatcher(threadDispatcher)
     {
         m_loggerService.log_info("Initializing plugin loader...");
 
@@ -69,11 +69,9 @@ namespace Vertex::Runtime
 
     Loader::~Loader()
     {
-        if (!m_plugins.empty())
-        {
-            m_loggerService.log_info(fmt::format("Unloading {} plugins", m_plugins.size()));
-            m_plugins.clear();
-        }
+        m_activePlugin.reset();
+        m_activePluginInitialized = false;
+        m_plugins.clear();
     }
 
     const std::vector<Plugin>& Loader::get_plugins() noexcept
@@ -99,7 +97,7 @@ namespace Vertex::Runtime
 
         if (path.is_relative())
         {
-            path = std::filesystem::current_path() / path;
+            path = Configuration::Filesystem::resolve_path(path);
             m_loggerService.log_info(fmt::format("Converted relative path to absolute: {}", path.string()));
         }
 
@@ -175,7 +173,7 @@ namespace Vertex::Runtime
 
         if (path.is_relative())
         {
-            path = std::filesystem::current_path() / path;
+            path = Configuration::Filesystem::resolve_path(path);
             m_loggerService.log_info(fmt::format("[Plugin Load] Converted to absolute path: {}", path.string()));
         }
 
@@ -199,29 +197,37 @@ namespace Vertex::Runtime
             return StatusCode::STATUS_ERROR_PLUGIN_ALREADY_LOADED;
         }
 
-        const std::size_t pluginIndex = (existingPlugin != m_plugins.end())
-            ? static_cast<std::size_t>(std::distance(m_plugins.begin(), existingPlugin))
-            : (m_plugins.emplace_back(), m_plugins.size() - 1);
+        const bool wasNewlyAdded = (existingPlugin == m_plugins.end());
+        const std::size_t pluginIndex = wasNewlyAdded
+            ? (m_plugins.emplace_back(m_loggerService), m_plugins.size() - 1)
+            : static_cast<std::size_t>(std::distance(m_plugins.begin(), existingPlugin));
 
         Plugin& plugin = m_plugins[pluginIndex];
         plugin.set_path(canonicalPath);
 
-        auto removePluginOnFailure = [this, pluginIndex](const StatusCode status) -> StatusCode
+        auto removePluginOnFailure = [this, pluginIndex, wasNewlyAdded](const StatusCode status) -> StatusCode
         {
-            m_loggerService.log_info("[Plugin Load] Removing failed plugin entry...");
-            m_plugins.erase(m_plugins.begin() + static_cast<std::ptrdiff_t>(pluginIndex));
+            if (wasNewlyAdded)
+            {
+                m_loggerService.log_info("[Plugin Load] Removing failed plugin entry...");
+                m_plugins.erase(m_plugins.begin() + static_cast<std::ptrdiff_t>(pluginIndex));
+            }
+            else
+            {
+                m_loggerService.log_info("[Plugin Load] Leaving discovered plugin entry (unloaded) after failure");
+                m_plugins[pluginIndex].unload();
+            }
             return status;
         };
 
         m_loggerService.log_info(fmt::format("[Plugin Load] Loading library: {}", canonicalPath.string()));
         try
         {
-            auto library = std::make_unique<Library>(canonicalPath);
+            Library library{canonicalPath};
             m_loggerService.log_info(fmt::format("[Plugin Load] Library loaded successfully, handle: 0x{:X}",
-                reinterpret_cast<uintptr_t>(library->handle())));
+                reinterpret_cast<uintptr_t>(library.handle())));
 
-            plugin.set_plugin_handle(library->handle());
-            library.release(); // NOLINT - We want to keep the library loaded, the plugin will manage its lifetime
+            plugin.set_library(std::move(library));
         }
         catch (const LibraryError& e)
         {
@@ -252,11 +258,12 @@ namespace Vertex::Runtime
         vertex_ui_registry_set_instance(&m_uiRegistry);
         plugin.m_runtime.vertex_register_ui_panel = vertex_register_ui_panel;
         plugin.m_runtime.vertex_get_ui_value = vertex_get_ui_value;
+        plugin.m_runtime.vertex_set_ui_value = vertex_set_ui_value;
 
         m_loggerService.log_info("[Plugin Load] Resolving plugin functions...");
         const StatusCode status = resolve_functions(plugin);
 
-        if (status != STATUS_OK)
+        if (status != StatusCode::STATUS_OK)
         {
             m_loggerService.log_error(fmt::format("[Plugin Load] Function resolution failed with code: {} ({})",
                 static_cast<int>(status), status_code_to_string(status)));
@@ -283,6 +290,25 @@ namespace Vertex::Runtime
             return StatusCode::STATUS_ERROR_PLUGIN_NOT_LOADED;
         }
 
+        const bool isActivePlugin = m_activePlugin.has_value() &&
+            &m_activePlugin.value().get() == &plugin;
+
+        if (isActivePlugin)
+        {
+            const auto stopStatus = m_threadDispatcher.stop();
+            if (stopStatus != StatusCode::STATUS_OK &&
+                stopStatus != StatusCode::STATUS_ERROR_THREAD_IS_NOT_RUNNING)
+            {
+                m_loggerService.log_warn(fmt::format("Failed to stop thread dispatcher before unloading active plugin (status={})",
+                    static_cast<int>(stopStatus)));
+            }
+
+            m_activePlugin.reset();
+            m_activePluginInitialized = false;
+            m_registry.clear();
+            m_uiRegistry.clear();
+        }
+
         m_loggerService.log_info(fmt::format("Unloading plugin: {}", plugin.get_filename()));
         plugin.unload();
         return StatusCode::STATUS_OK;
@@ -290,25 +316,24 @@ namespace Vertex::Runtime
 
     StatusCode Loader::resolve_functions(Plugin& plugin)
     {
-        if (!plugin.get_plugin_handle())
+        if (!plugin.is_loaded())
         {
-            m_loggerService.log_error("[Function Resolution] Plugin handle is null");
+            m_loggerService.log_error("[Function Resolution] Plugin library is not loaded");
             return StatusCode::STATUS_ERROR_PLUGIN_RESOLVE_FAILURE;
         }
 
         m_loggerService.log_info(fmt::format("[Function Resolution] Module handle: 0x{:X}",
-            reinterpret_cast<uintptr_t>(plugin.get_plugin_handle())));
+            reinterpret_cast<uintptr_t>(plugin.get_library().handle())));
 
         try
         {
-            auto libraryWrapper = Library::from_handle(plugin.get_plugin_handle());
             FunctionRegistry registry;
 
             m_loggerService.log_info("[Function Resolution] Starting automated function resolution...");
 
             register_all_plugin_functions(registry, plugin);
 
-            auto resolveResult = registry.resolve_all(libraryWrapper);
+            auto resolveResult = registry.resolve_all(plugin.get_library());
             if (!resolveResult)
             {
                 m_loggerService.log_error(fmt::format("[Function Resolution] Failed to resolve functions: {}",
@@ -326,11 +351,6 @@ namespace Vertex::Runtime
 
             return StatusCode::STATUS_OK;
         }
-        catch (const LibraryError& e)
-        {
-            m_loggerService.log_error(fmt::format("[Function Resolution] Library error: {}", e.what()));
-            return StatusCode::STATUS_ERROR_PLUGIN_RESOLVE_FAILURE;
-        }
         catch (const std::exception& e)
         {
             m_loggerService.log_error(fmt::format("[Function Resolution] Unexpected error: {}", e.what()));
@@ -340,7 +360,22 @@ namespace Vertex::Runtime
 
     StatusCode Loader::has_plugin_loaded()
     {
-        return m_activePlugin.has_value() ? StatusCode::STATUS_OK : StatusCode::STATUS_ERROR_PLUGIN_RESOLVE_FAILURE;
+        if (!m_activePlugin.has_value())
+        {
+            return StatusCode::STATUS_ERROR_PLUGIN_NOT_ACTIVE;
+        }
+
+        auto& plugin = m_activePlugin.value().get();
+        if (!plugin.is_loaded())
+        {
+            m_activePlugin.reset();
+            m_activePluginInitialized = false;
+            m_registry.clear();
+            m_uiRegistry.clear();
+            return StatusCode::STATUS_ERROR_PLUGIN_NOT_LOADED;
+        }
+
+        return StatusCode::STATUS_OK;
     }
 
     StatusCode Loader::get_plugins_from_fs(const std::vector<std::filesystem::path>& paths, std::vector<Plugin>& pluginStates)
@@ -356,20 +391,36 @@ namespace Vertex::Runtime
             }
         }
 
+        std::unordered_set<std::filesystem::path> discoveredPluginPaths;
+
         m_loggerService.log_info(fmt::format("Scanning {} plugin directories...", paths.size()));
 
         for (const std::filesystem::path& path : paths)
         {
-            if (!std::filesystem::exists(path) || !std::filesystem::is_directory(path))
+            auto resolvedPath = path;
+            if (resolvedPath.is_relative())
             {
-                m_loggerService.log_warn(fmt::format("Plugin path does not exist or is not a directory: {}", path.string()));
+                resolvedPath = Configuration::Filesystem::resolve_path(resolvedPath);
+            }
+
+            if (!std::filesystem::exists(resolvedPath) || !std::filesystem::is_directory(resolvedPath))
+            {
+                m_loggerService.log_warn(fmt::format("Plugin path does not exist or is not a directory: {}", resolvedPath.string()));
                 continue;
             }
 
-            m_loggerService.log_info(fmt::format("Scanning directory: {}", path.string()));
+            std::error_code dirEc;
+            const auto canonicalDir = std::filesystem::canonical(resolvedPath, dirEc);
+            if (dirEc)
+            {
+                m_loggerService.log_warn(fmt::format("Failed to canonicalize plugin directory '{}': {}", resolvedPath.string(), dirEc.message()));
+                continue;
+            }
+
+            m_loggerService.log_info(fmt::format("Scanning directory: {}", canonicalDir.string()));
             std::size_t foundCount{};
 
-            for (std::filesystem::directory_iterator dir(path); dir != std::filesystem::directory_iterator(); ++dir)
+            for (std::filesystem::directory_iterator dir(canonicalDir); dir != std::filesystem::directory_iterator(); ++dir)
             {
                 const auto& entry = *dir;
 
@@ -386,16 +437,29 @@ namespace Vertex::Runtime
                     continue;
                 }
 
-                if (loadedPluginPaths.contains(filePath))
+                std::error_code fileEc;
+                const auto canonicalFilePath = std::filesystem::canonical(filePath, fileEc);
+                if (fileEc)
                 {
-                    m_loggerService.log_info(fmt::format("  Skipping already loaded plugin: {}", filePath.filename().string()));
+                    m_loggerService.log_warn(fmt::format("Failed to canonicalize plugin '{}': {}", filePath.string(), fileEc.message()));
                     continue;
                 }
 
-                Plugin plugin{};
-                plugin.set_path(filePath);
+                if (loadedPluginPaths.contains(canonicalFilePath))
+                {
+                    m_loggerService.log_info(fmt::format("  Skipping already loaded plugin: {}", canonicalFilePath.filename().string()));
+                    continue;
+                }
 
-                m_loggerService.log_info(fmt::format("Found plugin: {}", filePath.filename().string()));
+                if (!discoveredPluginPaths.insert(canonicalFilePath).second)
+                {
+                    continue;
+                }
+
+                Plugin plugin{m_loggerService};
+                plugin.set_path(canonicalFilePath);
+
+                m_loggerService.log_info(fmt::format("Found plugin: {}", canonicalFilePath.filename().string()));
                 pluginStates.push_back(std::move(plugin));
                 foundCount++;
             }
@@ -537,9 +601,166 @@ namespace Vertex::Runtime
             m_loggerService.log_info("[Plugin Init] Single-thread vertex_init completed successfully");
         }
 
+        const auto configStatus = restore_persisted_config(plugin);
+        if (configStatus != StatusCode::STATUS_OK)
+        {
+            m_loggerService.log_warn(fmt::format("Failed to restore persisted config for plugin: {} (status={})",
+                plugin.get_path().filename().string(), static_cast<int>(configStatus)));
+        }
+
         m_activePluginInitialized = true;
         m_loggerService.log_info(fmt::format("Active plugin set: {}", plugin.get_path().filename().string()));
         return StatusCode::STATUS_OK;
+    }
+
+    StatusCode Loader::restore_persisted_config(Plugin& plugin)
+    {
+        const auto pluginFilename = plugin.get_filename();
+        const auto loadResult = m_pluginConfigService.load_config(pluginFilename);
+        if (loadResult != StatusCode::STATUS_OK)
+        {
+            m_loggerService.log_warn(fmt::format("[Plugin Config] Failed to load persisted config for plugin '{}' (status={})",
+                pluginFilename,
+                static_cast<int>(loadResult)));
+            return loadResult;
+        }
+
+        const auto panels = m_uiRegistry.get_panels();
+        if (panels.empty())
+        {
+            return StatusCode::STATUS_OK;
+        }
+
+        m_loggerService.log_info(fmt::format("[Plugin Config] Restoring persisted config for {} panel(s)", panels.size()));
+
+        struct PendingApply final
+        {
+            VertexOnUIApply_t fn{};
+            void* userData{};
+            std::string fieldId{};
+            UIValue value{};
+        };
+
+        std::vector<PendingApply> pendingApplies{};
+        std::size_t restoredFieldCount{};
+
+        for (const auto& snapshot : panels)
+        {
+            const std::string panelId{snapshot.panel.panelId};
+
+            for (const auto& section : std::span{snapshot.panel.sections, snapshot.panel.sectionCount})
+            {
+                for (const auto& field : std::span{section.fields, section.fieldCount})
+                {
+                    auto persisted = m_pluginConfigService.get_ui_value(panelId, field.fieldId, field.type);
+                    if (!persisted.has_value())
+                    {
+                        continue;
+                    }
+
+                    const auto setResult = m_uiRegistry.set_value(panelId, field.fieldId, *persisted);
+                    if (setResult != StatusCode::STATUS_OK)
+                    {
+                        m_loggerService.log_warn(fmt::format("[Plugin Config] Failed to set restored value for panel='{}', field='{}' (status={})",
+                            panelId,
+                            field.fieldId,
+                            static_cast<int>(setResult)));
+                        continue;
+                    }
+                    restoredFieldCount++;
+
+                    if (snapshot.panel.onApply)
+                    {
+                        pendingApplies.push_back(PendingApply{
+                            .fn = snapshot.panel.onApply,
+                            .userData = snapshot.panel.userData,
+                            .fieldId = std::string{field.fieldId},
+                            .value = *persisted
+                        });
+                    }
+                }
+            }
+        }
+
+        StatusCode overallStatus = StatusCode::STATUS_OK;
+
+        for (auto& apply : pendingApplies)
+        {
+            const auto fn = apply.fn;
+            const auto userData = apply.userData;
+            const auto fieldId = apply.fieldId;
+            const auto value = apply.value;
+
+            auto dispatchResult = m_threadDispatcher.dispatch(
+                Thread::ThreadChannel::ProcessList,
+                std::packaged_task<StatusCode()>{
+                    [fn, userData, fieldId, value]() mutable -> StatusCode
+                    {
+                        fn(fieldId.c_str(), &value, userData);
+                        return StatusCode::STATUS_OK;
+                    }});
+
+            if (!dispatchResult.has_value())
+            {
+                if (overallStatus == StatusCode::STATUS_OK)
+                {
+                    overallStatus = dispatchResult.error();
+                }
+
+                m_loggerService.log_warn(fmt::format("[Plugin Config] Failed to dispatch onApply for field='{}' (status={})",
+                    apply.fieldId,
+                    static_cast<int>(dispatchResult.error())));
+                continue;
+            }
+
+            try
+            {
+                const auto applyStatus = dispatchResult.value().get();
+                if (applyStatus != StatusCode::STATUS_OK)
+                {
+                    if (overallStatus == StatusCode::STATUS_OK)
+                    {
+                        overallStatus = applyStatus;
+                    }
+                    m_loggerService.log_warn(fmt::format("[Plugin Config] onApply returned non-OK for field='{}' (status={})",
+                        apply.fieldId,
+                        static_cast<int>(applyStatus)));
+                }
+            }
+            catch (const std::exception& e)
+            {
+                if (overallStatus == StatusCode::STATUS_OK)
+                {
+                    overallStatus = StatusCode::STATUS_ERROR_GENERAL;
+                }
+                m_loggerService.log_warn(fmt::format("[Plugin Config] onApply threw for field='{}': {}",
+                    apply.fieldId, e.what()));
+            }
+            catch (...)
+            {
+                if (overallStatus == StatusCode::STATUS_OK)
+                {
+                    overallStatus = StatusCode::STATUS_ERROR_GENERAL;
+                }
+                m_loggerService.log_warn(fmt::format("[Plugin Config] onApply threw unknown exception for field='{}'",
+                    apply.fieldId));
+            }
+        }
+
+        if (overallStatus == StatusCode::STATUS_OK)
+        {
+            m_loggerService.log_info(fmt::format("[Plugin Config] Restored {} persisted field(s), applied {} callback(s)",
+                restoredFieldCount, pendingApplies.size()));
+        }
+        else
+        {
+            m_loggerService.log_warn(fmt::format("[Plugin Config] Restore completed with warnings after restoring {} field(s) and applying {} callback(s) (status={})",
+                restoredFieldCount,
+                pendingApplies.size(),
+                static_cast<int>(overallStatus)));
+        }
+
+        return overallStatus;
     }
 
     StatusCode Loader::initialize_plugin(Plugin& plugin) const

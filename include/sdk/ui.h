@@ -141,6 +141,7 @@ typedef struct VertexUIPanel
 
 typedef StatusCode (VERTEX_API *VertexRegisterUIPanel_t)(const UIPanel* panel);
 typedef StatusCode (VERTEX_API *VertexGetUIValue_t)(const char* panelId, const char* fieldId, UIValue* outValue);
+typedef StatusCode (VERTEX_API *VertexSetUIValue_t)(const char* panelId, const char* fieldId, const UIValue* value);
 
 // ===============================================================================================================//
 // UI REGISTRY FUNCTIONS (called by Vertex core to set instance, by plugins via Runtime struct)                   //
@@ -151,6 +152,7 @@ VERTEX_EXPORT void* VERTEX_API vertex_ui_registry_get_instance();
 
 VERTEX_EXPORT StatusCode VERTEX_API vertex_register_ui_panel(const UIPanel* panel);
 VERTEX_EXPORT StatusCode VERTEX_API vertex_get_ui_value(const char* panelId, const char* fieldId, UIValue* outValue);
+VERTEX_EXPORT StatusCode VERTEX_API vertex_set_ui_value(const char* panelId, const char* fieldId, const UIValue* value);
 
 #ifdef __cplusplus
 }

@@ -2,8 +2,8 @@
 #include <gmock/gmock.h>
 #include <vertex/view/debugger/disassemblycontrol.hh>
 #include <vertex/debugger/debuggertypes.hh>
-#include <vertex/utility.hh>
 #include "../../mocks/MockILanguage.hh"
+#include "../../mocks/MockIThemeProvider.hh"
 
 #include <wx/app.h>
 #include <wx/frame.h>
@@ -32,13 +32,17 @@ protected:
     void SetUp() override
     {
         m_language = std::make_unique<NiceMock<MockILanguage>>();
-
+        m_themeProvider = std::make_unique<NiceMock<MockIThemeProvider>>();
         m_emptyString = "";
         ON_CALL(*m_language, fetch_translation(_))
             .WillByDefault(ReturnRef(m_emptyString));
+        ON_CALL(*m_themeProvider, palette())
+            .WillByDefault(ReturnRef(m_defaultPalette));
+        ON_CALL(*m_themeProvider, is_dark())
+            .WillByDefault(Return(true));
 
         m_frame = new wxFrame(nullptr, wxID_ANY, "Test");
-        m_control = new DisassemblyControl(m_frame, *m_language);
+        m_control = new DisassemblyControl(m_frame, *m_language, *m_themeProvider);
     }
 
     void TearDown() override
@@ -72,9 +76,11 @@ protected:
     }
 
     std::unique_ptr<NiceMock<MockILanguage>> m_language;
+    std::unique_ptr<NiceMock<MockIThemeProvider>> m_themeProvider;
     wxFrame* m_frame {};
     DisassemblyControl* m_control {};
     std::string m_emptyString;
+    Vertex::Gui::ColorPalette m_defaultPalette {};
 };
 
 TEST_F(DisassemblyControlEdgeTest, InitialEdgeStatesAreIdle)
@@ -202,7 +208,7 @@ TEST_F(DisassemblyControlEdgeTest, RetryBottomExtensionDispatchesCorrectEdge)
     bool capturedIsTop {true};
     bool callbackFired {};
     m_control->set_scroll_boundary_callback(
-        [&](std::uint64_t addr, bool isTop)
+        [&](const std::uint64_t addr, const bool isTop)
         {
             capturedAddress = addr;
             capturedIsTop = isTop;

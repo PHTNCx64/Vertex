@@ -5,7 +5,7 @@
 #include <vertexusrrt/native_handle.hh>
 #include <sdk/api.h>
 
-#include <Windows.h>
+#include <windows.h>
 #include <cstdint>
 
 extern native_handle& get_native_handle();

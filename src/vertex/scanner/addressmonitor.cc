@@ -15,6 +15,12 @@ namespace Vertex::Scanner
         m_memoryReader = std::move(reader);
     }
 
+    void AddressMonitor::set_bulk_memory_reader(BulkMemoryReadCallback reader)
+    {
+        std::scoped_lock<std::mutex> lock(m_mutex);
+        m_bulkMemoryReader = std::move(reader);
+    }
+
     MonitoredAddressPtr AddressMonitor::get_or_create(const std::uint64_t address, const ValueType valueType, const Endianness endianness)
     {
         std::scoped_lock<std::mutex> lock(m_mutex);
@@ -62,7 +68,93 @@ namespace Vertex::Scanner
 
     void AddressMonitor::refresh(const std::vector<MonitoredAddressPtr>& addresses, const bool hexDisplay) const
     {
-        if (!m_memoryReader || addresses.empty())
+        if (addresses.empty())
+        {
+            return;
+        }
+
+        if (m_bulkMemoryReader)
+        {
+            struct PendingBulkRead final
+            {
+                MonitoredAddressPtr entry{};
+                std::size_t valueSize{};
+                std::vector<std::uint8_t> buffer{};
+            };
+
+            std::vector<PendingBulkRead> pendingReads{};
+            pendingReads.reserve(addresses.size());
+
+            for (const auto& entry : addresses)
+            {
+                if (!entry)
+                {
+                    continue;
+                }
+
+                const std::size_t valueSize = get_value_type_size(entry->valueType);
+                if (valueSize == 0)
+                {
+                    continue;
+                }
+
+                pendingReads.push_back(PendingBulkRead{
+                    .entry = entry,
+                    .valueSize = valueSize,
+                    .buffer = std::vector<std::uint8_t>(valueSize)
+                });
+            }
+
+            if (!pendingReads.empty())
+            {
+                std::vector<BulkReadRequest> requests(pendingReads.size());
+                std::vector<BulkReadResult> results(pendingReads.size());
+                for (std::size_t i{}; i < pendingReads.size(); ++i)
+                {
+                    requests[i] = {
+                        pendingReads[i].entry->address,
+                        pendingReads[i].valueSize,
+                        pendingReads[i].buffer.data()
+                    };
+                }
+
+                const StatusCode bulkStatus = m_bulkMemoryReader(requests, results);
+                if (bulkStatus == StatusCode::STATUS_OK)
+                {
+                    for (std::size_t i{}; i < pendingReads.size(); ++i)
+                    {
+                        auto& entry = *pendingReads[i].entry;
+                        const bool success = results[i].status == StatusCode::STATUS_OK && !pendingReads[i].buffer.empty();
+
+                        if (success)
+                        {
+                            if (!entry.currentValue.empty())
+                            {
+                                entry.previousValue = entry.currentValue;
+                            }
+
+                            if (entry.firstValue.empty())
+                            {
+                                entry.firstValue = pendingReads[i].buffer;
+                            }
+
+                            entry.currentValue = std::move(pendingReads[i].buffer);
+                            entry.isValid = true;
+                        }
+                        else
+                        {
+                            entry.isValid = false;
+                        }
+
+                        update_formatted_values(entry, hexDisplay);
+                    }
+
+                    return;
+                }
+            }
+        }
+
+        if (!m_memoryReader)
         {
             return;
         }

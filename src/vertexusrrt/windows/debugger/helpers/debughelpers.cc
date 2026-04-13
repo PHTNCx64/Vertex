@@ -7,11 +7,12 @@
 #include <vertexusrrt/native_handle.hh>
 #include <sdk/api.h>
 
-#include <Windows.h>
+#include <windows.h>
 
 #include <array>
 
 extern native_handle& get_native_handle();
+extern ProcessArchitecture get_process_architecture();
 
 namespace debugger
 {
@@ -197,7 +198,7 @@ namespace debugger
         }
     }
 
-    std::uint64_t get_instruction_pointer(const DWORD threadId, const bool isWow64)
+    std::uint64_t get_instruction_pointer(const DWORD threadId)
     {
         const HANDLE cached = get_cached_thread_handle(threadId);
         const HANDLE threadHandle = cached != nullptr ? cached : OpenThread(THREAD_GET_CONTEXT, FALSE, threadId);
@@ -206,6 +207,7 @@ namespace debugger
             return 0;
         }
 
+        const bool isWow64 = get_process_architecture() == ProcessArchitecture::X86;
         const std::uint64_t rip = isWow64
             ? get_instruction_pointer_wow64(threadHandle)
             : get_instruction_pointer_native(threadHandle);
@@ -217,7 +219,7 @@ namespace debugger
         return rip;
     }
 
-    std::uint64_t get_stack_pointer(const DWORD threadId, const bool isWow64)
+    std::uint64_t get_stack_pointer(const DWORD threadId)
     {
         const HANDLE cached = get_cached_thread_handle(threadId);
         const HANDLE threadHandle = cached != nullptr ? cached : OpenThread(THREAD_GET_CONTEXT, FALSE, threadId);
@@ -226,6 +228,7 @@ namespace debugger
             return 0;
         }
 
+        const bool isWow64 = get_process_architecture() == ProcessArchitecture::X86;
         const std::uint64_t rsp = isWow64
             ? get_stack_pointer_wow64(threadHandle)
             : get_stack_pointer_native(threadHandle);
@@ -247,8 +250,9 @@ namespace debugger
         return vertex_memory_write_process(address, size, static_cast<const char*>(buffer)) == STATUS_OK;
     }
 
-    bool set_trap_flag(const HANDLE threadHandle, const bool isWow64, const bool enable)
+    bool set_trap_flag(const HANDLE threadHandle, const bool enable)
     {
+        const bool isWow64 = get_process_architecture() == ProcessArchitecture::X86;
         if (isWow64)
         {
             return set_trap_flag_wow64(threadHandle, enable);
@@ -257,7 +261,7 @@ namespace debugger
         return set_trap_flag_native(threadHandle, enable);
     }
 
-    bool set_trap_flag(const DWORD threadId, const bool isWow64, const bool enable)
+    bool set_trap_flag(const DWORD threadId, const bool enable)
     {
         const HANDLE cached = get_cached_thread_handle(threadId);
         const HANDLE threadHandle = cached != nullptr ? cached
@@ -267,7 +271,7 @@ namespace debugger
             return false;
         }
 
-        const bool result = set_trap_flag(threadHandle, isWow64, enable);
+        const bool result = set_trap_flag(threadHandle, enable);
 
         if (cached == nullptr)
         {
@@ -276,7 +280,7 @@ namespace debugger
         return result;
     }
 
-    bool decrement_instruction_pointer(const DWORD threadId, const bool isWow64)
+    bool decrement_instruction_pointer(const DWORD threadId)
     {
         const HANDLE cached = get_cached_thread_handle(threadId);
         const HANDLE threadHandle = cached != nullptr ? cached
@@ -286,6 +290,7 @@ namespace debugger
             return false;
         }
 
+        const bool isWow64 = get_process_architecture() == ProcessArchitecture::X86;
         bool result = false;
 
         if (isWow64)
@@ -370,9 +375,9 @@ namespace debugger
         return g_tempBreakpoint.active && g_tempBreakpoint.address == address;
     }
 
-    std::optional<std::uint64_t> get_step_over_target(const DWORD threadId, const bool isWow64)
+    std::optional<std::uint64_t> get_step_over_target(const DWORD threadId)
     {
-        const std::uint64_t rip = get_instruction_pointer(threadId, isWow64);
+        const std::uint64_t rip = get_instruction_pointer(threadId);
         if (rip == 0)
         {
             return std::nullopt;
@@ -405,14 +410,15 @@ namespace debugger
         return std::nullopt;
     }
 
-    std::optional<std::uint64_t> get_step_out_target(const DWORD threadId, const bool isWow64)
+    std::optional<std::uint64_t> get_step_out_target(const DWORD threadId)
     {
-        const std::uint64_t rsp = get_stack_pointer(threadId, isWow64);
+        const std::uint64_t rsp = get_stack_pointer(threadId);
         if (rsp == 0)
         {
             return std::nullopt;
         }
 
+        const bool isWow64 = get_process_architecture() == ProcessArchitecture::X86;
         std::uint64_t returnAddress = 0;
 
         if (isWow64)
@@ -526,8 +532,9 @@ namespace debugger
         return true;
     }
 
-    StatusCode disable_watchpoint_on_thread(const HANDLE threadHandle, const std::uint8_t registerIndex, const bool isWow64)
+    StatusCode disable_watchpoint_on_thread(const HANDLE threadHandle, const std::uint8_t registerIndex)
     {
+        const bool isWow64 = get_process_architecture() == ProcessArchitecture::X86;
         StatusCode result = STATUS_OK;
 
         if (isWow64)
@@ -583,7 +590,7 @@ namespace debugger
         return result;
     }
 
-    StatusCode disable_watchpoint_on_thread(const DWORD threadId, const std::uint8_t registerIndex, const bool isWow64)
+    StatusCode disable_watchpoint_on_thread(const DWORD threadId, const std::uint8_t registerIndex)
     {
         const HANDLE cached = get_cached_thread_handle(threadId);
         const HANDLE threadHandle = cached != nullptr ? cached
@@ -593,7 +600,7 @@ namespace debugger
             return STATUS_ERROR_THREAD_NOT_FOUND;
         }
 
-        const StatusCode result = disable_watchpoint_on_thread(threadHandle, registerIndex, isWow64);
+        const StatusCode result = disable_watchpoint_on_thread(threadHandle, registerIndex);
 
         if (cached == nullptr)
         {
@@ -602,8 +609,9 @@ namespace debugger
         return result;
     }
 
-    StatusCode enable_watchpoint_on_thread(const HANDLE threadHandle, const std::uint8_t registerIndex, const bool isWow64)
+    StatusCode enable_watchpoint_on_thread(const HANDLE threadHandle, const std::uint8_t registerIndex)
     {
+        const bool isWow64 = get_process_architecture() == ProcessArchitecture::X86;
         StatusCode result = STATUS_OK;
 
         if (isWow64)
@@ -659,7 +667,7 @@ namespace debugger
         return result;
     }
 
-    StatusCode enable_watchpoint_on_thread(const DWORD threadId, const std::uint8_t registerIndex, const bool isWow64)
+    StatusCode enable_watchpoint_on_thread(const DWORD threadId, const std::uint8_t registerIndex)
     {
         const HANDLE cached = get_cached_thread_handle(threadId);
         const HANDLE threadHandle = cached != nullptr ? cached
@@ -669,7 +677,7 @@ namespace debugger
             return STATUS_ERROR_THREAD_NOT_FOUND;
         }
 
-        const StatusCode result = enable_watchpoint_on_thread(threadHandle, registerIndex, isWow64);
+        const StatusCode result = enable_watchpoint_on_thread(threadHandle, registerIndex);
 
         if (cached == nullptr)
         {

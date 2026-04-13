@@ -18,6 +18,7 @@
 
 #include <vertex/viewmodel/mainviewmodel.hh>
 #include <vertex/language/language.hh>
+#include <vertex/gui/theme/ithemeprovider.hh>
 
 namespace Vertex::CustomWidgets
 {
@@ -28,11 +29,13 @@ namespace Vertex::CustomWidgets
 
         explicit SavedAddressesHeader(
             wxWindow* parent,
-            Language::ILanguage& languageService
+            Language::ILanguage& languageService,
+            Gui::IThemeProvider& themeProvider
         );
 
         void set_horizontal_scroll_offset(int offset);
         void set_column_resize_callback(ColumnResizeCallback callback);
+        void refresh_theme();
 
         [[nodiscard]] int get_header_height() const
         {
@@ -106,6 +109,7 @@ namespace Vertex::CustomWidgets
         wxString m_headerValue{};
 
         ColumnResizeCallback m_columnResizeCallback{};
+        Gui::IThemeProvider& m_themeProvider;
 
         struct Colors
         {
@@ -130,6 +134,7 @@ namespace Vertex::CustomWidgets
         explicit SavedAddressesControl(
             wxWindow* parent,
             Language::ILanguage& languageService,
+            Gui::IThemeProvider& themeProvider,
             const std::shared_ptr<ViewModel::MainViewModel>& viewModel,
             SavedAddressesHeader* header
         );
@@ -139,6 +144,7 @@ namespace Vertex::CustomWidgets
         void clear_list();
         void start_auto_refresh() const;
         void stop_auto_refresh() const;
+        void refresh_theme();
 
         void set_selection_change_callback(SelectionChangeCallback callback);
         void set_freeze_toggle_callback(FreezeToggleCallback callback);
@@ -219,6 +225,7 @@ namespace Vertex::CustomWidgets
         wxFont m_codeFont{};
 
         Language::ILanguage& m_languageService;
+        Gui::IThemeProvider& m_themeProvider;
         std::shared_ptr<ViewModel::MainViewModel> m_viewModel{};
         SavedAddressesHeader* m_header{};
 

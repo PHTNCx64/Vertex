@@ -4,8 +4,7 @@
 //
 #pragma once
 
-#include <Vertex/runtime/libraryloader.hh>
-
+#include <vertex/runtime/libraryloader.hh>
 #include <functional>
 #include <string>
 #include <string_view>
@@ -28,35 +27,31 @@ namespace Vertex::Runtime
         }
     };
 
-    class Library
+    class Library final
     {
       public:
         explicit Library(const std::filesystem::path& path)
         {
-            m_handle = Vertex::Runtime::LibraryLoader::load_library(path.string());
+            m_handle = LibraryLoader::load_library(path.string());
             if (!m_handle)
             {
-                throw LibraryError(fmt::format("Failed to load library '{}'", path.string()));
+                const auto reason = LibraryLoader::last_error();
+                throw LibraryError(reason.empty()
+                    ? fmt::format("Failed to load library '{}'", path.string())
+                    : fmt::format("Failed to load library '{}': {}", path.string(), reason));
             }
         }
 
-        [[nodiscard]] static Library from_handle(void* handle) { return Library{handle, false}; }
-
         ~Library()
         {
-            if (m_handle && m_owning)
-            {
-                // TODO: Graceful handling
-                Vertex::Runtime::LibraryLoader::unload_library(m_handle);
-            }
+            unload();
         }
 
         Library(const Library&) = delete;
         Library& operator=(const Library&) = delete;
 
         Library(Library&& other) noexcept
-            : m_handle(other.m_handle),
-              m_owning(other.m_owning)
+            : m_handle(other.m_handle)
         {
             other.m_handle = nullptr;
         }
@@ -65,16 +60,22 @@ namespace Vertex::Runtime
         {
             if (this != &other)
             {
-                if (m_handle && m_owning)
-                {
-                    // TODO: Graceful handling
-                    Vertex::Runtime::LibraryLoader::unload_library(m_handle);
-                }
+                unload();
                 m_handle = other.m_handle;
-                m_owning = other.m_owning;
                 other.m_handle = nullptr;
             }
             return *this;
+        }
+
+        bool unload() noexcept
+        {
+            if (m_handle)
+            {
+                const bool result = LibraryLoader::unload_library(m_handle);
+                m_handle = nullptr;
+                return result;
+            }
+            return true;
         }
 
         template <class FunctionType> [[nodiscard]] std::expected<FunctionType, std::string> get_function(std::string_view name) const
@@ -86,7 +87,7 @@ namespace Vertex::Runtime
                 return std::unexpected("Library handle is null");
             }
 
-            void* proc = Vertex::Runtime::LibraryLoader::resolve_address(m_handle, name);
+            void* proc = LibraryLoader::resolve_address(m_handle, name);
             if (!proc)
             {
                 return std::unexpected(fmt::format("Function '{}' not found", name));
@@ -99,15 +100,12 @@ namespace Vertex::Runtime
 
         [[nodiscard]] bool is_loaded() const noexcept { return m_handle != nullptr; }
 
+        [[nodiscard]] static Library create_stub() noexcept { return Library{}; }
+
       private:
-        Library(void* handle, const bool owning)
-            : m_handle(handle),
-              m_owning(owning)
-        {
-        }
+        Library() noexcept = default;
 
         void* m_handle{};
-        bool m_owning{true};
     };
 
     enum class FunctionRequirement
@@ -122,7 +120,7 @@ namespace Vertex::Runtime
         FunctionRequirement requirement;
         FunctionType* target_ptr;
 
-        FunctionDescriptor(std::string fn_name, FunctionRequirement req, FunctionType* target)
+        FunctionDescriptor(std::string fn_name, const FunctionRequirement req, FunctionType* target)
             : name(std::move(fn_name)),
               requirement(req),
               target_ptr(target)

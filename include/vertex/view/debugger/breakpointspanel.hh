@@ -20,6 +20,7 @@ namespace Vertex::View::Debugger
         using GotoBreakpointCallback = std::function<void(std::uint64_t address)>;
         using RemoveBreakpointCallback = std::function<void(std::uint32_t id)>;
         using EnableBreakpointCallback = std::function<void(std::uint32_t id, bool enable)>;
+        using RetryBreakpointCallback = std::function<void(std::uint32_t id)>;
 
         BreakpointsPanel(wxWindow* parent, Language::ILanguage& languageService);
 
@@ -28,6 +29,7 @@ namespace Vertex::View::Debugger
         void set_goto_callback(GotoBreakpointCallback callback);
         void set_remove_callback(RemoveBreakpointCallback callback);
         void set_enable_callback(EnableBreakpointCallback callback);
+        void set_retry_callback(RetryBreakpointCallback callback);
 
     private:
         void create_controls();
@@ -45,6 +47,7 @@ namespace Vertex::View::Debugger
         GotoBreakpointCallback m_gotoCallback{};
         RemoveBreakpointCallback m_removeCallback{};
         EnableBreakpointCallback m_enableCallback{};
+        RetryBreakpointCallback m_retryCallback{};
 
         Language::ILanguage& m_languageService;
     };

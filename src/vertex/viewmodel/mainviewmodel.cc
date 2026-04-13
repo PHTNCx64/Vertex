@@ -8,6 +8,7 @@
 #include <chrono>
 #include <limits>
 #include <ranges>
+#include <span>
 #include <unordered_map>
 #include <utility>
 
@@ -34,21 +35,63 @@ namespace Vertex::ViewModel
         m_scanProgress = {0, 0, "Ready"};
 
         m_addressMonitor.set_memory_reader(
-            [this](const std::uint64_t address, const std::size_t size, std::vector<std::uint8_t>& output) -> bool
-            {
-                std::vector<char> buffer;
-                const StatusCode status = m_model->read_process_memory(address, size, buffer);
-                if (status == StatusCode::STATUS_OK && !buffer.empty())
-                {
-                    output.assign(
-                        reinterpret_cast<const std::uint8_t*>(buffer.data()),
-                        reinterpret_cast<const std::uint8_t*>(buffer.data()) + buffer.size()
-                    );
-                    return true;
-                }
-                return false;
-            }
-        );
+          [this](const std::uint64_t address, const std::size_t size, std::vector<std::uint8_t>& output) -> bool
+          {
+              std::vector<char> buffer;
+              const StatusCode status = m_model->read_process_memory(address, size, buffer);
+              if (status == StatusCode::STATUS_OK && !buffer.empty())
+              {
+                  output.assign(reinterpret_cast<const std::uint8_t*>(buffer.data()), reinterpret_cast<const std::uint8_t*>(buffer.data()) + buffer.size());
+                  return true;
+              }
+              return false;
+          });
+
+        m_addressMonitor.set_bulk_memory_reader(
+          [this](const std::span<const Scanner::BulkReadRequest> requests, std::span<Scanner::BulkReadResult> results) -> StatusCode
+          {
+              if (requests.size() != results.size())
+              {
+                  return StatusCode::STATUS_ERROR_INVALID_PARAMETER;
+              }
+
+              if (!m_model->supports_bulk_read())
+              {
+                  return StatusCode::STATUS_ERROR_PLUGIN_FUNCTION_NOT_IMPLEMENTED;
+              }
+
+              std::vector<Model::BulkReadEntry> entries(requests.size());
+              std::vector<BulkReadResult> modelResults(requests.size());
+
+              for (std::size_t i{}; i < requests.size(); ++i)
+              {
+                  entries[i] = {requests[i].address, requests[i].size, requests[i].buffer};
+              }
+
+              const StatusCode status = m_model->read_process_memory_bulk(entries, modelResults);
+              if (status != StatusCode::STATUS_OK)
+              {
+                  return status;
+              }
+
+              for (std::size_t i{}; i < results.size(); ++i)
+              {
+                  results[i].status = modelResults[i].status;
+              }
+
+              return StatusCode::STATUS_OK;
+          });
+
+        m_model->set_scan_completion_callback(
+          [this]()
+          {
+              notify_view_update(ViewUpdateFlags::SCAN_COMPLETED);
+          });
+        m_model->set_scan_progress_callback(
+          [this]()
+          {
+              notify_view_update(ViewUpdateFlags::SCAN_PROGRESS);
+          });
 
         subscribe_to_events();
         load_ui_state_from_settings();
@@ -67,6 +110,8 @@ namespace Vertex::ViewModel
 
     MainViewModel::~MainViewModel()
     {
+        m_model->set_scan_completion_callback({});
+        m_model->set_scan_progress_callback({});
         stop_freeze_timer();
         unsubscribe_from_events();
     }
@@ -83,15 +128,9 @@ namespace Vertex::ViewModel
 
     void MainViewModel::unsubscribe_from_events() const { m_eventBus.unsubscribe_all(m_viewModelName); }
 
-    void MainViewModel::set_event_callback(std::move_only_function<void(Event::EventId, const Event::VertexEvent&) const> callback)
-    {
-        m_eventCallback = std::move(callback);
-    }
+    void MainViewModel::set_event_callback(std::move_only_function<void(Event::EventId, const Event::VertexEvent&) const> callback) { m_eventCallback = std::move(callback); }
 
-    void MainViewModel::notify_property_changed() const
-    {
-        notify_view_update(ViewUpdateFlags::DATATYPES);
-    }
+    void MainViewModel::notify_property_changed() const { notify_view_update(ViewUpdateFlags::DATATYPES); }
 
     void MainViewModel::notify_view_update(const ViewUpdateFlags flags) const
     {
@@ -102,34 +141,26 @@ namespace Vertex::ViewModel
         }
     }
 
-    bool MainViewModel::is_scan_complete() const
-    {
-        return m_model->is_scan_complete();
-    }
+    bool MainViewModel::is_scan_complete() const { return m_model->is_scan_complete(); }
 
-    void MainViewModel::kill_process() const
-    {
-        std::ignore = m_model->kill_process();
-    }
+    bool MainViewModel::has_scan_initialization_error() const { return m_scanInitializationFailed; }
 
-    Scanner::ValueType MainViewModel::get_current_value_type() const
-    {
-        return static_cast<Scanner::ValueType>(m_valueTypeIndex);
-    }
+    void MainViewModel::kill_process() const { std::ignore = m_model->kill_process(); }
 
-    Scanner::ValueType MainViewModel::get_scanned_value_type() const
-    {
-        return static_cast<Scanner::ValueType>(m_scannedValueTypeIndex);
-    }
+    Scanner::ValueType MainViewModel::get_current_value_type() const { return static_cast<Scanner::ValueType>(m_valueTypeIndex); }
+
+    Scanner::ValueType MainViewModel::get_scanned_value_type() const { return static_cast<Scanner::ValueType>(m_scannedValueTypeIndex); }
 
     std::vector<std::string> MainViewModel::get_value_type_names() const
     {
         auto indices = std::views::iota(0, static_cast<int>(Scanner::ValueType::COUNT));
-        return indices
-            | std::views::transform([](const int i) {
-                return Scanner::get_value_type_name(static_cast<Scanner::ValueType>(i));
-            })
-            | std::ranges::to<std::vector>();
+        return indices |
+               std::views::transform(
+                 [](const int i)
+                 {
+                     return Scanner::get_value_type_name(static_cast<Scanner::ValueType>(i));
+                 }) |
+               std::ranges::to<std::vector>();
     }
 
     std::vector<std::string> MainViewModel::get_scan_mode_names() const
@@ -139,18 +170,22 @@ namespace Vertex::ViewModel
         if (Scanner::is_string_type(valueType))
         {
             auto indices = std::views::iota(0, static_cast<int>(Scanner::StringScanMode::COUNT));
-            return indices
-                | std::views::transform([](const int i) {
-                    return Scanner::get_string_scan_mode_name(static_cast<Scanner::StringScanMode>(i));
-                })
-                | std::ranges::to<std::vector>();
+            return indices |
+                   std::views::transform(
+                     [](const int i)
+                     {
+                         return Scanner::get_string_scan_mode_name(static_cast<Scanner::StringScanMode>(i));
+                     }) |
+                   std::ranges::to<std::vector>();
         }
 
-        return m_availableNumericModes
-            | std::views::transform([](const Scanner::NumericScanMode mode) {
-                return Scanner::get_numeric_scan_mode_name(mode);
-            })
-            | std::ranges::to<std::vector>();
+        return m_availableNumericModes |
+               std::views::transform(
+                 [](const Scanner::NumericScanMode mode)
+                 {
+                     return Scanner::get_numeric_scan_mode_name(mode);
+                 }) |
+               std::ranges::to<std::vector>();
     }
 
     bool MainViewModel::needs_input_value() const
@@ -167,6 +202,7 @@ namespace Vertex::ViewModel
 
     void MainViewModel::initial_scan()
     {
+        m_scanInitializationFailed = false;
         m_scannedValueTypeIndex = m_valueTypeIndex;
         m_scannedEndiannessIndex = m_endiannessTypeIndex;
         const auto valueType = get_current_value_type();
@@ -178,6 +214,7 @@ namespace Vertex::ViewModel
             const StatusCode status = m_model->validate_input(valueType, m_isHexadecimal, m_valueInput, inputBuffer);
             if (status != StatusCode::STATUS_OK) [[unlikely]]
             {
+                m_scanInitializationFailed = true;
                 m_scanProgress = {0, 0, "Input validation failed"};
                 notify_property_changed();
                 return;
@@ -190,25 +227,19 @@ namespace Vertex::ViewModel
             const StatusCode status = m_model->validate_input(valueType, m_isHexadecimal, m_valueInput2, inputBuffer2);
             if (status != StatusCode::STATUS_OK) [[unlikely]]
             {
+                m_scanInitializationFailed = true;
                 m_scanProgress = {0, 0, "Input2 validation failed"};
                 notify_property_changed();
                 return;
             }
         }
 
-        const StatusCode status = m_model->initialize_scan(
-            valueType,
-            get_actual_scan_mode_value(),
-            m_isHexadecimal,
-            m_alignmentEnabled,
-            static_cast<std::size_t>(m_alignmentValue),
-            static_cast<Scanner::Endianness>(m_endiannessTypeIndex),
-            inputBuffer,
-            inputBuffer2
-        );
+        const StatusCode status = m_model->initialize_scan(valueType, get_actual_scan_mode_value(), m_isHexadecimal, m_alignmentEnabled, static_cast<std::size_t>(m_alignmentValue),
+                                                           static_cast<Scanner::Endianness>(m_endiannessTypeIndex), inputBuffer, inputBuffer2);
 
         if (status != StatusCode::STATUS_OK) [[unlikely]]
         {
+            m_scanInitializationFailed = true;
             m_scanProgress = {0, 0, "Scan initialization failed"};
             notify_property_changed();
             return;
@@ -230,6 +261,12 @@ namespace Vertex::ViewModel
 
     void MainViewModel::next_scan()
     {
+        if (m_nextScanInitFuture.valid())
+        {
+            return;
+        }
+
+        m_scanInitializationFailed = false;
         m_scannedValueTypeIndex = m_valueTypeIndex;
         m_scannedEndiannessIndex = m_endiannessTypeIndex;
         const auto valueType = get_current_value_type();
@@ -241,6 +278,7 @@ namespace Vertex::ViewModel
             const StatusCode status = m_model->validate_input(valueType, m_isHexadecimal, m_valueInput, inputBuffer);
             if (status != StatusCode::STATUS_OK) [[unlikely]]
             {
+                m_scanInitializationFailed = true;
                 m_scanProgress = {0, 0, "Input validation failed"};
                 notify_property_changed();
                 return;
@@ -253,31 +291,38 @@ namespace Vertex::ViewModel
             const StatusCode status = m_model->validate_input(valueType, m_isHexadecimal, m_valueInput2, inputBuffer2);
             if (status != StatusCode::STATUS_OK) [[unlikely]]
             {
+                m_scanInitializationFailed = true;
                 m_scanProgress = {0, 0, "Input2 validation failed"};
                 notify_property_changed();
                 return;
             }
         }
 
-        const StatusCode status = m_model->initialize_next_scan(
-            valueType,
-            get_actual_scan_mode_value(),
-            m_isHexadecimal,
-            m_alignmentEnabled,
-            static_cast<std::size_t>(m_alignmentValue),
-            static_cast<Scanner::Endianness>(m_endiannessTypeIndex),
-            inputBuffer,
-            inputBuffer2
-        );
+        const auto scanMode = get_actual_scan_mode_value();
+        const auto alignmentValue = static_cast<std::size_t>(m_alignmentValue);
+        const auto endianness = static_cast<Scanner::Endianness>(m_endiannessTypeIndex);
 
-        if (status != StatusCode::STATUS_OK) [[unlikely]]
+        std::packaged_task<StatusCode()> task(
+          [this, valueType, scanMode, hexDisplay = m_isHexadecimal, alignmentEnabled = m_alignmentEnabled, alignmentValue, endianness, input = std::move(inputBuffer), input2 = std::move(inputBuffer2)]() mutable -> StatusCode
+          {
+              const StatusCode status = m_model->initialize_next_scan(valueType, scanMode, hexDisplay, alignmentEnabled, alignmentValue, endianness, input, input2);
+
+              notify_view_update(ViewUpdateFlags::SCAN_PROGRESS);
+              return status;
+          });
+
+        auto dispatchResult = m_dispatcher.dispatch(Thread::ThreadChannel::Scanner, std::move(task));
+        if (!dispatchResult.has_value())
         {
+            m_scanInitializationFailed = true;
             m_scanProgress = {0, 0, "Next scan initialization failed"};
+            m_isNextScanAvailable = (m_model->get_scan_results_count() > 0);
             notify_property_changed();
             return;
         }
 
-        m_scanProgress = {0, 0, "Scanning..."};
+        m_nextScanInitFuture = std::move(dispatchResult.value());
+        m_scanProgress = {0, 0, "Preparing next scan index..."};
         m_isNextScanAvailable = false;
         notify_property_changed();
     }
@@ -290,19 +335,59 @@ namespace Vertex::ViewModel
 
     void MainViewModel::update_scan_progress()
     {
+        if (m_nextScanInitFuture.valid())
+        {
+            if (m_nextScanInitFuture.wait_for(std::chrono::milliseconds(0)) != std::future_status::ready)
+            {
+                const auto pendingResults = m_model->get_scan_results_count();
+                m_scanProgress.current = 0;
+                m_scanProgress.total = 0;
+                m_scanProgress.statusMessage = fmt::format("Preparing next scan index... {} results", pendingResults);
+                m_isNextScanAvailable = false;
+                return;
+            }
+
+            const StatusCode initStatus = m_nextScanInitFuture.get();
+            if (initStatus != StatusCode::STATUS_OK)
+            {
+                m_scanInitializationFailed = true;
+                m_scanProgress.current = 0;
+                m_scanProgress.total = 0;
+                m_scanProgress.statusMessage = "Next scan initialization failed";
+                m_isNextScanAvailable = (m_model->get_scan_results_count() > 0);
+                return;
+            }
+        }
+
+        if (m_scanInitializationFailed)
+        {
+            return;
+        }
+
         const auto current = m_model->get_scan_progress_current();
         const auto total = m_model->get_scan_progress_total();
         const auto results = m_model->get_scan_results_count();
+        const bool scanComplete = m_model->is_scan_complete();
 
+        m_scanInitializationFailed = false;
         m_scanProgress.current = static_cast<std::int64_t>(current);
         m_scanProgress.total = static_cast<std::int64_t>(total);
-        m_scanProgress.statusMessage = fmt::format("Scanning... {}/{} regions, {} results", current, total, results);
-
-        if (current >= total && total > 0)
+        if (scanComplete)
         {
             m_scanProgress.statusMessage = fmt::format("Scan complete! Found {} results", results);
             m_isNextScanAvailable = (results > 0);
+            return;
         }
+
+        if (current >= total && total > 0)
+        {
+            m_scanProgress.statusMessage = fmt::format("Finalizing... {} results", results);
+            m_isNextScanAvailable = false;
+            return;
+        }
+
+        m_scanProgress.statusMessage = fmt::format("Scanning... {}/{} regions, {} results", current, total, results);
+        m_isNextScanAvailable = false;
     }
 
     void MainViewModel::open_project() const {}
@@ -314,8 +399,6 @@ namespace Vertex::ViewModel
     }
 
     void MainViewModel::open_memory_view() const {}
-
-    void MainViewModel::add_address_manually() const {}
 
     void MainViewModel::open_memory_region_settings() const
     {
@@ -353,11 +436,18 @@ namespace Vertex::ViewModel
         m_eventBus.broadcast_to(ViewModelName::INJECTOR, event);
     }
 
+    void MainViewModel::open_scripting_window() const
+    {
+        const Event::ViewEvent event{Event::VIEW_EVENT};
+        m_eventBus.broadcast_to(ViewModelName::SCRIPTING, event);
+    }
+
     void MainViewModel::close_process_state()
     {
         m_isInitialScanAvailable = false;
         m_isNextScanAvailable = false;
         m_isUnknownScanMode = false;
+        m_scanInitializationFailed = false;
         m_minProcessAddress = {};
         m_maxProcessAddress = {};
         update_available_scan_modes();
@@ -365,28 +455,21 @@ namespace Vertex::ViewModel
 
         stop_freeze_timer();
 
-        const Event::ProcessCloseEvent event{ Event::PROCESS_CLOSED_EVENT };
+        const Event::ProcessCloseEvent event{Event::PROCESS_CLOSED_EVENT};
         m_eventBus.broadcast(event);
     }
 
-    void MainViewModel::get_file_executable_extensions(std::vector<std::string>& extensions) const
-    {
-        std::ignore = m_model->get_file_executable_extensions(extensions);
-    }
+    void MainViewModel::get_file_executable_extensions(std::vector<std::string>& extensions) const { std::ignore = m_model->get_file_executable_extensions(extensions); }
+
+    StatusCode MainViewModel::open_new_process(const std::string_view processPath, const int argc, const char** argv) const { return m_model->open_new_process(processPath, argc, argv); }
 
     std::string MainViewModel::get_process_information() const { return m_processInformation; }
 
-    void MainViewModel::set_process_information(const std::string_view informationText)
-    {
-        m_processInformation = informationText;
-    }
+    void MainViewModel::set_process_information(const std::string_view informationText) { m_processInformation = informationText; }
 
     ScanProgress MainViewModel::get_scan_progress() const { return m_scanProgress; }
 
-    std::vector<ScannedValue> MainViewModel::get_scanned_values() const
-    {
-        return m_scannedValues;
-    }
+    std::vector<ScannedValue> MainViewModel::get_scanned_values() const { return m_scannedValues; }
 
     ScannedValue MainViewModel::get_scanned_value_at(const int index)
     {
@@ -410,25 +493,21 @@ namespace Vertex::ViewModel
                 const auto scannedEndianness = static_cast<Scanner::Endianness>(m_scannedEndiannessIndex);
                 if (!entry.value.empty())
                 {
-                    value.value = Scanner::ValueConverter::format(
-                        valueType, entry.value.data(), entry.value.size(), m_isHexadecimal, scannedEndianness);
+                    value.value = Scanner::ValueConverter::format(valueType, entry.value.data(), entry.value.size(), m_isHexadecimal, scannedEndianness);
                 }
 
                 if (!entry.previousValue.empty())
                 {
-                    value.previousValue = Scanner::ValueConverter::format(
-                        valueType, entry.previousValue.data(), entry.previousValue.size(), m_isHexadecimal, scannedEndianness);
+                    value.previousValue = Scanner::ValueConverter::format(valueType, entry.previousValue.data(), entry.previousValue.size(), m_isHexadecimal, scannedEndianness);
                 }
 
                 if (!entry.firstValue.empty())
                 {
-                    value.firstValue = Scanner::ValueConverter::format(
-                        valueType, entry.firstValue.data(), entry.firstValue.size(), m_isHexadecimal, scannedEndianness);
+                    value.firstValue = Scanner::ValueConverter::format(valueType, entry.firstValue.data(), entry.firstValue.size(), m_isHexadecimal, scannedEndianness);
                 }
                 else if (!entry.previousValue.empty())
                 {
-                    value.firstValue = Scanner::ValueConverter::format(
-                        valueType, entry.previousValue.data(), entry.previousValue.size(), m_isHexadecimal, scannedEndianness);
+                    value.firstValue = Scanner::ValueConverter::format(valueType, entry.previousValue.data(), entry.previousValue.size(), m_isHexadecimal, scannedEndianness);
                 }
 
                 m_visibleCache[index] = value;
@@ -452,25 +531,21 @@ namespace Vertex::ViewModel
         const auto scannedEndianness = static_cast<Scanner::Endianness>(m_scannedEndiannessIndex);
         if (!scanResults[0].value.empty())
         {
-            value.value = Scanner::ValueConverter::format(
-                valueType, scanResults[0].value.data(), scanResults[0].value.size(), m_isHexadecimal, scannedEndianness);
+            value.value = Scanner::ValueConverter::format(valueType, scanResults[0].value.data(), scanResults[0].value.size(), m_isHexadecimal, scannedEndianness);
         }
 
         if (!scanResults[0].previousValue.empty())
         {
-            value.previousValue = Scanner::ValueConverter::format(
-                valueType, scanResults[0].previousValue.data(), scanResults[0].previousValue.size(), m_isHexadecimal, scannedEndianness);
+            value.previousValue = Scanner::ValueConverter::format(valueType, scanResults[0].previousValue.data(), scanResults[0].previousValue.size(), m_isHexadecimal, scannedEndianness);
         }
 
         if (!scanResults[0].firstValue.empty())
         {
-            value.firstValue = Scanner::ValueConverter::format(
-                valueType, scanResults[0].firstValue.data(), scanResults[0].firstValue.size(), m_isHexadecimal, scannedEndianness);
+            value.firstValue = Scanner::ValueConverter::format(valueType, scanResults[0].firstValue.data(), scanResults[0].firstValue.size(), m_isHexadecimal, scannedEndianness);
         }
         else if (!scanResults[0].previousValue.empty())
         {
-            value.firstValue = Scanner::ValueConverter::format(
-                valueType, scanResults[0].previousValue.data(), scanResults[0].previousValue.size(), m_isHexadecimal, scannedEndianness);
+            value.firstValue = Scanner::ValueConverter::format(valueType, scanResults[0].previousValue.data(), scanResults[0].previousValue.size(), m_isHexadecimal, scannedEndianness);
         }
 
         m_visibleCache[index] = value;
@@ -485,25 +560,54 @@ namespace Vertex::ViewModel
         const int totalResults = static_cast<int>(std::min(m_model->get_scan_results_count(), static_cast<std::uint64_t>(std::numeric_limits<int>::max())));
         const int newEndIndex = std::min(totalResults, visibleEnd + BUFFER_SIZE);
 
-        if (newStartIndex == m_cacheWindow.startIndex && newEndIndex == m_cacheWindow.endIndex) [[unlikely]]
+        const int expectedCount = newEndIndex - newStartIndex;
+        const bool cacheWindowFullyPopulated = static_cast<int>(m_cacheWindow.addresses.size()) == expectedCount;
+
+        if (newStartIndex == m_cacheWindow.startIndex && newEndIndex == m_cacheWindow.endIndex && cacheWindowFullyPopulated) [[unlikely]]
         {
             return;
         }
 
-        const int count = newEndIndex - newStartIndex;
-        if (count <= 0) [[unlikely]]
+        if (expectedCount <= 0) [[unlikely]]
         {
+            m_cacheWindow.startIndex = -1;
+            m_cacheWindow.endIndex = -1;
+            m_cacheWindow.addresses.clear();
             return;
         }
 
         std::vector<Scanner::IMemoryScanner::ScanResultEntry> newAddresses;
-        const StatusCode status = m_model->get_scan_results_range(newAddresses, newStartIndex, count);
-
-        if (status == StatusCode::STATUS_OK)
+        const StatusCode status = m_model->get_scan_results_range(newAddresses, newStartIndex, expectedCount);
+        if (status != StatusCode::STATUS_OK)
         {
-            m_cacheWindow.startIndex = newStartIndex;
-            m_cacheWindow.endIndex = newEndIndex;
-            m_cacheWindow.addresses = std::move(newAddresses);
+            return;
+        }
+
+        const int actualCount = std::min(expectedCount, static_cast<int>(newAddresses.size()));
+        newAddresses.resize(static_cast<std::size_t>(actualCount));
+
+        if (actualCount <= 0)
+        {
+            m_cacheWindow.startIndex = -1;
+            m_cacheWindow.endIndex = -1;
+            m_cacheWindow.addresses.clear();
+            return;
+        }
+
+        const int prevStart = m_cacheWindow.startIndex;
+        const int prevEnd = m_cacheWindow.endIndex;
+
+        m_cacheWindow.startIndex = newStartIndex;
+        m_cacheWindow.endIndex = newStartIndex + actualCount;
+        m_cacheWindow.addresses = std::move(newAddresses);
+
+        if (prevStart >= 0 && prevEnd > prevStart)
+        {
+            std::erase_if(m_visibleCache,
+                          [newStartIndex, newEnd = m_cacheWindow.endIndex](const auto& pair)
+                          {
+                              return pair.first < newStartIndex || pair.first >= newEnd;
+                          });
         }
     }
 
@@ -523,6 +627,17 @@ namespace Vertex::ViewModel
         const auto valueType = get_scanned_value_type();
         const auto scannedEndianness = static_cast<Scanner::Endianness>(m_scannedEndiannessIndex);
 
+        struct VisibleRefreshEntry final
+        {
+            int visibleIndex{};
+            const Scanner::IMemoryScanner::ScanResultEntry* cacheEntry{};
+            std::vector<char> currentValue{};
+            bool readOk{};
+        };
+
+        std::vector<VisibleRefreshEntry> pendingReads{};
+        pendingReads.reserve(static_cast<std::size_t>(count));
+
         for (const int i : std::views::iota(startIndex, endIndex + 1))
         {
             const int cacheIndex = i - m_cacheWindow.startIndex;
@@ -532,21 +647,53 @@ namespace Vertex::ViewModel
             }
 
             const auto& entry = m_cacheWindow.addresses[cacheIndex];
+            auto& pending = pendingReads.emplace_back();
+            pending.visibleIndex = i;
+            pending.cacheEntry = &entry;
+            pending.currentValue.resize(entry.value.size());
+        }
 
-            std::vector<char> currentValue;
-            const StatusCode readStatus = m_model->read_process_memory(entry.address, entry.value.size(), currentValue);
+        bool usedBulkRead = false;
+        if (!pendingReads.empty() && m_model->supports_bulk_read())
+        {
+            std::vector<Model::BulkReadEntry> bulkEntries(pendingReads.size());
+            std::vector<BulkReadResult> bulkResults(pendingReads.size());
+
+            for (std::size_t i{}; i < pendingReads.size(); ++i)
+            {
+                bulkEntries[i] = {pendingReads[i].cacheEntry->address, pendingReads[i].currentValue.size(), pendingReads[i].currentValue.data()};
+            }
+
+            const StatusCode bulkStatus = m_model->read_process_memory_bulk(bulkEntries, bulkResults);
+            if (bulkStatus == StatusCode::STATUS_OK)
+            {
+                usedBulkRead = true;
+                for (std::size_t i{}; i < pendingReads.size(); ++i)
+                {
+                    pendingReads[i].readOk = bulkResults[i].status == StatusCode::STATUS_OK && !pendingReads[i].currentValue.empty();
+                }
+            }
+        }
+
+        if (!usedBulkRead)
+        {
+            for (auto& pending : pendingReads)
+            {
+                const StatusCode readStatus = m_model->read_process_memory(pending.cacheEntry->address, pending.currentValue.size(), pending.currentValue);
+                pending.readOk = readStatus == StatusCode::STATUS_OK && !pending.currentValue.empty();
+            }
+        }
+
+        for (const auto& [visibleIndex, cacheEntry, currentValue, readOk] : pendingReads)
+        {
+            const auto& entry = *cacheEntry;
 
             ScannedValue value{};
             value.address = fmt::format("0x{:X}", entry.address);
 
-            if (readStatus == StatusCode::STATUS_OK && !currentValue.empty())
+            if (readOk)
             {
-                value.value = Scanner::ValueConverter::format(
-                    valueType,
-                    reinterpret_cast<const std::uint8_t*>(currentValue.data()),
-                    currentValue.size(),
-                    m_isHexadecimal,
-                    scannedEndianness);
+                value.value = Scanner::ValueConverter::format(valueType, reinterpret_cast<const std::uint8_t*>(currentValue.data()), currentValue.size(), m_isHexadecimal, scannedEndianness);
             }
             else
             {
@@ -555,22 +702,19 @@ namespace Vertex::ViewModel
 
             if (!entry.previousValue.empty())
             {
-                value.previousValue = Scanner::ValueConverter::format(
-                    valueType, entry.previousValue.data(), entry.previousValue.size(), m_isHexadecimal, scannedEndianness);
+                value.previousValue = Scanner::ValueConverter::format(valueType, entry.previousValue.data(), entry.previousValue.size(), m_isHexadecimal, scannedEndianness);
             }
 
             if (!entry.firstValue.empty())
             {
-                value.firstValue = Scanner::ValueConverter::format(
-                    valueType, entry.firstValue.data(), entry.firstValue.size(), m_isHexadecimal, scannedEndianness);
+                value.firstValue = Scanner::ValueConverter::format(valueType, entry.firstValue.data(), entry.firstValue.size(), m_isHexadecimal, scannedEndianness);
             }
             else if (!entry.previousValue.empty())
             {
-                value.firstValue = Scanner::ValueConverter::format(
-                    valueType, entry.previousValue.data(), entry.previousValue.size(), m_isHexadecimal, scannedEndianness);
+                value.firstValue = Scanner::ValueConverter::format(valueType, entry.previousValue.data(), entry.previousValue.size(), m_isHexadecimal, scannedEndianness);
             }
 
-            m_visibleCache[i] = value;
+            m_visibleCache[visibleIndex] = value;
         }
     }
 
@@ -686,20 +830,11 @@ namespace Vertex::ViewModel
         }
     }
 
-    bool MainViewModel::is_initial_scan_ready() const
-    {
-        return m_isInitialScanAvailable;
-    }
+    bool MainViewModel::is_initial_scan_ready() const { return m_isInitialScanAvailable; }
 
-    bool MainViewModel::is_next_scan_ready() const
-    {
-        return m_isNextScanAvailable;
-    }
+    bool MainViewModel::is_next_scan_ready() const { return m_isNextScanAvailable; }
 
-    bool MainViewModel::is_undo_scan_ready() const
-    {
-        return m_model->can_undo_scan();
-    }
+    bool MainViewModel::is_undo_scan_ready() const { return m_model->can_undo_scan(); }
 
     bool MainViewModel::is_value_input2_visible() const
     {
@@ -729,9 +864,16 @@ namespace Vertex::ViewModel
         notify_view_update(ViewUpdateFlags::PROCESS_INFO);
     }
 
-    bool MainViewModel::is_process_opened() const
+    bool MainViewModel::is_process_opened() const { return m_model->is_process_opened() == StatusCode::STATUS_OK; }
+
+    std::optional<std::reference_wrapper<Log::ILog>> MainViewModel::get_log_service() const
     {
-        return m_model->is_process_opened() == StatusCode::STATUS_OK;
+        auto* log = m_model->get_log_service();
+        if (log)
+        {
+            return std::ref(*log);
+        }
+        return std::nullopt;
     }
 
     int MainViewModel::get_saved_addresses_count() const
@@ -754,7 +896,10 @@ namespace Vertex::ViewModel
     {
         std::scoped_lock lock(m_savedAddressesMutex);
         return std::ranges::any_of(m_savedAddresses,
-            [address](const SavedAddress& saved) { return saved.address == address; });
+                                   [address](const SavedAddress& saved)
+                                   {
+                                       return saved.address == address;
+                                   });
     }
 
     void MainViewModel::add_saved_address(const std::uint64_t address)
@@ -773,7 +918,7 @@ namespace Vertex::ViewModel
 
         if (saved.monitoredAddress)
         {
-            std::vector<Scanner::MonitoredAddressPtr> toRefresh = { saved.monitoredAddress };
+            std::vector<Scanner::MonitoredAddressPtr> toRefresh = {saved.monitoredAddress};
             m_addressMonitor.refresh(toRefresh, m_isHexadecimal);
 
             saved.value = saved.monitoredAddress->formattedValue;
@@ -786,11 +931,51 @@ namespace Vertex::ViewModel
 
             if (status == StatusCode::STATUS_OK && !buffer.empty())
             {
-                saved.value = Scanner::ValueConverter::format(
-                    valueType,
-                    reinterpret_cast<const std::uint8_t*>(buffer.data()),
-                    buffer.size(),
-                    m_isHexadecimal);
+                saved.value = Scanner::ValueConverter::format(valueType, reinterpret_cast<const std::uint8_t*>(buffer.data()), buffer.size(), m_isHexadecimal);
+            }
+            else
+            {
+                saved.value = "???";
+            }
+        }
+
+        {
+            std::scoped_lock lock(m_savedAddressesMutex);
+            m_savedAddresses.push_back(saved);
+        }
+        notify_property_changed();
+    }
+
+    void MainViewModel::add_saved_address(const std::uint64_t address, const int valueTypeIndex)
+    {
+        const auto valueType = static_cast<Scanner::ValueType>(valueTypeIndex);
+
+        SavedAddress saved{};
+        saved.frozen = false;
+        saved.address = address;
+        saved.addressStr = fmt::format("{:016X}", address);
+        saved.valueTypeIndex = valueTypeIndex;
+        saved.valueType = Scanner::get_value_type_name(valueType);
+
+        const auto endianness = static_cast<Scanner::Endianness>(m_endiannessTypeIndex);
+        saved.monitoredAddress = m_addressMonitor.get_or_create(address, valueType, endianness);
+
+        if (saved.monitoredAddress)
+        {
+            std::vector<Scanner::MonitoredAddressPtr> toRefresh = {saved.monitoredAddress};
+            m_addressMonitor.refresh(toRefresh, m_isHexadecimal);
+
+            saved.value = saved.monitoredAddress->formattedValue;
+        }
+        else
+        {
+            const std::size_t valueSize = Scanner::get_value_type_size(valueType);
+            std::vector<char> buffer;
+            const StatusCode status = m_model->read_process_memory(address, valueSize, buffer);
+
+            if (status == StatusCode::STATUS_OK && !buffer.empty())
+            {
+                saved.value = Scanner::ValueConverter::format(valueType, reinterpret_cast<const std::uint8_t*>(buffer.data()), buffer.size(), m_isHexadecimal);
             }
             else
             {
@@ -859,9 +1044,7 @@ namespace Vertex::ViewModel
 
                     if (status == StatusCode::STATUS_OK && !buffer.empty())
                     {
-                        saved.frozenBytes.assign(
-                            reinterpret_cast<const std::uint8_t*>(buffer.data()),
-                            reinterpret_cast<const std::uint8_t*>(buffer.data()) + buffer.size());
+                        saved.frozenBytes.assign(reinterpret_cast<const std::uint8_t*>(buffer.data()), reinterpret_cast<const std::uint8_t*>(buffer.data()) + buffer.size());
                     }
                 }
 
@@ -879,12 +1062,7 @@ namespace Vertex::ViewModel
 
         if (!bytesToWrite.empty())
         {
-            std::packaged_task<StatusCode()> task(
-                [address = addressToWrite, bytes = std::move(bytesToWrite), this]() -> StatusCode
-                {
-                    return m_model->write_process_memory(address, bytes);
-                });
-            std::ignore = m_dispatcher.dispatch_fire_and_forget(Thread::ThreadChannel::Freeze, std::move(task));
+            std::ignore = m_model->write_process_memory(addressToWrite, bytesToWrite);
         }
 
         update_frozen_addresses_flag();
@@ -917,8 +1095,7 @@ namespace Vertex::ViewModel
             auto* log = m_model->get_log_service();
             if (log)
             {
-                log->log_info(fmt::format("[ValueWrite] Parsing value='{}' for type={}, hex={}, parseStatus={}",
-                    valueStr, static_cast<int>(valueType), m_isHexadecimal, static_cast<int>(parseStatus)));
+                log->log_info(fmt::format("[ValueWrite] Parsing value='{}' for type={}, hex={}, parseStatus={}", valueStr, static_cast<int>(valueType), m_isHexadecimal, static_cast<int>(parseStatus)));
             }
 
             if (parseStatus == StatusCode::STATUS_OK && !inputBuffer.empty())
@@ -936,14 +1113,12 @@ namespace Vertex::ViewModel
                         }
                         bytesHex += fmt::format("{:02X}", byte);
                     }
-                    log->log_info(fmt::format("[ValueWrite] Writing {} bytes to 0x{:X}: [{}]",
-                        inputBuffer.size(), saved.address, bytesHex));
+                    log->log_info(fmt::format("[ValueWrite] Writing {} bytes to 0x{:X}: [{}]", inputBuffer.size(), saved.address, bytesHex));
                 }
             }
             else if (log)
             {
-                log->log_error(fmt::format("[ValueWrite] Parse FAILED: status={}, bufferEmpty={}",
-                    static_cast<int>(parseStatus), inputBuffer.empty()));
+                log->log_error(fmt::format("[ValueWrite] Parse FAILED: status={}, bufferEmpty={}", static_cast<int>(parseStatus), inputBuffer.empty()));
             }
         }
 
@@ -954,8 +1129,7 @@ namespace Vertex::ViewModel
             auto* log = m_model->get_log_service();
             if (log)
             {
-                log->log_info(fmt::format("[ValueWrite] Write result: status={}",
-                    static_cast<int>(writeStatus)));
+                log->log_info(fmt::format("[ValueWrite] Write result: status={}", static_cast<int>(writeStatus)));
             }
 
             if (writeStatus == StatusCode::STATUS_OK)
@@ -971,17 +1145,12 @@ namespace Vertex::ViewModel
                         saved.frozenBytes = inputBuffer;
                     }
 
-                    saved.value = Scanner::ValueConverter::format(
-                        valueType,
-                        inputBuffer.data(),
-                        inputBuffer.size(),
-                        m_isHexadecimal);
+                    saved.value = Scanner::ValueConverter::format(valueType, inputBuffer.data(), inputBuffer.size(), m_isHexadecimal);
                 }
             }
             else if (log)
             {
-                log->log_error(fmt::format("[ValueWrite] Write FAILED with status {}",
-                    static_cast<int>(writeStatus)));
+                log->log_error(fmt::format("[ValueWrite] Write FAILED with status {}", static_cast<int>(writeStatus)));
             }
         }
 
@@ -1030,7 +1199,7 @@ namespace Vertex::ViewModel
 
             if (saved.monitoredAddress)
             {
-                std::vector<Scanner::MonitoredAddressPtr> toRefresh = { saved.monitoredAddress };
+                std::vector<Scanner::MonitoredAddressPtr> toRefresh = {saved.monitoredAddress};
                 m_addressMonitor.refresh(toRefresh, m_isHexadecimal);
                 saved.value = saved.monitoredAddress->formattedValue;
             }
@@ -1044,11 +1213,7 @@ namespace Vertex::ViewModel
 
                 if (status == StatusCode::STATUS_OK && !buffer.empty())
                 {
-                    saved.value = Scanner::ValueConverter::format(
-                        valueType,
-                        reinterpret_cast<const std::uint8_t*>(buffer.data()),
-                        buffer.size(),
-                        m_isHexadecimal);
+                    saved.value = Scanner::ValueConverter::format(valueType, reinterpret_cast<const std::uint8_t*>(buffer.data()), buffer.size(), m_isHexadecimal);
                 }
                 else
                 {
@@ -1058,10 +1223,7 @@ namespace Vertex::ViewModel
         }
     }
 
-    void MainViewModel::refresh_all_saved_addresses()
-    {
-        refresh_saved_addresses_range(0, static_cast<int>(m_savedAddresses.size()) - 1);
-    }
+    void MainViewModel::refresh_all_saved_addresses() { refresh_saved_addresses_range(0, static_cast<int>(m_savedAddresses.size()) - 1); }
 
     void MainViewModel::refresh_saved_addresses_range(const int startIndex, const int endIndex)
     {
@@ -1074,6 +1236,16 @@ namespace Vertex::ViewModel
 
         int actualEnd{};
         std::vector<Scanner::MonitoredAddressPtr> monitoredAddresses;
+        struct SavedReadRequest final
+        {
+            int index{};
+            std::uint64_t address{};
+            int valueTypeIndex{};
+            std::size_t valueSize{};
+            std::vector<char> buffer{};
+            bool readOk{};
+        };
+        std::vector<SavedReadRequest> nonMonitoredReads{};
 
         {
             std::scoped_lock lock(m_savedAddressesMutex);
@@ -1085,6 +1257,7 @@ namespace Vertex::ViewModel
             }
 
             monitoredAddresses.reserve(actualEnd - startIndex + 1);
+            nonMonitoredReads.reserve(actualEnd - startIndex + 1);
 
             for (const int i : std::views::iota(startIndex, actualEnd + 1))
             {
@@ -1093,12 +1266,66 @@ namespace Vertex::ViewModel
                 {
                     monitoredAddresses.push_back(saved.monitoredAddress);
                 }
+                else
+                {
+                    const auto valueType = static_cast<Scanner::ValueType>(saved.valueTypeIndex);
+                    const std::size_t valueSize = Scanner::get_value_type_size(valueType);
+
+                    auto& readRequest = nonMonitoredReads.emplace_back();
+                    readRequest.index = i;
+                    readRequest.address = saved.address;
+                    readRequest.valueTypeIndex = saved.valueTypeIndex;
+                    readRequest.valueSize = valueSize;
+                    readRequest.buffer.resize(valueSize);
+                }
             }
         }
 
         if (!monitoredAddresses.empty())
         {
             m_addressMonitor.refresh(monitoredAddresses, m_isHexadecimal);
+        }
+
+        if (!nonMonitoredReads.empty())
+        {
+            bool usedBulkRead = false;
+
+            if (m_model->supports_bulk_read())
+            {
+                std::vector<Model::BulkReadEntry> bulkEntries(nonMonitoredReads.size());
+                std::vector<BulkReadResult> bulkResults(nonMonitoredReads.size());
+
+                for (std::size_t i{}; i < nonMonitoredReads.size(); ++i)
+                {
+                    bulkEntries[i] = {nonMonitoredReads[i].address, nonMonitoredReads[i].valueSize, nonMonitoredReads[i].buffer.data()};
+                }
+
+                const StatusCode bulkStatus = m_model->read_process_memory_bulk(bulkEntries, bulkResults);
+                if (bulkStatus == StatusCode::STATUS_OK)
+                {
+                    usedBulkRead = true;
+                    for (std::size_t i{}; i < nonMonitoredReads.size(); ++i)
+                    {
+                        nonMonitoredReads[i].readOk = bulkResults[i].status == StatusCode::STATUS_OK && !nonMonitoredReads[i].buffer.empty();
+                    }
+                }
+            }
+
+            if (!usedBulkRead)
+            {
+                for (auto& readRequest : nonMonitoredReads)
+                {
+                    const StatusCode status = m_model->read_process_memory(readRequest.address, readRequest.valueSize, readRequest.buffer);
+                    readRequest.readOk = status == StatusCode::STATUS_OK && !readRequest.buffer.empty();
+                }
+            }
+        }
+
+        std::unordered_map<int, std::size_t> readIndexBySavedIndex{};
+        readIndexBySavedIndex.reserve(nonMonitoredReads.size());
+        for (std::size_t i{}; i < nonMonitoredReads.size(); ++i)
+        {
+            readIndexBySavedIndex[nonMonitoredReads[i].index] = i;
         }
 
         {
@@ -1119,19 +1346,22 @@ namespace Vertex::ViewModel
                 }
                 else
                 {
-                    const auto valueType = static_cast<Scanner::ValueType>(saved.valueTypeIndex);
-                    const std::size_t valueSize = Scanner::get_value_type_size(valueType);
-
-                    std::vector<char> buffer;
-                    const StatusCode status = m_model->read_process_memory(saved.address, valueSize, buffer);
-
-                    if (status == StatusCode::STATUS_OK && !buffer.empty())
+                    const auto readIt = readIndexBySavedIndex.find(i);
+                    if (readIt == readIndexBySavedIndex.end())
                     {
-                        saved.value = Scanner::ValueConverter::format(
-                            valueType,
-                            reinterpret_cast<const std::uint8_t*>(buffer.data()),
-                            buffer.size(),
-                            m_isHexadecimal);
+                        continue;
+                    }
+
+                    const auto& readRequest = nonMonitoredReads[readIt->second];
+                    if (saved.address != readRequest.address || saved.valueTypeIndex != readRequest.valueTypeIndex)
+                    {
+                        continue;
+                    }
+
+                    if (readRequest.readOk)
+                    {
+                        const auto valueType = static_cast<Scanner::ValueType>(saved.valueTypeIndex);
+                        saved.value = Scanner::ValueConverter::format(valueType, reinterpret_cast<const std::uint8_t*>(readRequest.buffer.data()), readRequest.buffer.size(), m_isHexadecimal);
                     }
                     else
                     {
@@ -1147,17 +1377,12 @@ namespace Vertex::ViewModel
         using Mode = Scanner::NumericScanMode;
         if (m_isUnknownScanMode)
         {
-            m_availableNumericModes = {
-                Mode::Exact, Mode::GreaterThan, Mode::LessThan, Mode::Between,
-                Mode::Changed, Mode::Unchanged, Mode::Increased, Mode::Decreased,
-                Mode::IncreasedBy, Mode::DecreasedBy
-            };
+            m_availableNumericModes = {Mode::Exact,     Mode::GreaterThan, Mode::LessThan,  Mode::Between,     Mode::Changed,
+                                       Mode::Unchanged, Mode::Increased,   Mode::Decreased, Mode::IncreasedBy, Mode::DecreasedBy};
         }
         else
         {
-            m_availableNumericModes = {
-                Mode::Exact, Mode::GreaterThan, Mode::LessThan, Mode::Between, Mode::Unknown
-            };
+            m_availableNumericModes = {Mode::Exact, Mode::GreaterThan, Mode::LessThan, Mode::Between, Mode::Unknown};
         }
     }
 
@@ -1187,6 +1412,7 @@ namespace Vertex::ViewModel
         m_isUnknownScanMode = false;
         m_scanTypeIndex = 0;
         m_isNextScanAvailable = false;
+        m_scanInitializationFailed = false;
         m_scannedValues.clear();
         m_visibleCache.clear();
         m_cacheWindow = CacheWindow{};
@@ -1195,13 +1421,8 @@ namespace Vertex::ViewModel
         notify_view_update(ViewUpdateFlags::SCAN_MODES | ViewUpdateFlags::BUTTON_STATES | ViewUpdateFlags::SCANNED_VALUES);
     }
 
-    void MainViewModel::process_frozen_addresses()
+    void MainViewModel::process_frozen_addresses() const
     {
-        if (m_dispatcher.is_channel_busy(Thread::ThreadChannel::Freeze))
-        {
-            return;
-        }
-
         struct FreezeEntry final
         {
             std::uint64_t address{};
@@ -1225,17 +1446,34 @@ namespace Vertex::ViewModel
             return;
         }
 
-        std::packaged_task<StatusCode()> task(
-            [entries = std::move(entriesToWrite), this]() -> StatusCode
+        if (m_model->supports_bulk_write())
+        {
+            if (m_dispatcher.is_channel_busy(Thread::ThreadChannel::Freeze))
             {
-                for (const auto& [address, bytes] : entries)
-                {
-                    std::ignore = m_model->write_process_memory(address, bytes);
-                }
-                return StatusCode::STATUS_OK;
-            });
+                return;
+            }
 
-        std::ignore = m_dispatcher.dispatch_fire_and_forget(Thread::ThreadChannel::Freeze, std::move(task));
+            std::packaged_task<StatusCode()> task(
+              [entries = std::move(entriesToWrite), this]() -> StatusCode
+              {
+                  std::vector<Model::BulkWriteEntry> bulkEntries{};
+                  bulkEntries.reserve(entries.size());
+                  for (const auto& entry : entries)
+                  {
+                      bulkEntries.push_back(Model::BulkWriteEntry{.address = entry.address, .bytes = std::span<const std::uint8_t>(entry.bytes)});
+                  }
+
+                  return m_model->write_process_memory_bulk(bulkEntries);
+              });
+
+            std::ignore = m_dispatcher.dispatch_fire_and_forget(Thread::ThreadChannel::Freeze, std::move(task));
+            return;
+        }
+
+        for (const auto& [address, bytes] : entriesToWrite)
+        {
+            std::ignore = m_model->write_process_memory(address, bytes);
+        }
     }
 
     void MainViewModel::start_freeze_timer()
@@ -1261,7 +1499,7 @@ namespace Vertex::ViewModel
         m_freezeTimerThread.reset();
     }
 
-    void MainViewModel::freeze_timer_loop()
+    void MainViewModel::freeze_timer_loop() const
     {
         using namespace std::chrono_literals;
 
@@ -1283,8 +1521,10 @@ namespace Vertex::ViewModel
         {
             std::scoped_lock lock(m_savedAddressesMutex);
             hasAnyFrozen = std::ranges::any_of(m_savedAddresses,
-                [](const SavedAddress& addr) { return addr.frozen && !addr.frozenBytes.empty(); }
-            );
+                                               [](const SavedAddress& addr)
+                                               {
+                                                   return addr.frozen && !addr.frozenBytes.empty();
+                                               });
         }
 
         m_hasFrozenAddresses.store(hasAnyFrozen, std::memory_order_release);

@@ -10,8 +10,10 @@
 #include <memory>
 #include <functional>
 #include <mutex>
+#include <span>
 
 #include <vertex/scanner/valuetypes.hh>
+#include <vertex/scanner/imemoryreader.hh>
 
 namespace Vertex::Scanner
 {
@@ -33,6 +35,7 @@ namespace Vertex::Scanner
     using MonitoredAddressPtr = std::shared_ptr<MonitoredAddress>;
 
     using MemoryReadCallback = std::function<bool(std::uint64_t address, std::size_t size, std::vector<std::uint8_t>& output)>;
+    using BulkMemoryReadCallback = std::function<StatusCode(std::span<const BulkReadRequest> requests, std::span<BulkReadResult> results)>;
 
     class AddressMonitor final
     {
@@ -46,6 +49,7 @@ namespace Vertex::Scanner
         AddressMonitor& operator=(AddressMonitor&&) = delete;
 
         void set_memory_reader(MemoryReadCallback reader);
+        void set_bulk_memory_reader(BulkMemoryReadCallback reader);
 
         [[nodiscard]] MonitoredAddressPtr get_or_create(std::uint64_t address, ValueType valueType, Endianness endianness = Endianness::Little);
 
@@ -69,6 +73,7 @@ namespace Vertex::Scanner
         mutable std::mutex m_mutex;
         std::unordered_map<std::uint64_t, MonitoredAddressPtr> m_registry;
         MemoryReadCallback m_memoryReader;
+        BulkMemoryReadCallback m_bulkMemoryReader;
     };
 
 } // namespace Vertex::Scanner

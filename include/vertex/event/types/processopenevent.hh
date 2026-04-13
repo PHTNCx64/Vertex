@@ -7,6 +7,7 @@
 #include <string>
 #include <utility>
 #include <vertex/event/vertexevent.hh>
+#include <cstdint>
 
 namespace Vertex::Event
 {

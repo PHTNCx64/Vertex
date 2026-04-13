@@ -34,7 +34,7 @@ namespace Vertex::View::Debugger
 
     void StackPanel::layout_controls()
     {
-        m_mainSizer->Add(m_stackList, 1, wxEXPAND | wxALL, StandardWidgetValues::STANDARD_BORDER);
+        m_mainSizer->Add(m_stackList, StandardWidgetValues::STANDARD_PROPORTION, wxEXPAND | wxALL, StandardWidgetValues::STANDARD_BORDER);
         SetSizer(m_mainSizer);
     }
 
@@ -61,7 +61,7 @@ namespace Vertex::View::Debugger
     {
         if (frameIndex < static_cast<std::uint32_t>(m_stackList->GetItemCount()))
         {
-            m_stackList->SetItemState(static_cast<long>(frameIndex),
+            m_stackList->SetItemState(frameIndex,
                 wxLIST_STATE_SELECTED | wxLIST_STATE_FOCUSED,
                 wxLIST_STATE_SELECTED | wxLIST_STATE_FOCUSED);
         }
@@ -72,7 +72,7 @@ namespace Vertex::View::Debugger
         m_selectFrameCallback = std::move(callback);
     }
 
-    void StackPanel::on_item_selected(wxListEvent& event)
+    void StackPanel::on_item_selected(const wxListEvent& event)
     {
         const long idx = event.GetIndex();
         if (idx >= 0 && m_selectFrameCallback)

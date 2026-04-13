@@ -4,7 +4,7 @@
 //
 #include <vertexusrrt/native_handle.hh>
 
-#include <Windows.h>
+#include <windows.h>
 
 #include <atomic>
 

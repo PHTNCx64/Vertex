@@ -9,6 +9,7 @@
 #include <vertex/runtime/registry.hh>
 #include <vertex/runtime/uiregistry.hh>
 #include <vertex/runtime/plugin.hh>
+#include <vertex/configuration/ipluginconfig.hh>
 #include <vertex/configuration/isettings.hh>
 #include <vertex/thread/ithreaddispatcher.hh>
 
@@ -17,7 +18,7 @@ namespace Vertex::Runtime
     class Loader final : public ILoader
     {
     public:
-        Loader(Configuration::ISettings& settingsService, Log::ILog& loggerService, Thread::IThreadDispatcher& threadDispatcher); // NOLINT
+        Loader(Configuration::ISettings& settingsService, Configuration::IPluginConfig& pluginConfigService, Log::ILog& loggerService, Thread::IThreadDispatcher& threadDispatcher); // NOLINT
         ~Loader() override;
 
         StatusCode load_plugins(std::filesystem::path& path) override;
@@ -44,10 +45,12 @@ namespace Vertex::Runtime
         [[nodiscard]] std::string status_code_to_string(StatusCode code) const;
 
         StatusCode initialize_plugin(Plugin& plugin) const;
+        StatusCode restore_persisted_config(Plugin& plugin);
 
         std::vector<Plugin> m_plugins{};
         std::optional<std::reference_wrapper<Plugin>> m_activePlugin;
         Configuration::ISettings& m_settingsService;
+        Configuration::IPluginConfig& m_pluginConfigService;
         Log::ILog& m_loggerService;
         Thread::IThreadDispatcher& m_threadDispatcher;
         Registry m_registry;

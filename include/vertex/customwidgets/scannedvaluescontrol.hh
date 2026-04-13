@@ -14,6 +14,7 @@
 
 #include <vertex/viewmodel/mainviewmodel.hh>
 #include <vertex/language/language.hh>
+#include <vertex/gui/theme/ithemeprovider.hh>
 
 namespace Vertex::CustomWidgets
 {
@@ -24,11 +25,13 @@ namespace Vertex::CustomWidgets
 
         explicit ScannedValuesHeader(
             wxWindow* parent,
-            Language::ILanguage& languageService
+            Language::ILanguage& languageService,
+            Gui::IThemeProvider& themeProvider
         );
 
         void set_horizontal_scroll_offset(int offset);
         void set_column_resize_callback(ColumnResizeCallback callback);
+        void refresh_theme();
 
         [[nodiscard]] int get_header_height() const
         {
@@ -102,6 +105,7 @@ namespace Vertex::CustomWidgets
         wxString m_headerPreviousValue{};
 
         ColumnResizeCallback m_columnResizeCallback{};
+        Gui::IThemeProvider& m_themeProvider;
 
         struct Colors
         {
@@ -121,6 +125,7 @@ namespace Vertex::CustomWidgets
         explicit ScannedValuesControl(
             wxWindow* parent,
             Language::ILanguage& languageService,
+            Gui::IThemeProvider& themeProvider,
             const std::shared_ptr<ViewModel::MainViewModel>& viewModel,
             ScannedValuesHeader* header
         );
@@ -130,6 +135,7 @@ namespace Vertex::CustomWidgets
         void clear_list();
         void start_auto_refresh() const;
         void stop_auto_refresh() const;
+        void refresh_theme();
 
         void set_selection_change_callback(SelectionChangeCallback callback);
         void set_add_to_table_callback(AddToTableCallback callback);
@@ -165,6 +171,8 @@ namespace Vertex::CustomWidgets
         void ensure_line_visible(int lineIndex);
         void refresh_visible_items();
         void sync_header_scroll() const;
+        [[nodiscard]] int get_model_item_count() const;
+        bool sync_item_count_with_model();
 
         static constexpr int ADDRESS_COLUMN{};
         static constexpr int VALUE_COLUMN{1};
@@ -196,6 +204,7 @@ namespace Vertex::CustomWidgets
         wxFont m_codeFont{};
 
         Language::ILanguage& m_languageService;
+        Gui::IThemeProvider& m_themeProvider;
         std::shared_ptr<ViewModel::MainViewModel> m_viewModel{};
         ScannedValuesHeader* m_header{};
 

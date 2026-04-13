@@ -9,10 +9,12 @@ namespace Vertex::CustomWidgets
     ScannedValuesPanel::ScannedValuesPanel(
         wxWindow* parent,
         Language::ILanguage& languageService,
+        Gui::IThemeProvider& themeProvider,
         const std::shared_ptr<ViewModel::MainViewModel>& viewModel
     )
         : wxPanel(parent, wxID_ANY)
         , m_languageService(languageService)
+        , m_themeProvider(themeProvider)
         , m_viewModel(viewModel)
     {
         create_layout();
@@ -22,8 +24,8 @@ namespace Vertex::CustomWidgets
     {
         m_sizer = new wxBoxSizer(wxVERTICAL);
 
-        m_header = new ScannedValuesHeader(this, m_languageService);
-        m_control = new ScannedValuesControl(this, m_languageService, m_viewModel, m_header);
+        m_header = new ScannedValuesHeader(this, m_languageService, m_themeProvider);
+        m_control = new ScannedValuesControl(this, m_languageService, m_themeProvider, m_viewModel, m_header);
 
         m_header->set_column_resize_callback([this]()
         {

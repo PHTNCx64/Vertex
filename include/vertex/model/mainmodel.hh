@@ -15,46 +15,66 @@
 #include <sdk/statuscode.h>
 #include <sdk/memory.h>
 
+#include <span>
 #include <string_view>
 
 namespace Vertex::Model
 {
+    struct BulkReadEntry final
+    {
+        std::uint64_t address{};
+        std::uint64_t size{};
+        void* buffer{};
+    };
+
+    struct BulkWriteEntry final
+    {
+        std::uint64_t address{};
+        std::span<const std::uint8_t> bytes{};
+    };
+
     class MainModel final
     {
-    public:
-        explicit MainModel(
-            Configuration::ISettings& settingsService,
-            Scanner::IMemoryScanner& memoryService,
-            Runtime::ILoader& loaderService,
-            Log::ILog& loggerService,
-            Thread::IThreadDispatcher& dispatcher
-            );
+      public:
+        explicit MainModel(Configuration::ISettings& settingsService, Scanner::IMemoryScanner& memoryService, Runtime::ILoader& loaderService, Log::ILog& loggerService, Thread::IThreadDispatcher& dispatcher);
 
-        [[nodiscard]] StatusCode validate_input(Scanner::ValueType type, bool hexadecimal,
-                                  std::string_view input,
-                                  std::vector<std::uint8_t>& output) const;
+        [[nodiscard]] StatusCode validate_input(Scanner::ValueType type, bool hexadecimal, std::string_view input, std::vector<std::uint8_t>& output) const;
 
         [[nodiscard]] StatusCode read_process_memory(std::uint64_t address, std::size_t size, std::vector<char>& output) const;
         [[nodiscard]] StatusCode write_process_memory(std::uint64_t address, const std::vector<std::uint8_t>& data) const;
+        [[nodiscard]] bool supports_bulk_read() const;
+        [[nodiscard]] bool supports_bulk_write() const;
+        [[nodiscard]] StatusCode get_bulk_request_limit(std::uint32_t& maxRequestCount) const;
+        [[nodiscard]] StatusCode read_process_memory_bulk(std::span<const BulkReadEntry> entries, std::span<BulkReadResult> results) const;
+        [[nodiscard]] StatusCode write_process_memory_bulk(std::span<const BulkWriteEntry> entries) const;
         [[nodiscard]] StatusCode query_memory_regions(std::vector<MemoryRegion>& regions) const;
         [[nodiscard]] StatusCode get_file_executable_extensions(std::vector<std::string>& extensions) const;
+        [[nodiscard]] StatusCode open_new_process(std::string_view processPath, int argc, const char** argv) const;
         [[nodiscard]] StatusCode get_min_process_address(std::uint64_t& address) const;
         [[nodiscard]] StatusCode get_max_process_address(std::uint64_t& address) const;
 
-        [[nodiscard]] StatusCode initialize_scan(Scanner::ValueType valueType, std::uint8_t scanMode,
-                                   bool hexDisplay, bool alignmentEnabled, std::size_t alignmentValue,
-                                   Scanner::Endianness endianness,
-                                   const std::vector<std::uint8_t>& input,
-                                   const std::vector<std::uint8_t>& input2) const;
+        [[nodiscard]] StatusCode initialize_scan(Scanner::ValueType valueType,
+                                                 std::uint8_t scanMode,
+                                                 bool hexDisplay,
+                                                 bool alignmentEnabled,
+                                                 std::size_t alignmentValue,
+                                                 Scanner::Endianness endianness,
+                                                 const std::vector<std::uint8_t>& input,
+                                                 const std::vector<std::uint8_t>& input2) const;
 
-        [[nodiscard]] StatusCode initialize_next_scan(Scanner::ValueType valueType, std::uint8_t scanMode,
-                                        bool hexDisplay, bool alignmentEnabled, std::size_t alignmentValue,
-                                        Scanner::Endianness endianness,
-                                        const std::vector<std::uint8_t>& input,
-                                        const std::vector<std::uint8_t>& input2) const;
+        [[nodiscard]] StatusCode initialize_next_scan(Scanner::ValueType valueType,
+                                                      std::uint8_t scanMode,
+                                                      bool hexDisplay,
+                                                      bool alignmentEnabled,
+                                                      std::size_t alignmentValue,
+                                                      Scanner::Endianness endianness,
+                                                      const std::vector<std::uint8_t>& input,
+                                                      const std::vector<std::uint8_t>& input2) const;
 
         [[nodiscard]] StatusCode undo_scan() const;
         [[nodiscard]] StatusCode stop_scan() const;
+        void set_scan_completion_callback(std::move_only_function<void()> callback) const;
+        void set_scan_progress_callback(std::move_only_function<void()> callback) const;
         void finalize_scan() const;
         [[nodiscard]] bool can_undo_scan() const;
         [[nodiscard]] std::uint64_t get_scan_progress_current() const;
@@ -75,8 +95,7 @@ namespace Vertex::Model
         void set_ui_state_int(std::string_view key, int value) const;
         void set_ui_state_bool(std::string_view key, bool value) const;
 
-    private:
-
+      private:
         static constexpr std::string_view MODEL_NAME{"MainModel"};
 
         void ensure_memory_reader_setup() const;
@@ -87,4 +106,4 @@ namespace Vertex::Model
         Log::ILog& m_loggerService;
         Thread::IThreadDispatcher& m_dispatcher;
     };
-}
+} // namespace Vertex::Model

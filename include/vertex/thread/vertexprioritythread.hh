@@ -96,13 +96,13 @@ namespace Vertex::Thread
         std::jthread m_thread {};
         std::counting_semaphore<> m_semaphore {0};
 
-        MSVC_SUPPRESS_PADDING_WARNING
+        START_PADDING_WARNING_SUPPRESSION
 
         alignas(std::hardware_destructive_interference_size) std::atomic<bool> m_isRunning {};
         alignas(std::hardware_destructive_interference_size) std::atomic<std::size_t> m_pendingTasks {};
         alignas(std::hardware_destructive_interference_size) std::atomic<bool> m_isBusy {};
 
-        MSVC_END_WARNING_SUPPRESSION
+        END_PADDING_WARNING_SUPPRESSION
 
         mutable std::mutex m_recurringMutex {};
         std::vector<std::shared_ptr<RecurringEntry>> m_recurringTasks {};

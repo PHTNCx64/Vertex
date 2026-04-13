@@ -10,7 +10,14 @@
 #include <sdk/api.h>
 #include <sdk/process.h>
 
-#include <Windows.h>
+#include <cstdint>
+
+#if defined(_WIN32) || defined(_WIN64)
+#include <windows.h>
+constexpr std::size_t PROCESS_INTERNAL_SECTION_NAME_MAX = IMAGE_SIZEOF_SHORT_NAME;
+#else
+constexpr std::size_t PROCESS_INTERNAL_SECTION_NAME_MAX = 16;
+#endif
 
 #include <algorithm>
 #include <deque>
@@ -40,7 +47,7 @@ namespace ProcessInternal
 
     struct SectionEntry final
     {
-        char name[IMAGE_SIZEOF_SHORT_NAME + 1]{};
+        char name[PROCESS_INTERNAL_SECTION_NAME_MAX + 1]{};
         std::uint64_t virtualAddress{};
         std::uint64_t virtualSize{};
     };
@@ -104,6 +111,19 @@ namespace ProcessInternal
         return result;
     }
 
+    inline void vertex_cpy(char* dst, const std::string_view src, const std::size_t max_len)
+    {
+        if (!dst || max_len == 0)
+        {
+            return;
+        }
+
+        const std::size_t cpy_len = std::min(src.length(), max_len - 1);
+        std::copy_n(src.data(), cpy_len, dst);
+        dst[cpy_len] = '\0';
+    }
+
+#if defined(_WIN32) || defined(_WIN64)
     inline std::optional<std::string> wchar_to_utf8(const WCHAR* str) noexcept
     {
         if (!str)
@@ -140,16 +160,5 @@ namespace ProcessInternal
 
         return (result > 0) ? std::make_optional(std::move(wide_str)) : std::nullopt;
     }
-
-    inline void vertex_cpy(char* dst, const std::string_view src, const std::size_t max_len)
-    {
-        if (!dst || max_len == 0)
-        {
-            return;
-        }
-
-        const std::size_t cpy_len = std::min(src.length(), max_len - 1);
-        std::copy_n(src.data(), cpy_len, dst);
-        dst[cpy_len] = '\0';
-    }
+#endif
 }

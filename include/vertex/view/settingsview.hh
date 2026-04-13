@@ -12,12 +12,14 @@
 #include <wx/choice.h>
 #include <wx/stattext.h>
 #include <wx/listctrl.h>
+#include <wx/spinctrl.h>
 
 #include <memory>
 #include <functional>
 #include <vertex/language/language.hh>
 #include <vertex/viewmodel/settingsviewmodel.hh>
 #include <vertex/event/eventbus.hh>
+#include <vertex/gui/theme/ithemeprovider.hh>
 
 namespace Vertex::View
 {
@@ -29,7 +31,7 @@ namespace Vertex::View
     {
       public:
         SettingsView(Language::ILanguage& languageService, std::unique_ptr<ViewModel::SettingsViewModel> viewModel,
-                     PluginConfigViewFactory pluginConfigFactory = {});
+                     Gui::IThemeProvider& themeProvider, PluginConfigViewFactory pluginConfigFactory = {});
 
       private:
         void vertex_event_callback(Event::EventId eventId, const Event::VertexEvent& event);
@@ -38,6 +40,7 @@ namespace Vertex::View
         void bind_events();
         [[nodiscard]] bool toggle_view();
         void load_settings_from_viewmodel();
+        void apply_selected_theme(int selection);
 
         void create_general_tab_controls();
         void create_plugin_tab_controls();
@@ -156,6 +159,7 @@ namespace Vertex::View
 
         std::unique_ptr<ViewModel::SettingsViewModel> m_viewModel{};
         Language::ILanguage& m_languageService;
+        Gui::IThemeProvider& m_themeProvider;
 
         wxPanel* m_pluginConfigPanel{};
         PluginConfigView* m_pluginConfigView{};

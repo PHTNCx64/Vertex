@@ -27,20 +27,26 @@ namespace Vertex::ViewModel
 
     void ProcessListViewModel::set_event_callback(std::move_only_function<void(Event::EventId, const Event::VertexEvent&) const> eventCallback) { m_eventCallback = std::move(eventCallback); }
 
-    void ProcessListViewModel::update_process_list() const
+    void ProcessListViewModel::update_process_list(std::move_only_function<void() const> onComplete) const
     {
         if (m_dispatcher.is_channel_busy(Thread::ThreadChannel::ProcessList)) [[unlikely]]
         {
             return;
         }
 
+        const auto processesStatus = m_model->get_process_list();
+
         std::packaged_task<StatusCode()> task(
-          [this]() -> StatusCode
+          [this, onComplete = std::move(onComplete), processesStatus]() mutable -> StatusCode
           {
-              const auto processesStatus = m_model->get_process_list();
               m_model->build_tree();
               m_model->filter_list();
               m_model->sort_list();
+
+              if (onComplete)
+              {
+                  onComplete();
+              }
 
               return processesStatus;
           });
@@ -93,29 +99,27 @@ namespace Vertex::ViewModel
     {
         const Class::SelectedProcess process = m_model->get_selected_process();
 
-        std::packaged_task<StatusCode()> task(
-            [this, process]() -> StatusCode
-            {
-                const auto status = m_model->open_process();
-                if (status != StatusCode::STATUS_OK) [[unlikely]]
-                {
-                    return status;
-                }
+        const auto status = m_model->open_process();
+        if (status != StatusCode::STATUS_OK) [[unlikely]]
+        {
+            return;
+        }
 
-                const Event::ProcessOpenEvent processOpenEvent{
-                    Event::PROCESS_OPEN_EVENT,
-                    process.get_selected_process_id().value(),
-                    process.get_selected_process_name().value()};
+        const Event::ProcessOpenEvent processOpenEvent{
+            Event::PROCESS_OPEN_EVENT,
+            process.get_selected_process_id().value(),
+            process.get_selected_process_name().value()};
 
-                if (m_eventCallback)
-                {
-                    m_eventCallback(Event::PROCESS_OPEN_EVENT, processOpenEvent);
-                }
+        if (m_eventCallback)
+        {
+            m_eventCallback(Event::PROCESS_OPEN_EVENT, processOpenEvent);
+        }
+    }
 
-                return StatusCode::STATUS_OK;
-            });
-
-        std::ignore = m_dispatcher.dispatch_fire_and_forget(Thread::ThreadChannel::ProcessList, std::move(task));
+    void ProcessListViewModel::open_process_by_pid(const std::uint32_t pid) const
+    {
+        m_model->set_selected_process_by_pid(pid);
+        open_process();
     }
 
     void ProcessListViewModel::set_filter_text(const std::string_view text) const
@@ -161,6 +165,11 @@ namespace Vertex::ViewModel
     bool ProcessListViewModel::node_is_visible(const std::size_t nodeIndex) const
     {
         return m_model->node_is_visible(nodeIndex);
+    }
+
+    std::size_t ProcessListViewModel::get_node_index_for_pid(const std::uint32_t pid) const
+    {
+        return m_model->get_node_index_for_pid(pid);
     }
 
     bool ProcessListViewModel::consume_tree_dirty() const noexcept

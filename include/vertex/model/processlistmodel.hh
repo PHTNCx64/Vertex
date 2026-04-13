@@ -11,6 +11,7 @@
 #include <vertex/gui/enums/sortorder.hh>
 #include <vertex/gui/enums/filtertype.hh>
 #include <vertex/runtime/loader.hh>
+#include <vertex/thread/ithreaddispatcher.hh>
 
 #include <shared_mutex>
 #include <string_view>
@@ -32,15 +33,18 @@ namespace Vertex::Model
     {
       public:
         explicit ProcessListModel(Runtime::ILoader& loaderService, Log::ILog& loggerService,
-                                  Configuration::ISettings& settingsService)
+                                  Configuration::ISettings& settingsService,
+                                  Thread::IThreadDispatcher& dispatcher)
             : m_loaderService{loaderService},
               m_loggerService{loggerService},
-              m_settingsService{settingsService}
+              m_settingsService{settingsService},
+              m_dispatcher{dispatcher}
         {
             m_processes.reserve(INITIAL_PROCESS_LIST_SIZE);
         }
 
         [[nodiscard]] StatusCode open_process() const;
+        void set_selected_process_by_pid(std::uint32_t pid);
 
         void set_selected_process(const Class::SelectedProcess& process);
         void set_filter_type(Enums::FilterType filter);
@@ -71,6 +75,7 @@ namespace Vertex::Model
         [[nodiscard]] std::size_t get_parent_node_index(std::size_t nodeIndex) const noexcept;
         [[nodiscard]] bool node_has_parent(std::size_t nodeIndex) const noexcept;
         [[nodiscard]] bool node_is_visible(std::size_t nodeIndex) const noexcept;
+        [[nodiscard]] std::size_t get_node_index_for_pid(std::uint32_t pid) const noexcept;
         [[nodiscard]] Class::SelectedProcess make_selected_process_from_node(std::size_t nodeIndex) noexcept;
 
         [[nodiscard]] int get_ui_state_int(std::string_view key, int defaultValue) const;
@@ -105,6 +110,7 @@ namespace Vertex::Model
 
         static constexpr std::string_view MODEL_NAME{"ProcessListModel"};
         static constexpr int INITIAL_PROCESS_LIST_SIZE = 500;
+        static constexpr std::uint32_t MAX_PROCESS_LIST_RETRIES{3};
 
         long m_selectedColumn{};
         std::atomic_bool m_shouldFilter{};
@@ -118,6 +124,7 @@ namespace Vertex::Model
         Runtime::ILoader& m_loaderService;
         Log::ILog& m_loggerService;
         Configuration::ISettings& m_settingsService;
+        Thread::IThreadDispatcher& m_dispatcher;
 
         std::vector<ProcessInformation> m_processes{};
 

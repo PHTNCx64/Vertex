@@ -276,6 +276,15 @@ TEST_F(SettingsTest, Validate_InvalidThreadCount_ReturnsFalse)
     EXPECT_FALSE(result);
 }
 
+TEST_F(SettingsTest, Validate_InvalidMemoryScanWorkerChunkSize_ReturnsFalse)
+{
+    settings->set_value("memoryScan.workerChunkSizeMB", 0);
+
+    const bool result = settings->validate();
+
+    EXPECT_FALSE(result);
+}
+
 // ==================== Reset to Defaults Tests ====================
 
 TEST_F(SettingsTest, ResetToDefaults_SetsDefaultValues)

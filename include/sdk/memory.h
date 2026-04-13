@@ -47,6 +47,30 @@ typedef struct VertexMemoryRegion
     uint64_t regionSize;
 } MemoryRegion;
 
+typedef struct VertexBulkReadRequest
+{
+    uint64_t address;
+    uint64_t size;
+    void* buffer;
+} BulkReadRequest;
+
+typedef struct VertexBulkReadResult
+{
+    StatusCode status;
+} BulkReadResult;
+
+typedef struct VertexBulkWriteRequest
+{
+    uint64_t address;
+    uint64_t size;
+    const void* buffer;
+} BulkWriteRequest;
+
+typedef struct VertexBulkWriteResult
+{
+    StatusCode status;
+} BulkWriteResult;
+
 typedef enum VertexMemoryAttributeType : int32_t
 {
     VERTEX_PROTECTION = 0,

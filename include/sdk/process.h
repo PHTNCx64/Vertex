@@ -5,6 +5,7 @@
 
 #pragma once
 
+#include <stddef.h>
 #include <stdint.h>
 
 #include "macro.h"
@@ -40,6 +41,8 @@ extern "C" {
 #endif
 
 #define VERTEX_MAX_DESCRIPTION_LENGTH 1024
+#define VERTEX_MAX_INJECTION_EXTENSIONS 8
+#define VERTEX_MAX_EXTENSION_LENGTH 16
 
 // ===============================================================================================================//
 // PROCESS STRUCTURES                                                                                             //
@@ -66,6 +69,8 @@ typedef struct VertexInjectionMethod
     char methodName[VERTEX_MAX_NAME_LENGTH];
     char description[VERTEX_MAX_DESCRIPTION_LENGTH];
     StatusCode(VERTEX_API* injectableFunction)(const char* path);
+    char extensions[VERTEX_MAX_INJECTION_EXTENSIONS][VERTEX_MAX_EXTENSION_LENGTH];
+    uint32_t extensionCount;
 } InjectionMethod;
 
 typedef struct VertexModuleEntry

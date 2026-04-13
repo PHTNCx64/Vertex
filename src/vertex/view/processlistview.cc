@@ -7,6 +7,10 @@
 #include <vertex/event/types/processopenevent.hh>
 #include <vertex/customwidgets/processlistctrl.hh>
 #include <vertex/view/processlistview.hh>
+#include <vertex/gui/theme/themeprovider.hh>
+
+#include <algorithm>
+#include <string>
 
 #include <wx/app.h>
 #include <wx/button.h>
@@ -15,10 +19,11 @@
 
 namespace Vertex::View
 {
-    ProcessListView::ProcessListView(Language::ILanguage& languageService, const std::shared_ptr<ViewModel::ProcessListViewModel>& viewModel)
+    ProcessListView::ProcessListView(Language::ILanguage& languageService, const std::shared_ptr<ViewModel::ProcessListViewModel>& viewModel, Gui::IThemeProvider& themeProvider)
         : wxDialog(wxTheApp->GetTopWindow(), wxID_ANY, languageService.fetch_translation("processListView.ui.title"), wxDefaultPosition, wxSize(FromDIP(StandardWidgetValues::STANDARD_X_DIP), FromDIP(StandardWidgetValues::STANDARD_Y_DIP)), wxDEFAULT_DIALOG_STYLE | wxRESIZE_BORDER | wxMINIMIZE_BOX | wxMAXIMIZE_BOX | wxCLOSE_BOX),
           m_viewModel(viewModel),
-        m_languageService(languageService)
+        m_languageService(languageService),
+        m_themeProvider(themeProvider)
     {
         m_viewModel->set_event_callback([this](const Event::EventId id, const Event::VertexEvent& event)
         {
@@ -32,6 +37,7 @@ namespace Vertex::View
         restore_ui_state();
 
         m_attachButton->Disable();
+        m_directPidOpenButton->Disable();
     }
 
     void ProcessListView::create_controls(const std::shared_ptr<ViewModel::ProcessListViewModel>& viewModel)
@@ -50,6 +56,10 @@ namespace Vertex::View
         m_filterByProcessOwnerRadioButton = new wxRadioButton(m_processFilteringOptionsBox, wxID_ANY, wxString::FromUTF8(m_languageService.fetch_translation("processListView.ui.filterByProcessOwner")));
         m_processListSizer = new wxBoxSizer(wxVERTICAL);
         m_processList = new CustomWidgets::ProcessListControl(this, m_languageService, viewModel);
+        m_directPidSizer = new wxBoxSizer(wxHORIZONTAL);
+        m_directPidLabel = new wxStaticText(this, wxID_ANY, wxString::FromUTF8(m_languageService.fetch_translation("processListView.ui.directPidLabel")));
+        m_directPidInput = new wxTextCtrl(this, wxID_ANY, EMPTY_STRING, wxDefaultPosition, wxDefaultSize, wxTE_PROCESS_ENTER);
+        m_directPidOpenButton = new wxButton(this, wxID_ANY, wxString::FromUTF8(m_languageService.fetch_translation("processListView.ui.directPidOpenButton")));
         m_buttonOptionsSizer = new wxBoxSizer(wxHORIZONTAL);
         m_attachButton = new wxButton(this, wxID_OK, wxString::FromUTF8(m_languageService.fetch_translation("processListView.ui.openProcessButton")));
         m_cancelButton = new wxButton(this, wxID_CANCEL, wxString::FromUTF8(m_languageService.fetch_translation("processListView.ui.cancelButton")));
@@ -67,12 +77,16 @@ namespace Vertex::View
         m_processFilteringOptionsBoxSizer->Add(m_processFilteringInputSizer, StandardWidgetValues::NO_PROPORTION, wxALL | wxEXPAND, StandardWidgetValues::STANDARD_BORDER);
         m_processFilteringOptionsBoxSizer->Add(m_radioButtonOptionsSizer, StandardWidgetValues::NO_PROPORTION, wxALL | wxEXPAND, StandardWidgetValues::STANDARD_BORDER);
         m_processListSizer->Add(m_processList, StandardWidgetValues::STANDARD_PROPORTION, wxALL | wxEXPAND, StandardWidgetValues::STANDARD_BORDER);
+        m_directPidSizer->Add(m_directPidLabel, StandardWidgetValues::NO_PROPORTION, wxALL | wxALIGN_CENTER_VERTICAL, StandardWidgetValues::STANDARD_BORDER);
+        m_directPidSizer->Add(m_directPidInput, StandardWidgetValues::STANDARD_PROPORTION, wxALL | wxEXPAND, StandardWidgetValues::STANDARD_BORDER);
+        m_directPidSizer->Add(m_directPidOpenButton, StandardWidgetValues::NO_PROPORTION, wxALL, StandardWidgetValues::STANDARD_BORDER);
         m_buttonOptionsSizer->AddStretchSpacer();
         m_buttonOptionsSizer->Add(m_attachButton, StandardWidgetValues::NO_PROPORTION, wxALL, StandardWidgetValues::STANDARD_BORDER);
         m_buttonOptionsSizer->Add(m_cancelButton, StandardWidgetValues::NO_PROPORTION, wxALL, StandardWidgetValues::STANDARD_BORDER);
         m_mainSizer->Add(m_processListInformationTextSizer, StandardWidgetValues::NO_PROPORTION, wxALL | wxEXPAND, StandardWidgetValues::BORDER_TWICE);
         m_mainSizer->Add(m_processFilteringOptionsBoxSizer, StandardWidgetValues::NO_PROPORTION, wxALL | wxEXPAND, StandardWidgetValues::BORDER_TWICE);
         m_mainSizer->Add(m_processListSizer, StandardWidgetValues::STANDARD_PROPORTION, wxALL | wxEXPAND, StandardWidgetValues::BORDER_TWICE);
+        m_mainSizer->Add(m_directPidSizer, StandardWidgetValues::NO_PROPORTION, wxALL | wxEXPAND, StandardWidgetValues::BORDER_TWICE);
         m_mainSizer->Add(m_buttonOptionsSizer, StandardWidgetValues::NO_PROPORTION, wxALL | wxEXPAND, StandardWidgetValues::BORDER_TWICE);
 
         SetSizer(m_mainSizer);
@@ -80,6 +94,14 @@ namespace Vertex::View
 
     void ProcessListView::bind_events()
     {
+        Bind(wxEVT_SYS_COLOUR_CHANGED, [this](wxSysColourChangedEvent& event)
+        {
+            m_themeProvider.refresh();
+            Gui::ThemeProvider::apply_palette_to_tree(this, m_themeProvider.palette());
+            Refresh();
+            event.Skip();
+        });
+
         Bind(wxEVT_SHOW, &ProcessListView::on_show, this);
 
         Bind(wxEVT_BUTTON, [this]([[maybe_unused]] wxCommandEvent& event)
@@ -157,10 +179,47 @@ namespace Vertex::View
             m_processList->refresh_list();
         }, m_processFilteringText->GetId());
 
+        const auto validateAndOpenPid = [this]()
+        {
+            const auto pidText = m_directPidInput->GetValue().utf8_string();
+            if (pidText.empty())
+            {
+                return;
+            }
+
+            const auto isDigitsOnly = std::ranges::all_of(pidText, [](const char c) { return c >= '0' && c <= '9'; });
+            if (!isDigitsOnly)
+            {
+                return;
+            }
+
+            const auto pid = static_cast<std::uint32_t>(std::stoul(pidText));
+            m_viewModel->open_process_by_pid(pid);
+        };
+
+        Bind(wxEVT_TEXT, [this]([[maybe_unused]] const wxCommandEvent& event)
+        {
+            const auto text = m_directPidInput->GetValue().utf8_string();
+            const bool isValid = !text.empty() && std::ranges::all_of(text, [](const char c) { return c >= '0' && c <= '9'; });
+            m_directPidOpenButton->Enable(isValid);
+        }, m_directPidInput->GetId());
+
+        Bind(wxEVT_BUTTON, [validateAndOpenPid]([[maybe_unused]] wxCommandEvent& event)
+        {
+            validateAndOpenPid();
+        }, m_directPidOpenButton->GetId());
+
+        Bind(wxEVT_TEXT_ENTER, [validateAndOpenPid]([[maybe_unused]] wxCommandEvent& event)
+        {
+            validateAndOpenPid();
+        }, m_directPidInput->GetId());
+
         Bind(wxEVT_TIMER, [this]([[maybe_unused]] wxTimerEvent& event)
         {
-            m_viewModel->update_process_list();
-            m_processList->refresh_list();
+            m_viewModel->update_process_list([this]()
+            {
+                CallAfter([this]() { m_processList->refresh_list(); });
+            });
 
             m_resettableCallOnce.call([this]()
             {
@@ -175,8 +234,10 @@ namespace Vertex::View
     {
         if (event.IsShown())
         {
-            m_viewModel->update_process_list();
-            m_processList->refresh_list();
+            m_viewModel->update_process_list([this]()
+            {
+                CallAfter([this]() { m_processList->refresh_list(); });
+            });
 
             m_resettableCallOnce.reset();
             m_taskTimer->Start();

@@ -4,7 +4,7 @@
 //
 #include <vertexusrrt/debugger_internal.hh>
 
-#include <Windows.h>
+#include <windows.h>
 
 #include <format>
 
@@ -55,7 +55,7 @@ namespace debugger
                 return TickEventResult{.continueStatus = DBG_EXCEPTION_NOT_HANDLED};
             }
 
-            if (!decrement_instruction_pointer(event.dwThreadId, state.isWow64))
+            if (!decrement_instruction_pointer(event.dwThreadId))
             {
                 return TickEventResult{.continueStatus = DBG_EXCEPTION_NOT_HANDLED};
             }
@@ -98,7 +98,7 @@ namespace debugger
                 return TickEventResult{.continueStatus = DBG_EXCEPTION_NOT_HANDLED};
             }
 
-            if (!decrement_instruction_pointer(event.dwThreadId, state.isWow64))
+            if (!decrement_instruction_pointer(event.dwThreadId))
             {
                 return TickEventResult{.continueStatus = DBG_EXCEPTION_NOT_HANDLED};
             }
@@ -106,7 +106,7 @@ namespace debugger
             if (!evaluate_condition(bpCondition, bpHitCount))
             {
                 set_breakpoint_step_over(exceptionAddress, event.dwThreadId);
-                std::ignore = set_trap_flag(event.dwThreadId, state.isWow64, true);
+                std::ignore = set_trap_flag(event.dwThreadId, true);
                 return TickEventResult{.continueStatus = DBG_CONTINUE, .isInternal = true};
             }
 

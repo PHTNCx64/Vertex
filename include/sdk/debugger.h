@@ -261,8 +261,8 @@ extern "C" {
         char moduleName[VERTEX_MAX_NAME_LENGTH];
         uint32_t hitCount;
         uint8_t temporary;       // bool
-        uint8_t originalByte;    // For software breakpoints
-        uint8_t hwRegisterIndex; // For hardware breakpoints (0-3 on x86)
+        uint8_t originalByte;
+        uint8_t hwRegisterIndex; // 0xFF for software breakpoints
         uint8_t reserved;
     } BreakpointInfo;
 
@@ -422,20 +422,6 @@ extern "C" {
         BreakpointCondition condition;
         BreakpointAction action;
     } ConditionalBreakpoint;
-
-    // ===============================================================================================================//
-    // HARDWARE BREAKPOINT STATUS                                                                                    //
-    // ===============================================================================================================//
-
-    typedef struct VertexHardwareBreakpointStatus
-    {
-        uint8_t registerInUse[VERTEX_MAX_HW_BREAKPOINTS];
-        uint32_t breakpointIds[VERTEX_MAX_HW_BREAKPOINTS];
-        uint64_t addresses[VERTEX_MAX_HW_BREAKPOINTS];
-        BreakpointType types[VERTEX_MAX_HW_BREAKPOINTS];
-        uint8_t sizes[VERTEX_MAX_HW_BREAKPOINTS];
-        uint32_t availableCount;
-    } HardwareBreakpointStatus;
 
     // ===============================================================================================================//
     // LOCAL VARIABLE STRUCTURES                                                                                     //

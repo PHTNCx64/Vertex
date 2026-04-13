@@ -10,10 +10,12 @@ namespace Vertex::View::Debugger
 {
     DisassemblyPanel::DisassemblyPanel(wxWindow* parent,
                                         Language::ILanguage& languageService,
-                                        Gui::IIconManager& iconManager)
+                                        Gui::IIconManager& iconManager,
+                                        Gui::IThemeProvider& themeProvider)
         : wxPanel(parent, wxID_ANY)
         , m_languageService(languageService)
         , m_iconManager(iconManager)
+        , m_themeProvider(themeProvider)
     {
         create_controls();
         layout_controls();
@@ -28,23 +30,23 @@ namespace Vertex::View::Debugger
         m_addressInput = new wxTextCtrl(this, wxID_ANY, "0x", wxDefaultPosition, wxSize(FromDIP(150), -1), wxTE_PROCESS_ENTER);
         m_goButton = new wxButton(this, wxID_ANY, wxString::FromUTF8(m_languageService.fetch_translation("debugger.ui.go")));
 
-        m_disassemblyHeader = new DisassemblyHeader(this, m_languageService);
-        m_disassemblyControl = new DisassemblyControl(this, m_languageService, m_disassemblyHeader);
+        m_disassemblyHeader = new DisassemblyHeader(this, m_languageService, m_themeProvider);
+        m_disassemblyControl = new DisassemblyControl(this, m_languageService, m_themeProvider, m_disassemblyHeader);
     }
 
     void DisassemblyPanel::layout_controls()
     {
         m_addressBarSizer->Add(new wxStaticText(this, wxID_ANY, wxString::FromUTF8(m_languageService.fetch_translation("debugger.ui.address"))),
-                                0, wxALIGN_CENTER_VERTICAL | wxRIGHT, StandardWidgetValues::STANDARD_BORDER);
-        m_addressBarSizer->Add(m_addressInput, 0, wxRIGHT, StandardWidgetValues::STANDARD_BORDER);
-        m_addressBarSizer->Add(m_goButton, 0);
+                                StandardWidgetValues::NO_PROPORTION, wxALIGN_CENTER_VERTICAL | wxRIGHT, StandardWidgetValues::STANDARD_BORDER);
+        m_addressBarSizer->Add(m_addressInput, StandardWidgetValues::NO_PROPORTION, wxRIGHT, StandardWidgetValues::STANDARD_BORDER);
+        m_addressBarSizer->Add(m_goButton, StandardWidgetValues::NO_PROPORTION);
 
-        m_mainSizer->Add(m_addressBarSizer, 0, wxEXPAND | wxALL, StandardWidgetValues::STANDARD_BORDER);
+        m_mainSizer->Add(m_addressBarSizer, StandardWidgetValues::NO_PROPORTION, wxEXPAND | wxALL, StandardWidgetValues::STANDARD_BORDER);
 
-        m_mainSizer->Add(m_disassemblyHeader, 0, wxEXPAND | wxLEFT | wxRIGHT,
+        m_mainSizer->Add(m_disassemblyHeader, StandardWidgetValues::NO_PROPORTION, wxEXPAND | wxLEFT | wxRIGHT,
                           StandardWidgetValues::STANDARD_BORDER);
 
-        m_mainSizer->Add(m_disassemblyControl, 1, wxEXPAND | wxLEFT | wxRIGHT | wxBOTTOM,
+        m_mainSizer->Add(m_disassemblyControl, StandardWidgetValues::STANDARD_PROPORTION, wxEXPAND | wxLEFT | wxRIGHT | wxBOTTOM,
                           StandardWidgetValues::STANDARD_BORDER);
 
         SetSizer(m_mainSizer);
@@ -139,6 +141,11 @@ namespace Vertex::View::Debugger
         m_disassemblyControl->set_scroll_boundary_callback(std::move(callback));
     }
 
+    void DisassemblyPanel::set_show_in_memory_callback(ShowInMemoryCallback callback)
+    {
+        m_disassemblyControl->set_show_in_memory_callback(std::move(callback));
+    }
+
     void DisassemblyPanel::set_xref_query_callback(XrefQueryCallback callback)
     {
         m_disassemblyControl->set_xref_query_callback(std::move(callback));
@@ -156,6 +163,18 @@ namespace Vertex::View::Debugger
         if (input.ToULongLong(&address, 16) && m_navigateCallback)
         {
             m_navigateCallback(address);
+        }
+    }
+
+    void DisassemblyPanel::refresh_theme()
+    {
+        if (m_disassemblyHeader)
+        {
+            m_disassemblyHeader->refresh_theme();
+        }
+        if (m_disassemblyControl)
+        {
+            m_disassemblyControl->refresh_theme();
         }
     }
 

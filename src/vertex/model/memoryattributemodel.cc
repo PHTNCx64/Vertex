@@ -67,7 +67,7 @@ namespace Vertex::Model
             data.isValid = true;
             data.currentState = false;
 
-            if (option.memoryAttributeName && std::strlen(option.memoryAttributeName) > 0)
+            if (option.memoryAttributeName != nullptr && option.memoryAttributeName[0] != '\0')
             {
                 data.name = option.memoryAttributeName;
             }

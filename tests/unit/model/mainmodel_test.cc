@@ -192,7 +192,7 @@ TEST_F(MainModelTest, IsProcessOpened_PluginNotLoaded_ReturnsError)
     EXPECT_CALL(*mockLoader, has_plugin_loaded())
         .WillOnce(Return(StatusCode::STATUS_OK));
 
-    Vertex::Runtime::Plugin mockPlugin{};
+    Vertex::Runtime::Plugin mockPlugin{*mockLogger};
     // Don't set plugin handle - is_loaded() will return false
 
     EXPECT_CALL(*mockLoader, get_active_plugin())
@@ -214,15 +214,15 @@ TEST_F(MainModelTest, IsProcessOpened_FunctionNotImplemented_ReturnsError)
     EXPECT_CALL(*mockLoader, has_plugin_loaded())
         .WillOnce(Return(StatusCode::STATUS_OK));
 
-    Vertex::Runtime::Plugin mockPlugin{};
-    mockPlugin.set_plugin_handle(reinterpret_cast<void*>(0x1)); // Make is_loaded() return true
+    Vertex::Runtime::Plugin mockPlugin{*mockLogger};
+    mockPlugin.set_library(Vertex::Runtime::Library::create_stub());
     mockPlugin.internal_vertex_process_is_valid = nullptr;
 
     EXPECT_CALL(*mockLoader, get_active_plugin())
         .WillRepeatedly(Return(std::optional<std::reference_wrapper<Vertex::Runtime::Plugin>>(mockPlugin)));
 
     EXPECT_CALL(*mockLogger, log_error(_))
-        .Times(1);
+        .Times(::testing::AtLeast(1));
 
     // Act
     StatusCode result = model->is_process_opened();
@@ -237,8 +237,8 @@ TEST_F(MainModelTest, IsProcessOpened_ValidPlugin_CallsPluginFunction)
     EXPECT_CALL(*mockLoader, has_plugin_loaded())
         .WillOnce(Return(StatusCode::STATUS_OK));
 
-    Vertex::Runtime::Plugin mockPlugin{};
-    mockPlugin.set_plugin_handle(reinterpret_cast<void*>(0x1)); // Make is_loaded() return true
+    Vertex::Runtime::Plugin mockPlugin{*mockLogger};
+    mockPlugin.set_library(Vertex::Runtime::Library::create_stub());
     mockPlugin.internal_vertex_process_is_valid = []() {
         return StatusCode::STATUS_OK;
     };
@@ -259,8 +259,8 @@ TEST_F(MainModelTest, KillProcess_ValidPlugin_CallsPluginFunction)
     EXPECT_CALL(*mockLoader, has_plugin_loaded())
         .WillOnce(Return(StatusCode::STATUS_OK));
 
-    Vertex::Runtime::Plugin mockPlugin{};
-    mockPlugin.set_plugin_handle(reinterpret_cast<void*>(0x1)); // Make is_loaded() return true
+    Vertex::Runtime::Plugin mockPlugin{*mockLogger};
+    mockPlugin.set_library(Vertex::Runtime::Library::create_stub());
     mockPlugin.internal_vertex_process_kill = []() {
         return StatusCode::STATUS_OK;
     };

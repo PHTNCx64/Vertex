@@ -11,6 +11,7 @@
 #include <vector>
 #include <string>
 #include <memory>
+#include <functional>
 
 namespace Vertex::Scanner
 {
@@ -23,7 +24,7 @@ namespace Vertex::Scanner
 
     class IMemoryScanner
     {
-    public:
+      public:
         struct ScanResultEntry final
         {
             std::uint64_t address{};
@@ -36,6 +37,8 @@ namespace Vertex::Scanner
         virtual ~IMemoryScanner() = default;
 
         virtual void set_memory_reader(std::shared_ptr<IMemoryReader> reader) = 0;
+        virtual void set_scan_completion_callback(std::move_only_function<void()> callback) = 0;
+        virtual void set_scan_progress_callback(std::move_only_function<void()> callback) = 0;
         [[nodiscard]] virtual bool has_memory_reader() const = 0;
 
         virtual StatusCode initialize_scan(const ScanConfiguration& configuration, const std::vector<ScanRegion>& memoryRegions) = 0;
@@ -46,7 +49,7 @@ namespace Vertex::Scanner
 
         [[nodiscard]] virtual std::uint64_t get_regions_scanned() const noexcept = 0;
         [[nodiscard]] virtual std::uint64_t get_total_regions() const noexcept = 0;
-        [[nodiscard]] virtual std::uint64_t get_results_count() const noexcept = 0;
+        [[nodiscard]] virtual std::uint64_t get_results_count() const = 0;
         virtual void set_scan_abort_state(bool state) = 0;
         virtual bool is_scan_complete() = 0;
         [[nodiscard]] virtual bool can_undo() const = 0;

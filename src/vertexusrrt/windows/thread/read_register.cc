@@ -7,7 +7,7 @@
 
 #include <sdk/api.h>
 
-#include <Windows.h>
+#include <windows.h>
 #include <algorithm>
 #include <cstdint>
 #include <cstring>

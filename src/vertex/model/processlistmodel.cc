@@ -8,6 +8,7 @@
 #include <vertex/utility.hh>
 #include <vertex/model/processlistmodel.hh>
 #include <vertex/runtime/caller.hh>
+#include <vertex/thread/threadchannel.hh>
 
 namespace Vertex::Model
 {
@@ -50,28 +51,60 @@ namespace Vertex::Model
             return StatusCode::STATUS_ERROR_PLUGIN_NOT_FOUND;
         }
 
-        const auto& activePlugin = m_loaderService.get_active_plugin().value().get();
         const std::uint32_t processId = m_selectedProcess.get_selected_process_id().value();
 
-        const auto result = Runtime::safe_call(activePlugin.internal_vertex_process_open, processId);
-        const auto status = Runtime::get_status(result);
-        if (status == StatusCode::STATUS_ERROR_FUNCTION_NOT_FOUND)
+        std::packaged_task<StatusCode()> task(
+            [this, processId]() -> StatusCode
+            {
+                auto activePluginRef = m_loaderService.get_active_plugin().value();
+                auto& activePlugin = activePluginRef.get();
+
+                const auto result = Runtime::safe_call(activePlugin.internal_vertex_process_open, processId);
+                const auto status = Runtime::get_status(result);
+                if (status == StatusCode::STATUS_ERROR_FUNCTION_NOT_FOUND)
+                {
+                    m_loggerService.log_error(fmt::format("{}: {}", MODEL_NAME, "vertex_open_process is not implemented by plugin!"));
+                    return StatusCode::STATUS_ERROR_PLUGIN_FUNCTION_NOT_IMPLEMENTED;
+                }
+                if (!Runtime::status_ok(result))
+                {
+                    m_loggerService.log_error(fmt::format("{}: {} {}", MODEL_NAME, "vertex_open_process failed with STATUS_CODE: ", static_cast<int>(status)));
+                    return status;
+                }
+
+                ProcessEventData eventData{};
+                eventData.processId = processId;
+                eventData.processHandle = nullptr;
+                m_loaderService.dispatch_event(VERTEX_PROCESS_OPENED, &eventData);
+
+                return StatusCode::STATUS_OK;
+            });
+
+        auto dispatchResult = m_dispatcher.dispatch(Thread::ThreadChannel::ProcessList, std::move(task));
+        if (!dispatchResult.has_value())
         {
-            m_loggerService.log_error(fmt::format("{}: {}", MODEL_NAME, "vertex_open_process is not implemented by plugin!"));
-            return StatusCode::STATUS_ERROR_PLUGIN_FUNCTION_NOT_IMPLEMENTED;
-        }
-        if (!Runtime::status_ok(result))
-        {
-            m_loggerService.log_error(fmt::format("{}: {} {}", MODEL_NAME, "vertex_open_process failed with STATUS_CODE: ", static_cast<int>(status)));
-            return status;
+            return dispatchResult.error();
         }
 
-        ProcessEventData eventData{};
-        eventData.processId = processId;
-        eventData.processHandle = nullptr;
-        m_loaderService.dispatch_event(VERTEX_PROCESS_OPENED, &eventData);
+        return dispatchResult.value().get();
+    }
 
-        return StatusCode::STATUS_OK;
+    void ProcessListModel::set_selected_process_by_pid(const std::uint32_t pid)
+    {
+        std::scoped_lock lock(m_stateMutex);
+
+        m_selectedProcess.set_selected_process_id(pid);
+
+        const auto it = m_pidToNodeIndex.find(pid);
+        if (it != m_pidToNodeIndex.end())
+        {
+            const auto processIndex = m_treeNodes[it->second].processIndex;
+            m_selectedProcess.set_selected_process_name(m_processes[processIndex].processName);
+        }
+        else
+        {
+            m_selectedProcess.set_selected_process_name({});
+        }
     }
 
     void ProcessListModel::set_should_filter(const bool shouldFilter) noexcept
@@ -103,40 +136,66 @@ namespace Vertex::Model
             return pluginStatus;
         }
 
-        const auto& activePlugin = m_loaderService.get_active_plugin().value().get();
-
         std::vector<ProcessInformation> safeProcesses{};
-        safeProcesses.reserve(INITIAL_PROCESS_LIST_SIZE);
 
-        std::uint32_t processCount{};
-        const auto processCountResult = Runtime::safe_call(activePlugin.internal_vertex_process_get_list, nullptr, &processCount);
-        if (Runtime::status_ok(processCountResult))
-        {
-            safeProcesses.resize(processCount);
-            ProcessInformation* buffer = safeProcesses.data();
-            std::uint32_t bufferSize = processCount;
-
-            auto listResult = Runtime::safe_call(activePlugin.internal_vertex_process_get_list, &buffer, &bufferSize);
-            const auto listStatus = Runtime::get_status(listResult);
-
-            if (Runtime::status_ok(listResult))
+        std::packaged_task<StatusCode()> task(
+            [this, &safeProcesses]() -> StatusCode
             {
-                safeProcesses.resize(bufferSize);
-            }
-            else if (listStatus == StatusCode::STATUS_ERROR_MEMORY_BUFFER_TOO_SMALL)
-            {
-                safeProcesses.resize(bufferSize);
-                buffer = safeProcesses.data();
-                const auto retryResult = Runtime::safe_call(activePlugin.internal_vertex_process_get_list, &buffer, &bufferSize);
-                if (!Runtime::status_ok(retryResult))
+                auto activePluginRef = m_loaderService.get_active_plugin().value();
+                auto& activePlugin = activePluginRef.get();
+
+                std::uint32_t processCount{};
+                const auto processCountResult = Runtime::safe_call(activePlugin.internal_vertex_process_get_list, nullptr, &processCount);
+                if (!Runtime::status_ok(processCountResult))
+                {
+                    return Runtime::get_status(processCountResult);
+                }
+
+                safeProcesses.resize(processCount);
+                bool fillSucceeded{};
+
+                for (std::uint32_t attempt{}; attempt < MAX_PROCESS_LIST_RETRIES; ++attempt)
+                {
+                    ProcessInformation* buffer = safeProcesses.data();
+                    std::uint32_t bufferSize = static_cast<std::uint32_t>(safeProcesses.size());
+
+                    auto listResult = Runtime::safe_call(activePlugin.internal_vertex_process_get_list, &buffer, &bufferSize);
+                    const auto listStatus = Runtime::get_status(listResult);
+
+                    if (Runtime::status_ok(listResult))
+                    {
+                        safeProcesses.resize(bufferSize);
+                        fillSucceeded = true;
+                        break;
+                    }
+
+                    if (listStatus == StatusCode::STATUS_ERROR_MEMORY_BUFFER_TOO_SMALL)
+                    {
+                        safeProcesses.resize(bufferSize);
+                        continue;
+                    }
+
+                    return listStatus;
+                }
+
+                if (!fillSucceeded)
                 {
                     return StatusCode::STATUS_ERROR_MEMORY_OPERATION_ABORTED;
                 }
-            }
-            else
-            {
-                return listStatus;
-            }
+
+                return StatusCode::STATUS_OK;
+            });
+
+        auto dispatchResult = m_dispatcher.dispatch(Thread::ThreadChannel::ProcessList, std::move(task));
+        if (!dispatchResult.has_value())
+        {
+            return dispatchResult.error();
+        }
+
+        const auto status = dispatchResult.value().get();
+        if (status != StatusCode::STATUS_OK)
+        {
+            return status;
         }
 
         {
@@ -447,6 +506,17 @@ namespace Vertex::Model
         }
 
         return m_treeNodes[nodeIndex].visibleInFilter;
+    }
+
+    std::size_t ProcessListModel::get_node_index_for_pid(const std::uint32_t pid) const noexcept
+    {
+        std::shared_lock lock(m_stateMutex);
+        const auto it = m_pidToNodeIndex.find(pid);
+        if (it == m_pidToNodeIndex.end())
+        {
+            return INVALID_NODE_INDEX;
+        }
+        return it->second;
     }
 
     Class::SelectedProcess ProcessListModel::make_selected_process_from_node(const std::size_t nodeIndex) noexcept

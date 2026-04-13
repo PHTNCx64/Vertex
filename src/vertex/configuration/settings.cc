@@ -178,9 +178,38 @@ namespace Vertex::Configuration
             return false;
         }
 
-        const int threadBufferSizeMB = get_int("memoryScan.threadBufferSizeMB", 32);
+        const int threadBufferSizeMB = get_int("memoryScan.threadBufferSizeMB", 8);
+        if (threadBufferSizeMB < 1 || threadBufferSizeMB > 1024)
+        {
+            return false;
+        }
 
-        return threadBufferSizeMB >= 1 && threadBufferSizeMB <= 1024;
+        const int workerChunkSizeMB = get_int("memoryScan.workerChunkSizeMB", 8);
+        if (workerChunkSizeMB < 1 || workerChunkSizeMB > 1024)
+        {
+            return false;
+        }
+
+        const int maxUndoDepth = get_int("memoryScan.maxUndoDepth", 3);
+        if (maxUndoDepth < 1 || maxUndoDepth > 10)
+        {
+            return false;
+        }
+
+        const int psReaderThreads = get_int("pointerScan.readerThreads", 1);
+        if (psReaderThreads < 1 || psReaderThreads > 64)
+        {
+            return false;
+        }
+
+        const int psBufferSizeMB = get_int("pointerScan.threadBufferSizeMB", 64);
+        if (psBufferSizeMB < 1 || psBufferSizeMB > 1024)
+        {
+            return false;
+        }
+
+        const int psChunkSize = get_int("pointerScan.workerChunkSize", 8192);
+        return psChunkSize >= 64 && psChunkSize <= 1048576;
     }
 
     bool Settings::get_bool(const std::string& key, bool defaultValue) const
@@ -274,14 +303,24 @@ namespace Vertex::Configuration
         m_settings["general"]["theme"] = 0;
 
         const int hardwareConcurrency = std::max(1, static_cast<int>(std::thread::hardware_concurrency()));
-        m_settings["memoryScan"]["readerThreads"] = std::max(1, hardwareConcurrency / 2);
-        m_settings["memoryScan"]["threadBufferSizeMB"] = 32;
+        m_settings["memoryScan"]["readerThreads"] = std::clamp(hardwareConcurrency / 2, 1, 8);
+        m_settings["memoryScan"]["threadBufferSizeMB"] = 8;
+        m_settings["memoryScan"]["workerChunkSizeMB"] = 8;
+        m_settings["memoryScan"]["maxUndoDepth"] = 3;
+
+        m_settings["pointerScan"]["readerThreads"] = std::max(1, hardwareConcurrency / 2);
+        m_settings["pointerScan"]["threadBufferSizeMB"] = 64;
+        m_settings["pointerScan"]["workerChunkSize"] = 8192;
 
         set_default_language();
 
         m_settings["plugins"]["activePluginPath"] = EMPTY_STRING;
         m_settings["plugins"]["pluginPaths"] = nlohmann::json::array();
-        m_settings["plugins"]["pluginPaths"].push_back(Filesystem::get_plugin_path().string());
+        m_settings["plugins"]["pluginPaths"].push_back(Filesystem::make_relative(Filesystem::get_plugin_path()).string());
+
+        m_settings["scripting"]["scriptPaths"] = nlohmann::json::array();
+        m_settings["scripting"]["scriptPaths"].push_back(Filesystem::make_relative(Filesystem::get_script_path()).string());
+        m_settings["scripting"]["recent_scripts"] = nlohmann::json::array();
 
         m_settings["uiState"]["mainView"]["valueTypeIndex"] = 2;
         m_settings["uiState"]["mainView"]["scanTypeIndex"] = 0;
@@ -314,7 +353,7 @@ namespace Vertex::Configuration
 
         if (std::filesystem::exists(englishPath, ec) && !ec)
         {
-            m_settings["language"]["languagePath"] = languageDir.string();
+            m_settings["language"]["languagePath"] = Filesystem::make_relative(languageDir).string();
             m_settings["language"]["activeLanguage"] = "English_US.json";
             return;
         }
@@ -340,7 +379,7 @@ namespace Vertex::Configuration
         {
             if (entry.is_regular_file(ec) && !ec && entry.path().extension() == ".json")
             {
-                m_settings["language"]["languagePath"] = languageDir.string();
+                m_settings["language"]["languagePath"] = Filesystem::make_relative(languageDir).string();
                 m_settings["language"]["activeLanguage"] = entry.path().filename().string();
                 return;
             }

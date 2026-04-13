@@ -6,9 +6,10 @@
 #include <vertexusrrt/debugger_internal.hh>
 #include <vertexusrrt/debugloopcontext.hh>
 
-#include <Windows.h>
+#include <windows.h>
 #include <ranges>
 #include <format>
+#include <tuple>
 
 extern ProcessArchitecture get_process_architecture();
 
@@ -319,7 +320,7 @@ namespace debugger
 
             if (!success)
             {
-                resume_thread(threadHandle);
+                std::ignore = resume_thread(threadHandle);
                 return STATUS_ERROR_BREAKPOINT_SET_FAILED;
             }
         }
@@ -340,12 +341,12 @@ namespace debugger
 
             if (!success)
             {
-                resume_thread(threadHandle);
+                std::ignore = resume_thread(threadHandle);
                 return STATUS_ERROR_BREAKPOINT_SET_FAILED;
             }
         }
 
-        resume_thread(threadHandle);
+        std::ignore = resume_thread(threadHandle);
         return STATUS_OK;
     }
 
@@ -389,7 +390,7 @@ namespace debugger
                 OutputDebugStringA(logMsg.c_str());
             }
 
-            resume_thread(threadHandle);
+            std::ignore = resume_thread(threadHandle);
         }
 
         return STATUS_OK;
@@ -498,7 +499,7 @@ namespace debugger
                 OutputDebugStringA(logMsg.c_str());
             }
 
-            resume_thread(threadHandle);
+            std::ignore = resume_thread(threadHandle);
         }
 
         return STATUS_OK;
@@ -553,7 +554,7 @@ namespace debugger
                 }
             }
 
-            resume_thread(threadHandle);
+            std::ignore = resume_thread(threadHandle);
         }
 
         return STATUS_OK;
@@ -613,7 +614,7 @@ namespace debugger
                 }
             }
 
-            resume_thread(threadHandle);
+            std::ignore = resume_thread(threadHandle);
         }
 
         return STATUS_OK;
@@ -691,7 +692,7 @@ namespace debugger
                 }
             }
 
-            resume_thread(threadHandle);
+            std::ignore = resume_thread(threadHandle);
         }
 
         return STATUS_OK;

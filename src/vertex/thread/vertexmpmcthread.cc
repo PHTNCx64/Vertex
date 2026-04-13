@@ -93,29 +93,6 @@ namespace Vertex::Thread
         return StatusCode::STATUS_OK;
     }
 
-    StatusCode VertexMPMCThread::get_last_status()
-    {
-        std::future<StatusCode> future{};
-
-        {
-            std::scoped_lock lock{m_futureMutex};
-            if (!m_lastFuture.valid())
-            {
-                return StatusCode::STATUS_ERROR_THREAD_INVALID_TASK;
-            }
-            future = std::move(m_lastFuture);
-        }
-
-        try
-        {
-            return future.get();
-        }
-        catch (...)
-        {
-            return StatusCode::STATUS_ERROR_GENERAL;
-        }
-    }
-
     bool VertexMPMCThread::is_running() const noexcept
     {
         return m_isRunning.load(std::memory_order_acquire);
@@ -149,13 +126,7 @@ namespace Vertex::Thread
 
             try
             {
-                std::future<StatusCode> future{task.get_future()};
-
                 task();
-                {
-                    std::scoped_lock lock{m_futureMutex};
-                    m_lastFuture = std::move(future);
-                }
             }
             catch (...)
             {
