@@ -43,7 +43,6 @@ option(BUILD_VERTEX "Build the Vertex GUI application" ON)
 option(BUILD_VERTEXUSRRT "Build vertexusrrt plugin" ON)
 option(BUILD_VERTEXDECI3RT "Build vertexdeci3rt plugin" OFF)
 option(BUILD_LIBTEST "Build libtest plugin" ON)
-option(BUILD_RIP "Build RIP remote server" ON)
 option(BUILD_TESTING "Build unit tests" ON)
 option(BUILD_ONLY_RUNTIME "Build runtime plugins only" OFF)
 option(VERTEX_BUNDLE_LLDB "Bundle liblldb and its transitive LLVM deps next to vertexusrrt (Linux only)" OFF)
@@ -53,7 +52,6 @@ if(BUILD_ALL)
     set(BUILD_VERTEXUSRRT ON CACHE BOOL "Build vertexusrrt plugin" FORCE)
     set(BUILD_VERTEXDECI3RT ON CACHE BOOL "Build vertexdeci3rt plugin" FORCE)
     set(BUILD_LIBTEST ON CACHE BOOL "Build libtest plugin" FORCE)
-    set(BUILD_RIP ON CACHE BOOL "Build RIP remote server" FORCE)
     set(BUILD_TESTING ON CACHE BOOL "Build unit tests" FORCE)
 endif()
 
@@ -67,7 +65,6 @@ message(STATUS "  vertex:        ${BUILD_VERTEX}")
 message(STATUS "  vertexusrrt:   ${BUILD_VERTEXUSRRT}")
 message(STATUS "  vertexdeci3rt: ${BUILD_VERTEXDECI3RT}")
 message(STATUS "  libtest:       ${BUILD_LIBTEST}")
-message(STATUS "  rip:           ${BUILD_RIP}")
 message(STATUS "  tests:         ${BUILD_TESTING}")
 
 # ---------------------------------------------------------------------------
@@ -87,10 +84,6 @@ endif()
 
 if(BUILD_LIBTEST)
     add_subdirectory(src/libtest)
-endif()
-
-if(BUILD_RIP)
-    add_subdirectory(src/rip)
 endif()
 
 # ---------------------------------------------------------------------------
