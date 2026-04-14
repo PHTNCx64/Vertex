@@ -17,8 +17,9 @@ namespace Vertex::View::Debugger
         : wxDialog(parent, wxID_ANY,
                    wxString::FromUTF8(languageService.fetch_translation("debugger.breakpoints.conditionDialogTitle")),
                    wxDefaultPosition,
-                   wxSize(FromDIP(BreakpointConditionDialogValues::DIALOG_WIDTH),
-                          FromDIP(BreakpointConditionDialogValues::DIALOG_HEIGHT)),
+                   wxWindowBase::FromDIP(wxSize(BreakpointConditionDialogValues::DIALOG_WIDTH,
+                                                BreakpointConditionDialogValues::DIALOG_HEIGHT),
+                                         parent),
                    wxDEFAULT_DIALOG_STYLE | wxRESIZE_BORDER)
         , m_languageService(languageService)
         , m_breakpoint(breakpoint)

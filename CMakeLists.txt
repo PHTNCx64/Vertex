@@ -111,6 +111,44 @@ endif()
 unset(_any_plugin)
 
 # ---------------------------------------------------------------------------
+# Bundle MinGW runtime DLLs next to the exe (shared by exe + plugins)
+# ---------------------------------------------------------------------------
+if(MINGW)
+    set(_mingw_runtime_dlls
+        libgcc_s_seh-1.dll
+        libstdc++-6.dll
+        libwinpthread-1.dll
+    )
+    set(_mingw_runtime_found)
+    foreach(_dll IN LISTS _mingw_runtime_dlls)
+        execute_process(
+            COMMAND ${CMAKE_CXX_COMPILER} -print-file-name=${_dll}
+            OUTPUT_VARIABLE _dll_path
+            OUTPUT_STRIP_TRAILING_WHITESPACE
+        )
+        if(NOT IS_ABSOLUTE "${_dll_path}")
+            get_filename_component(_compiler_dir "${CMAKE_CXX_COMPILER}" DIRECTORY)
+            get_filename_component(_toolchain_root "${_compiler_dir}" DIRECTORY)
+            if(EXISTS "${_toolchain_root}/x86_64-w64-mingw32/bin/${_dll}")
+                set(_dll_path "${_toolchain_root}/x86_64-w64-mingw32/bin/${_dll}")
+            elseif(EXISTS "/usr/x86_64-w64-mingw32/bin/${_dll}")
+                set(_dll_path "/usr/x86_64-w64-mingw32/bin/${_dll}")
+            endif()
+        endif()
+        if(EXISTS "${_dll_path}")
+            list(APPEND _mingw_runtime_found "${_dll_path}")
+        else()
+            message(WARNING "MinGW runtime DLL not found: ${_dll}")
+        endif()
+    endforeach()
+    if(_mingw_runtime_found)
+        file(COPY ${_mingw_runtime_found} DESTINATION "${CMAKE_BINARY_DIR}/bin")
+    endif()
+    unset(_mingw_runtime_dlls)
+    unset(_mingw_runtime_found)
+endif()
+
+# ---------------------------------------------------------------------------
 # Ensure building the main application also builds its plugins
 # ---------------------------------------------------------------------------
 if(BUILD_VERTEX)

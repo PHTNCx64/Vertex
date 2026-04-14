@@ -22,8 +22,9 @@ namespace Vertex::View
         : wxDialog(parent, wxID_ANY,
                    wxString::FromUTF8(languageService.fetch_translation("pointerScanConfigDialog.title")),
                    wxDefaultPosition,
-                   wxSize(FromDIP(PointerScanConfigDialogValues::DIALOG_WIDTH),
-                          FromDIP(PointerScanConfigDialogValues::DIALOG_HEIGHT)),
+                   wxWindowBase::FromDIP(wxSize(PointerScanConfigDialogValues::DIALOG_WIDTH,
+                                                PointerScanConfigDialogValues::DIALOG_HEIGHT),
+                                         parent),
                    wxDEFAULT_DIALOG_STYLE | wxRESIZE_BORDER)
         , m_languageService{languageService}
         , m_targetAddress{targetAddress}

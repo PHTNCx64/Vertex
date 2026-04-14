@@ -31,7 +31,7 @@ namespace Vertex::View
                    wxID_ANY,
                    wxString::FromUTF8(languageService.fetch_translation("aboutWindow.title")),
                    wxDefaultPosition,
-                   wxSize(FromDIP(ABOUT_DIALOG_WIDTH), FromDIP(ABOUT_DIALOG_HEIGHT)),
+                   wxWindowBase::FromDIP(wxSize(ABOUT_DIALOG_WIDTH, ABOUT_DIALOG_HEIGHT), parent),
                    wxDEFAULT_DIALOG_STYLE | wxRESIZE_BORDER),
           m_languageService(languageService),
           m_themeProvider(themeProvider),

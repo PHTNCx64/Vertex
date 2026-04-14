@@ -20,7 +20,13 @@
 namespace Vertex::View
 {
     ProcessListView::ProcessListView(Language::ILanguage& languageService, const std::shared_ptr<ViewModel::ProcessListViewModel>& viewModel, Gui::IThemeProvider& themeProvider)
-        : wxDialog(wxTheApp->GetTopWindow(), wxID_ANY, languageService.fetch_translation("processListView.ui.title"), wxDefaultPosition, wxSize(FromDIP(StandardWidgetValues::STANDARD_X_DIP), FromDIP(StandardWidgetValues::STANDARD_Y_DIP)), wxDEFAULT_DIALOG_STYLE | wxRESIZE_BORDER | wxMINIMIZE_BOX | wxMAXIMIZE_BOX | wxCLOSE_BOX),
+        : wxDialog(wxTheApp->GetTopWindow(),
+                   wxID_ANY,
+                   languageService.fetch_translation("processListView.ui.title"),
+                   wxDefaultPosition,
+                   wxWindowBase::FromDIP(wxSize(StandardWidgetValues::STANDARD_X_DIP, StandardWidgetValues::STANDARD_Y_DIP),
+                                         wxTheApp->GetTopWindow()),
+                   wxDEFAULT_DIALOG_STYLE | wxRESIZE_BORDER | wxMINIMIZE_BOX | wxMAXIMIZE_BOX | wxCLOSE_BOX),
           m_viewModel(viewModel),
         m_languageService(languageService),
         m_themeProvider(themeProvider)

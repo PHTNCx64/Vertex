@@ -232,16 +232,37 @@ void VertexApp::apply_plugin_settings() const
     auto& loader = m_impl->injector.create<Vertex::Runtime::ILoader&>();
 
     const auto activePluginPath = Vertex::Configuration::Filesystem::resolve_path(settings.get_path("plugins.activePluginPath"));
-    if (activePluginPath.empty())
+    if (!activePluginPath.empty())
     {
+        const StatusCode status = loader.set_active_plugin(activePluginPath);
+        if (status == StatusCode::STATUS_OK)
+        {
+            return;
+        }
+
+        log.log_warn(fmt::format("Failed to load configured active plugin '{}', status={}. Trying fallback plugin.",
+            activePluginPath.string(),
+            static_cast<int>(status)));
+    }
+
+    const auto& discoveredPlugins = loader.get_plugins();
+    if (discoveredPlugins.empty())
+    {
+        log.log_warn("No plugin configured and no discovered plugins are available.");
         return;
     }
 
-    const StatusCode status = loader.set_active_plugin(activePluginPath);
-    if (status != StatusCode::STATUS_OK)
+    const StatusCode fallbackStatus = loader.set_active_plugin(static_cast<std::size_t>(0));
+    if (fallbackStatus != StatusCode::STATUS_OK)
     {
-        log.log_warn("Failed to load active plugin");
+        log.log_warn(fmt::format("Failed to load fallback plugin '{}', status={}",
+            discoveredPlugins.front().get_filename(),
+            static_cast<int>(fallbackStatus)));
+        return;
     }
+
+    log.log_info(fmt::format("Loaded fallback active plugin: {}",
+        discoveredPlugins.front().get_filename()));
 }
 
 void VertexApp::apply_appearance_settings()

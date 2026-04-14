@@ -19,8 +19,9 @@ namespace Vertex::View
         : wxDialog(parent, wxID_ANY,
                    wxString::FromUTF8(languageService.fetch_translation("mainWindow.ui.newProcessDialogTitle")),
                    wxDefaultPosition,
-                   wxSize(FromDIP(NewProcessDialogValues::DIALOG_WIDTH),
-                          FromDIP(NewProcessDialogValues::DIALOG_HEIGHT)),
+                   wxWindowBase::FromDIP(wxSize(NewProcessDialogValues::DIALOG_WIDTH,
+                                                NewProcessDialogValues::DIALOG_HEIGHT),
+                                         parent),
                    wxDEFAULT_DIALOG_STYLE)
         , m_languageService(languageService)
         , m_executableExtensions(std::move(executableExtensions))

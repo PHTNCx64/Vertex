@@ -44,8 +44,9 @@ namespace Vertex::View
                    wxID_ANY,
                    wxString::FromUTF8(languageService.fetch_translation("pointerScanView.title")),
                    wxDefaultPosition,
-                   wxSize(FromDIP(StandardWidgetValues::STANDARD_X_DIP),
-                          FromDIP(StandardWidgetValues::STANDARD_Y_DIP)),
+                   wxWindowBase::FromDIP(wxSize(StandardWidgetValues::STANDARD_X_DIP,
+                                                StandardWidgetValues::STANDARD_Y_DIP),
+                                         wxTheApp->GetTopWindow()),
                    wxDEFAULT_DIALOG_STYLE | wxRESIZE_BORDER)
         , m_languageService{languageService}
         , m_viewModel{std::move(viewModel)}
