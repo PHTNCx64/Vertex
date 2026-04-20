@@ -1,12 +1,53 @@
-// Memory patcher template.
-// Replace placeholder addresses and values before running.
+// Memory API template.
+// Demonstrates safe read flow + where to patch.
 void main()
 {
-    log_info("Memory patcher started.");
+    if (!is_process_open())
+    {
+        log_warn("Open a process first, then run this template.");
+        return;
+    }
 
-    // Example flow:
-    // uint64 targetAddress = 0x0;
-    // string bytes;
-    // read_memory(targetAddress, 8, bytes);
-    // write_memory(targetAddress, bytes);
+    uint64 pointerSize = 0;
+    int status = get_pointer_size(pointerSize);
+    if (status != STATUS_OK)
+    {
+        log_error("get_pointer_size failed: " + status);
+        return;
+    }
+
+    status = refresh_memory_regions();
+    if (status != STATUS_OK)
+    {
+        log_error("refresh_memory_regions failed: " + status);
+        return;
+    }
+
+    const uint regionCount = get_region_count();
+    if (regionCount == 0)
+    {
+        log_warn("No memory regions were returned.");
+        return;
+    }
+
+    MemoryRegion firstRegion = get_region_at(0);
+    uint readSize = 4;
+    if (pointerSize >= 8)
+    {
+        readSize = 8;
+    }
+    string bytes;
+    status = read_memory(firstRegion.baseAddress, readSize, bytes);
+    if (status != STATUS_OK)
+    {
+        log_error("read_memory failed: " + status);
+        return;
+    }
+
+    log_info("Read " + bytes.length() + " bytes from the first region.");
+    log_info("To patch memory, edit this template and call write_memory(...) with your bytes.");
+
+    // Example patch flow (disabled on purpose):
+    // int writeStatus = write_memory(firstRegion.baseAddress, bytes);
+    // log_info("write_memory status: " + writeStatus);
 }

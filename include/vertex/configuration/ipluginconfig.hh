@@ -31,9 +31,6 @@ namespace Vertex::Configuration
         [[nodiscard]] virtual bool is_memory_attribute_enabled(const std::string& attributeType, const std::string& attributeName) const = 0;
         [[nodiscard]] virtual bool is_memory_attribute_enabled(const std::string& section, const std::string& attributeType, const std::string& attributeName) const = 0;
 
-        [[nodiscard]] virtual std::vector<std::string> get_excluded_modules() const = 0;
-        virtual void set_excluded_modules(const std::vector<std::string>& modules) = 0;
-
         [[nodiscard]] virtual std::string get_current_plugin() const = 0;
 
         [[nodiscard]] virtual bool is_modified() const = 0;

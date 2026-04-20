@@ -6,13 +6,14 @@
 
 #include <wx/dataview.h>
 
-#include <vertex/viewmodel/processlistviewmodel.hh>
+#include <vertex/customwidgets/base/vertexdataviewctrl.hh>
 #include <vertex/customwidgets/processlistdatamodel.hh>
 #include <vertex/language/language.hh>
+#include <vertex/viewmodel/processlistviewmodel.hh>
 
 namespace Vertex::CustomWidgets
 {
-    class ProcessListControl final : public wxDataViewCtrl
+    class ProcessListControl final : public Base::VertexDataViewCtrl
     {
     public:
         explicit ProcessListControl(wxWindow* parent, Language::ILanguage& languageService, const std::shared_ptr<ViewModel::ProcessListViewModel>& viewModel);

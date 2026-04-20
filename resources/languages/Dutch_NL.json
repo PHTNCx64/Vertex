@@ -141,7 +141,9 @@
       "analytics": "Analyse",
       "analyticsDescription": "Opent het analysevenster",
       "injector": "Injector",
-      "injectorDescription": "Opent het injectorvenster"
+      "injectorDescription": "Opent het injectorvenster",
+      "code": "Scripteditor",
+      "codeDescription": "Opent de scripteditor"
     },
     "buttons": {
       "initialScan": "Initiële Scan",
@@ -754,6 +756,42 @@
       "stateSleeping": "Slapend",
       "stateFinished": "Voltooid",
       "stateError": "Fout"
+    }
+  },
+  "accessTracker": {
+    "title": "Toegangsmonitor",
+    "tracking": "Volgen",
+    "stop": "Stoppen",
+    "clear": "Wissen",
+    "close": "Sluiten",
+    "columnInstruction": "Instructie",
+    "columnModule": "Module",
+    "columnFunction": "Functie",
+    "columnMnemonic": "Mnemonic",
+    "columnHits": "Hits",
+    "columnAccess": "Toegang",
+    "columnSize": "Grootte",
+    "columnRegisters": "Registers",
+    "columnCaller": "Aanroeper",
+    "statusIdle": "Inactief",
+    "statusStarting": "Starten…",
+    "statusActive": "Actief",
+    "statusStopping": "Stoppen…",
+    "statusStartFailed": "Starten mislukt",
+    "statusStopFailed": "Stoppen mislukt",
+    "context": {
+      "viewInDisassembly": "Weergeven in disassembly",
+      "showCallStack": "Aanroepstack tonen",
+      "copyInstructionAddress": "Instructieadres kopiëren",
+      "copyRegisters": "Registers kopiëren"
+    },
+    "callStackDialog": {
+      "title": "Aanroepstack",
+      "columnIndex": "#",
+      "columnReturnAddress": "Retouradres",
+      "columnModule": "Module",
+      "columnFunction": "Functie",
+      "goToFrame": "Ga naar frame"
     }
   }
 }

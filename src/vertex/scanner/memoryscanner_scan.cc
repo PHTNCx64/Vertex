@@ -3,13 +3,97 @@
 // Licensed under GPLv3.0 with Plugin Interface exceptions.
 //
 #include <algorithm>
+#include <atomic>
 #include <span>
+#include <vector>
 #include <vertex/scanner/memoryscanner/memoryscanner.hh>
 #include <vertex/scanner/comparators.hh>
 #include <vertex/memory/scannerallocator.hh>
+#include <vertex/runtime/caller.hh>
 
 namespace Vertex::Scanner
 {
+    namespace
+    {
+        thread_local std::vector<char> tl_pluginCurrent{};
+        thread_local std::vector<char> tl_pluginPrevious{};
+
+        void record_first_plugin_failure(std::atomic<StatusCode>& statusSlot,
+                                          std::atomic<bool>& abortSlot,
+                                          StatusCode failure)
+        {
+            StatusCode expected{StatusCode::STATUS_OK};
+            if (statusSlot.compare_exchange_strong(expected, failure,
+                                                    std::memory_order_acq_rel,
+                                                    std::memory_order_acquire))
+            {
+                abortSlot.store(true, std::memory_order_release);
+            }
+        }
+
+        [[nodiscard]] bool invoke_plugin_comparator(VertexExtractor_t extractor,
+                                                     VertexComparator_t comparator,
+                                                     std::size_t valueSize,
+                                                     const std::uint8_t* currentData,
+                                                     const std::uint8_t* previousData,
+                                                     const void* userInput,
+                                                     std::atomic<StatusCode>& statusSlot,
+                                                     std::atomic<bool>& abortSlot)
+        {
+            if (tl_pluginCurrent.size() < valueSize)
+            {
+                tl_pluginCurrent.assign(valueSize, 0);
+            }
+            if (previousData && tl_pluginPrevious.size() < valueSize)
+            {
+                tl_pluginPrevious.assign(valueSize, 0);
+            }
+
+            const auto extractCurrent = Runtime::safe_call(
+                extractor,
+                reinterpret_cast<const char*>(currentData),
+                valueSize,
+                tl_pluginCurrent.data(),
+                valueSize);
+            if (!Runtime::status_ok(extractCurrent))
+            {
+                record_first_plugin_failure(statusSlot, abortSlot, Runtime::get_status(extractCurrent));
+                return false;
+            }
+
+            const char* previousExtracted{};
+            if (previousData)
+            {
+                const auto extractPrevious = Runtime::safe_call(
+                    extractor,
+                    reinterpret_cast<const char*>(previousData),
+                    valueSize,
+                    tl_pluginPrevious.data(),
+                    valueSize);
+                if (!Runtime::status_ok(extractPrevious))
+                {
+                    record_first_plugin_failure(statusSlot, abortSlot, Runtime::get_status(extractPrevious));
+                    return false;
+                }
+                previousExtracted = tl_pluginPrevious.data();
+            }
+
+            std::uint8_t matchResult{};
+            const auto compareCall = Runtime::safe_call(
+                comparator,
+                tl_pluginCurrent.data(),
+                previousExtracted,
+                static_cast<const char*>(userInput),
+                &matchResult);
+            if (!Runtime::status_ok(compareCall))
+            {
+                record_first_plugin_failure(statusSlot, abortSlot, Runtime::get_status(compareCall));
+                return false;
+            }
+            return matchResult != 0;
+        }
+    }
+
     void MemoryScanner::resolve_comparator()
     {
         m_resolvedIsString = is_string_type(m_scanConfig.valueType);
@@ -17,6 +101,20 @@ namespace Vertex::Scanner
         m_resolvedInput = m_scanConfig.input.empty() ? nullptr : m_scanConfig.input.data();
         m_resolvedInput2 = m_scanConfig.input2.empty() ? nullptr : m_scanConfig.input2.data();
         m_simdCapability = {};
+        m_resolvedIsPluginDefined = false;
+        m_resolvedPluginExtractor = nullptr;
+        m_resolvedPluginComparator = nullptr;
+        m_resolvedPluginValueSize = 0;
+
+        if (m_activeSchema && m_activeSchema->kind == TypeKind::PluginDefined)
+        {
+            m_resolvedIsPluginDefined = true;
+            m_resolvedPluginExtractor = m_activeSchema->sdkType->extractor;
+            m_resolvedPluginComparator = m_activeSchema->sdkType->scanModes[m_scanConfig.scanMode].comparator;
+            m_resolvedPluginValueSize = m_activeSchema->valueSize;
+            m_resolvedComparator = nullptr;
+            return;
+        }
 
         if (m_resolvedIsString)
         {
@@ -34,6 +132,18 @@ namespace Vertex::Scanner
 
     bool MemoryScanner::check_value_matches(const std::uint8_t* currentData) const
     {
+        if (m_resolvedIsPluginDefined) [[unlikely]]
+        {
+            return invoke_plugin_comparator(m_resolvedPluginExtractor,
+                                             m_resolvedPluginComparator,
+                                             m_resolvedPluginValueSize,
+                                             currentData,
+                                             nullptr,
+                                             m_resolvedInput,
+                                             const_cast<std::atomic<StatusCode>&>(m_pluginCallStatus),
+                                             const_cast<std::atomic<bool>&>(m_scanAbort));
+        }
+
         if (m_resolvedIsString) [[unlikely]]
         {
             return compare_string(m_scanConfig.get_string_scan_mode(), reinterpret_cast<const char*>(currentData), m_scanConfig.dataSize, reinterpret_cast<const char*>(m_scanConfig.input.data()),
@@ -53,6 +163,18 @@ namespace Vertex::Scanner
 
     bool MemoryScanner::check_value_matches_with_previous(const std::uint8_t* currentData, const std::uint8_t* previousData) const
     {
+        if (m_resolvedIsPluginDefined) [[unlikely]]
+        {
+            return invoke_plugin_comparator(m_resolvedPluginExtractor,
+                                             m_resolvedPluginComparator,
+                                             m_resolvedPluginValueSize,
+                                             currentData,
+                                             previousData,
+                                             m_resolvedInput,
+                                             const_cast<std::atomic<StatusCode>&>(m_pluginCallStatus),
+                                             const_cast<std::atomic<bool>&>(m_scanAbort));
+        }
+
         if (m_resolvedIsString) [[unlikely]]
         {
             return compare_string(m_scanConfig.get_string_scan_mode(), reinterpret_cast<const char*>(currentData), m_scanConfig.dataSize, reinterpret_cast<const char*>(m_scanConfig.input.data()),
@@ -137,6 +259,11 @@ namespace Vertex::Scanner
                     {
                         for (std::size_t offset = 0; offset < scanEnd; offset += alignment)
                         {
+                            if (m_scanAbort.load(std::memory_order_acquire)) [[unlikely]]
+                            {
+                                break;
+                            }
+
                             const std::uint8_t* currentData = chunkData + offset;
 
                             if (check_value_matches(currentData))
@@ -256,6 +383,11 @@ namespace Vertex::Scanner
 
             auto process_match = [&](const std::uint64_t address, const std::uint8_t* currentData, const std::uint8_t* previousValue, const std::uint8_t* firstValue) -> bool
             {
+                if (m_scanAbort.load(std::memory_order_acquire)) [[unlikely]]
+                {
+                    return false;
+                }
+
                 bool matches = false;
 
                 if (needsPreviousValue && previousValue != nullptr)

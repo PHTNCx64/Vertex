@@ -4,6 +4,7 @@
 //
 #include <vertexusrrt/debugger_internal.hh>
 #include <vertexusrrt/debugloopcontext.hh>
+#include <vertexusrrt/watchpoint_throttle.hh>
 
 #include <windows.h>
 
@@ -213,6 +214,7 @@ namespace debugger
                 reset_breakpoint_manager();
                 clear_all_breakpoint_step_overs();
                 clear_all_watchpoint_step_overs();
+                clear_watchpoint_throttle_state();
                 clear_thread_handle_cache();
 
                 return STATUS_DEBUG_TICK_PROCESS_EXITED;

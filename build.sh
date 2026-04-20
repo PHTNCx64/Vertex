@@ -9,11 +9,12 @@ BUILD_ALL=false
 RUNTIME_ONLY=false
 VERTEX_ONLY=false
 USRRT=false
-DECI3RT=false # this can't be compiled on linux or mac since the runtime library it relies on isn't available on linux.
+DECI3RT=false # this can't be compiled on linux or mac since the runtime library it relies on libraries that aren't available on linux.
 NO_TESTS=false
 CLEAN=false
 CONFIGURE_ONLY=false
 MINGW=false
+SETCAP=false
 
 # --- colors ---
 RED='\033[0;31m'
@@ -40,6 +41,7 @@ Options:
   --no-tests            Disable test builds
   --clean               Clean build directory before configuration
   --configure           Only configure, don't build
+  --setcap              After build, grant cap_sys_ptrace + cap_dac_read_search to Vertex (requires sudo; Linux only)
   -h, --help            Show this help message
 EOF
     exit 0
@@ -69,6 +71,7 @@ while [[ $# -gt 0 ]]; do
         --no-tests)     NO_TESTS=true;       shift ;;
         --clean)        CLEAN=true;          shift ;;
         --configure)    CONFIGURE_ONLY=true; shift ;;
+        --setcap)       SETCAP=true;         shift ;;
         -h|--help)      usage ;;
         *)
             echo -e "${RED}ERROR: Unknown option: $1${NC}"
@@ -280,4 +283,20 @@ if ! $CONFIGURE_ONLY; then
     echo -e "${CYAN}Building...${NC}"
     cmake --build "$BUILD_DIR"
     echo -e "${GREEN}Build complete.${NC}"
+
+    if $SETCAP; then
+        if $MINGW; then
+            echo -e "${YELLOW}--setcap ignored: not applicable to MinGW cross-build.${NC}"
+        elif [[ "$OPT_VERTEX" != "ON" ]]; then
+            echo -e "${YELLOW}--setcap ignored: Vertex target not built.${NC}"
+        else
+            echo -e "${CYAN}Applying capabilities (sudo required)...${NC}"
+            if ! sudo -v; then
+                echo -e "${RED}ERROR: sudo authentication failed.${NC}"
+                exit 1
+            fi
+            cmake --build "$BUILD_DIR" --target setcap
+            echo -e "${GREEN}Capabilities applied.${NC}"
+        fi
+    fi
 fi

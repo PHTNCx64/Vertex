@@ -12,6 +12,7 @@
 #include <expected>
 #include <functional>
 #include <future>
+#include <limits>
 
 namespace Vertex::Thread
 {
@@ -23,6 +24,8 @@ namespace Vertex::Thread
     };
 
     static constexpr std::uint32_t PRIORITY_HIGH_BURST_BEFORE_LOW {4};
+
+    static constexpr std::uint64_t PERSISTENT_RECURRING_EPOCH {std::numeric_limits<std::uint64_t>::max()};
 
     struct RecurringTaskHandle final
     {
@@ -63,6 +66,14 @@ namespace Vertex::Thread
                            std::chrono::milliseconds delay,
                            std::function<StatusCode()> task,
                            RecurringFailurePolicy failurePolicy = RecurringFailurePolicy::Continue) = 0;
+
+        [[nodiscard]] virtual std::expected<RecurringTaskHandle, StatusCode>
+        schedule_recurring_persistent(ThreadChannel channel,
+                                      DispatchPriority priority,
+                                      RecurringPolicy policy,
+                                      std::chrono::milliseconds delay,
+                                      std::function<StatusCode()> task,
+                                      RecurringFailurePolicy failurePolicy = RecurringFailurePolicy::Continue) = 0;
 
         [[nodiscard]] virtual StatusCode cancel_recurring(RecurringTaskHandle handle) = 0;
 

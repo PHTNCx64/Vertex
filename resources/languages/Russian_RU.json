@@ -141,7 +141,9 @@
       "analytics": "Аналитика",
       "analyticsDescription": "Открыть окно аналитики",
       "injector": "Инжектор",
-      "injectorDescription": "Открыть окно инжектора"
+      "injectorDescription": "Открыть окно инжектора",
+      "code": "Редактор скриптов",
+      "codeDescription": "Открыть редактор скриптов"
     },
     "buttons": {
       "initialScan": "Первое сканирование",
@@ -754,6 +756,42 @@
       "stateSleeping": "Спит",
       "stateFinished": "Завершён",
       "stateError": "Ошибка"
+    }
+  },
+  "accessTracker": {
+    "title": "Трекер доступа",
+    "tracking": "Отслеживание",
+    "stop": "Стоп",
+    "clear": "Очистить",
+    "close": "Закрыть",
+    "columnInstruction": "Инструкция",
+    "columnModule": "Модуль",
+    "columnFunction": "Функция",
+    "columnMnemonic": "Мнемоника",
+    "columnHits": "Срабатывания",
+    "columnAccess": "Доступ",
+    "columnSize": "Размер",
+    "columnRegisters": "Регистры",
+    "columnCaller": "Вызывающий",
+    "statusIdle": "Простой",
+    "statusStarting": "Запуск…",
+    "statusActive": "Активно",
+    "statusStopping": "Остановка…",
+    "statusStartFailed": "Ошибка запуска",
+    "statusStopFailed": "Ошибка остановки",
+    "context": {
+      "viewInDisassembly": "Показать в дизассемблере",
+      "showCallStack": "Показать стек вызовов",
+      "copyInstructionAddress": "Копировать адрес инструкции",
+      "copyRegisters": "Копировать регистры"
+    },
+    "callStackDialog": {
+      "title": "Стек вызовов",
+      "columnIndex": "#",
+      "columnReturnAddress": "Адрес возврата",
+      "columnModule": "Модуль",
+      "columnFunction": "Функция",
+      "goToFrame": "Перейти к кадру"
     }
   }
 }

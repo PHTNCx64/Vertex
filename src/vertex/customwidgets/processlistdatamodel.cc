@@ -72,7 +72,24 @@ namespace Vertex::CustomWidgets
         }
 
         const auto it = m_snapshot.nodes.find(item_to_pid(item));
-        return it != m_snapshot.nodes.end() && !it->second.childPids.empty();
+        if (it == m_snapshot.nodes.end())
+        {
+            return false;
+        }
+
+        if (m_filterTextLower.IsEmpty())
+        {
+            return !it->second.childPids.empty();
+        }
+
+        for (const auto childPid : it->second.childPids)
+        {
+            if (is_visible(childPid))
+            {
+                return true;
+            }
+        }
+        return false;
     }
 
     bool ProcessListDataModel::HasContainerColumns([[maybe_unused]] const wxDataViewItem& item) const
@@ -82,10 +99,16 @@ namespace Vertex::CustomWidgets
 
     unsigned int ProcessListDataModel::GetChildren(const wxDataViewItem& parent, wxDataViewItemArray& array) const
     {
+        const bool filtering = !m_filterTextLower.IsEmpty();
+
         if (!parent.IsOk())
         {
             for (const auto rootPid : m_snapshot.rootPids)
             {
+                if (filtering && !is_visible(rootPid))
+                {
+                    continue;
+                }
                 array.Add(pid_to_item(rootPid));
             }
             return static_cast<unsigned int>(array.GetCount());
@@ -99,6 +122,10 @@ namespace Vertex::CustomWidgets
 
         for (const auto childPid : it->second.childPids)
         {
+            if (filtering && !is_visible(childPid))
+            {
+                continue;
+            }
             array.Add(pid_to_item(childPid));
         }
 
@@ -155,6 +182,87 @@ namespace Vertex::CustomWidgets
         }
 
         apply_diff(take_snapshot());
+        rebuild_visible_set();
+    }
+
+    void ProcessListDataModel::set_filter_text(const wxString& filterText)
+    {
+        m_filterTextLower = filterText.Lower();
+        rebuild_visible_set();
+    }
+
+    bool ProcessListDataModel::passes_filter(const wxDataViewItem& item) const
+    {
+        if (m_filterTextLower.IsEmpty())
+        {
+            return true;
+        }
+
+        if (!item.IsOk())
+        {
+            return true;
+        }
+
+        return is_visible(item_to_pid(item));
+    }
+
+    bool ProcessListDataModel::is_visible(const std::uint32_t pid) const noexcept
+    {
+        return m_visibleSet.contains(pid);
+    }
+
+    bool ProcessListDataModel::node_self_matches(const CachedNode& node) const
+    {
+        for (const auto& column : node.columns)
+        {
+            const wxString columnText = wxString::FromUTF8(column).Lower();
+            if (columnText.Contains(m_filterTextLower))
+            {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    bool ProcessListDataModel::mark_visible_recursive(const std::uint32_t pid)
+    {
+        const auto it = m_snapshot.nodes.find(pid);
+        if (it == m_snapshot.nodes.end())
+        {
+            return false;
+        }
+
+        bool anyChildMatches = false;
+        for (const auto childPid : it->second.childPids)
+        {
+            if (mark_visible_recursive(childPid))
+            {
+                anyChildMatches = true;
+            }
+        }
+
+        const bool matches = node_self_matches(it->second) || anyChildMatches;
+        if (matches)
+        {
+            m_visibleSet.insert(pid);
+        }
+        return matches;
+    }
+
+    void ProcessListDataModel::rebuild_visible_set()
+    {
+        m_visibleSet.clear();
+
+        if (m_filterTextLower.IsEmpty())
+        {
+            return;
+        }
+
+        m_visibleSet.reserve(m_snapshot.nodes.size());
+        for (const auto rootPid : m_snapshot.rootPids)
+        {
+            mark_visible_recursive(rootPid);
+        }
     }
 
     std::uint32_t ProcessListDataModel::item_to_pid(const wxDataViewItem& item)

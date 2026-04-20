@@ -1,3 +1,7 @@
+//
+// Copyright (C) 2026 PHTNC<>.
+// Licensed under GPLv3.0 with Plugin Interface exceptions.
+//
 #include <gtest/gtest.h>
 #include <gmock/gmock.h>
 #include <vertex/model/debuggermodel.hh>
@@ -108,6 +112,8 @@ protected:
 
         ON_CALL(*m_dispatcher, schedule_recurring(_, _, _, _, _, _))
             .WillByDefault(Return(std::expected<RecurringTaskHandle, StatusCode>{RecurringTaskHandle{1}}));
+        ON_CALL(*m_dispatcher, schedule_recurring_persistent(_, _, _, _, _, _))
+            .WillByDefault(Return(std::expected<RecurringTaskHandle, StatusCode>{RecurringTaskHandle{2}}));
 
         ON_CALL(*m_dispatcher, cancel_recurring(_))
             .WillByDefault(Return(STATUS_OK));

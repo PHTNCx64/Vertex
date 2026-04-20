@@ -1,3 +1,7 @@
+//
+// Copyright (C) 2026 PHTNC<>.
+// Licensed under GPLv3.0 with Plugin Interface exceptions.
+//
 #include <gtest/gtest.h>
 #include <vertex/thread/threaddispatcher.hh>
 
@@ -71,9 +75,9 @@ protected:
     }
 };
 
-// ===========================================================================================================
-// dispatch_with_priority
-// ===========================================================================================================
+
+
+
 
 TEST_F(ThreadDispatcherMultiThreadedTest, DispatchWithPriorityHighExecutesOnDebugger)
 {
@@ -208,9 +212,9 @@ TEST_F(ThreadDispatcherMultiThreadedTest, DispatchWithPriorityHighBeforeLow)
         << "Low-priority tasks should not run first through dispatcher when High tasks are pending";
 }
 
-// ===========================================================================================================
-// schedule_recurring / cancel_recurring through ThreadDispatcher
-// ===========================================================================================================
+
+
+
 
 TEST_F(ThreadDispatcherMultiThreadedTest, ScheduleRecurringOnDebuggerChannel)
 {
@@ -246,10 +250,36 @@ TEST_F(ThreadDispatcherMultiThreadedTest, ScheduleRecurringOnDebuggerChannel)
     EXPECT_EQ(status, StatusCode::STATUS_OK);
 }
 
-TEST_F(ThreadDispatcherMultiThreadedTest, ScheduleRecurringOnNonDebuggerReturnsNotImplemented)
+TEST_F(ThreadDispatcherMultiThreadedTest, ScheduleRecurringOnNonDebuggerChannelSucceeds)
+{
+    std::atomic<int> callCount {};
+
+    auto handle = m_dispatcher->schedule_recurring(
+        ThreadChannel::Scanner,
+        DispatchPriority::Normal,
+        RecurringPolicy::AsSoonAsPossible,
+        0ms,
+        [&callCount]() -> StatusCode
+        {
+            callCount.fetch_add(1, std::memory_order_relaxed);
+            return StatusCode::STATUS_OK;
+        },
+        RecurringFailurePolicy::Continue);
+
+    ASSERT_TRUE(handle.has_value());
+
+    while (callCount.load(std::memory_order_relaxed) < 3)
+    {
+        std::this_thread::sleep_for(1ms);
+    }
+
+    EXPECT_EQ(m_dispatcher->cancel_recurring(handle.value()), StatusCode::STATUS_OK);
+}
+
+TEST_F(ThreadDispatcherMultiThreadedTest, ScheduleRecurringOnUiChannelRejected)
 {
     auto handle = m_dispatcher->schedule_recurring(
-        ThreadChannel::Freeze,
+        ThreadChannel::UI,
         DispatchPriority::Normal,
         RecurringPolicy::FixedDelay,
         100ms,
@@ -257,7 +287,39 @@ TEST_F(ThreadDispatcherMultiThreadedTest, ScheduleRecurringOnNonDebuggerReturnsN
         RecurringFailurePolicy::Continue);
 
     ASSERT_FALSE(handle.has_value());
-    EXPECT_EQ(handle.error(), StatusCode::STATUS_ERROR_NOT_IMPLEMENTED);
+    EXPECT_EQ(handle.error(), StatusCode::STATUS_ERROR_INVALID_PARAMETER);
+}
+
+TEST_F(ThreadDispatcherMultiThreadedTest, ScheduleRecurringPersistentSurvivesConfigure)
+{
+    std::atomic<int> callCount {};
+
+    auto handle = m_dispatcher->schedule_recurring_persistent(
+        ThreadChannel::Scanner,
+        DispatchPriority::Low,
+        RecurringPolicy::AsSoonAsPossible,
+        0ms,
+        [&callCount]() -> StatusCode
+        {
+            callCount.fetch_add(1, std::memory_order_relaxed);
+            return StatusCode::STATUS_OK;
+        },
+        RecurringFailurePolicy::Continue);
+
+    ASSERT_TRUE(handle.has_value());
+
+    while (callCount.load(std::memory_order_relaxed) < 3)
+    {
+        std::this_thread::sleep_for(1ms);
+    }
+
+    ASSERT_EQ(m_dispatcher->configure(VERTEX_FEATURE_RUN_MODE_STANDARD), StatusCode::STATUS_OK);
+
+    const auto before = callCount.load(std::memory_order_relaxed);
+    std::this_thread::sleep_for(20ms);
+    EXPECT_GT(callCount.load(std::memory_order_relaxed), before);
+
+    EXPECT_EQ(m_dispatcher->cancel_recurring(handle.value()), StatusCode::STATUS_OK);
 }
 
 TEST_F(ThreadDispatcherMultiThreadedTest, CancelRecurringStopsExecution)
@@ -357,9 +419,9 @@ TEST_F(ThreadDispatcherMultiThreadedTest, StopInvalidatesRecurringHandles)
         << "Recurring tasks must stop after stop()";
 }
 
-// ===========================================================================================================
-// Mode routing: Multi-threaded (bit0=0)
-// ===========================================================================================================
+
+
+
 
 TEST_F(ThreadDispatcherMultiThreadedTest, DebuggerChannelRoutesToPriorityThread)
 {
@@ -414,9 +476,9 @@ TEST_F(ThreadDispatcherMultiThreadedTest, IsNotSingleThreaded)
     EXPECT_FALSE(m_dispatcher->is_single_threaded());
 }
 
-// ===========================================================================================================
-// Mode routing: Multi-threaded + debugger dependent (bit0=0, bit1=1) - bit1 ignored
-// ===========================================================================================================
+
+
+
 
 TEST_F(ThreadDispatcherTest, MultiThreadedWithDependentFlagIgnoresBit1)
 {
@@ -454,9 +516,9 @@ TEST_F(ThreadDispatcherTest, MultiThreadedWithDependentFlagIgnoresBit1)
         << "In multi-threaded mode, bit1 should be ignored; channels should be independent";
 }
 
-// ===========================================================================================================
-// Mode routing: Single-threaded + dependent (bit0=1, bit1=1)
-// ===========================================================================================================
+
+
+
 
 TEST_F(ThreadDispatcherSingleThreadDependentTest, IsSingleThreaded)
 {
@@ -544,9 +606,9 @@ TEST_F(ThreadDispatcherSingleThreadDependentTest, DispatchWithPriorityWorks)
     EXPECT_TRUE(executed.load());
 }
 
-// ===========================================================================================================
-// Mode routing: Single-threaded + independent (bit0=1, bit1=0)
-// ===========================================================================================================
+
+
+
 
 TEST_F(ThreadDispatcherSingleThreadIndependentTest, IsSingleThreaded)
 {
@@ -644,9 +706,9 @@ TEST_F(ThreadDispatcherSingleThreadIndependentTest, ScheduleRecurringOnDebuggerW
     EXPECT_EQ(m_dispatcher->cancel_recurring(handle.value()), StatusCode::STATUS_OK);
 }
 
-// ===========================================================================================================
-// Mode switching
-// ===========================================================================================================
+
+
+
 
 TEST_F(ThreadDispatcherTest, ReconfigureFromMultiToSingleThreaded)
 {
@@ -673,9 +735,9 @@ TEST_F(ThreadDispatcherTest, ReconfigureFromMultiToSingleThreaded)
     EXPECT_TRUE(executed.load());
 }
 
-// ===========================================================================================================
-// dispatch (legacy API) routes debugger to priority thread
-// ===========================================================================================================
+
+
+
 
 TEST_F(ThreadDispatcherMultiThreadedTest, LegacyDispatchDebuggerUsesNormalPriority)
 {
@@ -731,9 +793,9 @@ TEST_F(ThreadDispatcherMultiThreadedTest, LegacyDispatchDebuggerUsesNormalPriori
     EXPECT_EQ(order[1], 2);
 }
 
-// ===========================================================================================================
-// Pending tasks and busy state
-// ===========================================================================================================
+
+
+
 
 TEST_F(ThreadDispatcherMultiThreadedTest, PendingTasksReflectsDebuggerQueue)
 {

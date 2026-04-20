@@ -9,9 +9,10 @@
 #include <vertex/runtime/loader.hh>
 #include <vertex/vertex.hh>
 #include <vertex/di.hh>
-#include <vertex/theme.hh>
 
 #include <fmt/format.h>
+
+#include <unordered_set>
 
 #include <wx/mstream.h>
 #include <logo.hh>
@@ -47,32 +48,31 @@ bool VertexApp::OnInit()
     auto& loader = m_impl->injector.create<Vertex::Runtime::ILoader&>();
     auto& language = m_impl->injector.create<Vertex::Language::ILanguage&>();
     auto& iconManager = m_impl->injector.create<Vertex::Gui::IIconManager&>();
-    auto& themeProvider = m_impl->injector.create<Vertex::Gui::IThemeProvider&>();
     auto& settings = m_impl->injector.create<Vertex::Configuration::ISettings&>();
     auto& pluginConfig = m_impl->injector.create<Vertex::Configuration::IPluginConfig&>();
     auto& scanner = m_impl->injector.create<Vertex::Scanner::IMemoryScanner&>();
-    auto& pointerScanner = m_impl->injector.create<Vertex::Scanner::IPointerScanner&>();
+    auto& scannerService = m_impl->injector.create<Vertex::Scanner::IScannerRuntimeService&>();
     auto& eventBus = m_impl->injector.create<Vertex::Event::EventBus&>();
     auto& dispatcher = m_impl->injector.create<Vertex::Thread::IThreadDispatcher&>();
     auto& scripting = m_impl->injector.create<Vertex::Scripting::IAngelScript&>();
+    auto& debuggerRuntime = m_impl->injector.create<Vertex::Debugger::IDebuggerRuntimeService&>();
 
     apply_language_settings();
     apply_plugin_settings();
     apply_appearance_settings();
 
-    const Vertex::ViewFactory factory { eventBus, loader, log, language, iconManager, themeProvider, settings, pluginConfig, scanner, pointerScanner, scripting, dispatcher };
+    const Vertex::ViewFactory factory { eventBus, loader, log, language, iconManager, settings, pluginConfig, scanner, scannerService, scripting, dispatcher, debuggerRuntime };
     auto* mainView = factory.create_mainview(ApplicationName " " ApplicationVersion " by " ApplicationVendor);
 
     std::ignore = factory.create_processlistview();
     std::ignore = factory.create_settingsview();
     std::ignore = factory.create_memoryattributeview();
-    std::ignore = factory.create_pointerscan_memoryattributeview();
     std::ignore = factory.create_analyticsview();
     std::ignore = factory.create_injectorview();
     std::ignore = factory.create_scriptingview();
 
     auto* debuggerView = factory.create_debuggerview();
-    auto* pointerScanView = factory.create_pointerscanview();
+    auto* accessTrackerView = factory.create_accesstrackerview();
 
     mainView->set_view_in_disassembly_callback([debuggerView](const std::uint64_t address)
     {
@@ -84,22 +84,11 @@ bool VertexApp::OnInit()
         [debuggerView]() { debuggerView->attach_debugger(); }
     );
 
-    mainView->set_pointer_scan_callback([factory, mainView, pointerScanView](const std::uint64_t address)
-    {
-        auto* dialog = factory.create_pointerscanconfigdialog(mainView, address);
-        if (dialog->ShowModal() == wxID_OK)
-        {
-            const auto config = dialog->get_config();
-            pointerScanView->start_scan(config);
-        }
-        dialog->Destroy();
-    });
-
-    mainView->set_find_access_callback([mainView, debuggerView](const std::uint64_t address, const std::uint32_t size)
+    mainView->set_find_access_callback([mainView, accessTrackerView](const std::uint64_t address, const std::uint32_t size)
     {
         if (mainView->ensure_debugger_attached())
         {
-            debuggerView->set_watchpoint(address, size);
+            accessTrackerView->open_and_track(address, size);
         }
     });
 
@@ -269,10 +258,8 @@ void VertexApp::apply_appearance_settings()
 {
     auto& log = m_impl->injector.create<Vertex::Log::ILog&>();
     const auto& settings = m_impl->injector.create<Vertex::Configuration::ISettings&>();
-    auto& themeProvider = m_impl->injector.create<Vertex::Gui::IThemeProvider&>();
 
     const auto theme = settings.get_int("general.theme", Vertex::ApplicationAppearance::SYSTEM);
-    themeProvider.set_theme(static_cast<Vertex::Theme>(theme));
     SetAppearance(static_cast<Appearance>(theme));
 
     const bool loggingEnabled = settings.get_bool("general.enableLogging", true);
@@ -292,6 +279,26 @@ void VertexApp::apply_script_settings() const
 
     const auto scriptPaths = settings.get_value("scripting.scriptPaths");
     if (!scriptPaths.is_array() || scriptPaths.empty())
+    {
+        return;
+    }
+
+    const auto autoStartJson = settings.get_value("scripting.autoStartScripts");
+    if (!autoStartJson.is_array() || autoStartJson.empty())
+    {
+        return;
+    }
+
+    std::unordered_set<std::string> autoStartSet{};
+    for (const auto& entry : autoStartJson)
+    {
+        if (entry.is_string())
+        {
+            autoStartSet.insert(entry.get<std::string>());
+        }
+    }
+
+    if (autoStartSet.empty())
     {
         return;
     }
@@ -317,16 +324,22 @@ void VertexApp::apply_script_settings() const
                 continue;
             }
 
+            const auto relativePath = Vertex::Configuration::Filesystem::make_relative(entry.path()).string();
+            if (!autoStartSet.contains(relativePath))
+            {
+                continue;
+            }
+
             const auto moduleName = entry.path().stem().string();
             auto result = scripting.create_context(moduleName, entry.path(), Vertex::Scripting::UseActive{});
 
             if (result.has_value())
             {
-                log.log_info(fmt::format("Script loaded: {}", entry.path().filename().string()));
+                log.log_info(fmt::format("Script auto-started: {}", entry.path().filename().string()));
             }
             else
             {
-                log.log_error(fmt::format("Failed to load script: {}", entry.path().filename().string()));
+                log.log_error(fmt::format("Failed to auto-start script: {}", entry.path().filename().string()));
             }
         }
     }

@@ -141,7 +141,9 @@
       "analytics": "Analitik",
       "analyticsDescription": "Analitik penceresini açar",
       "injector": "Enjektör",
-      "injectorDescription": "Enjektör penceresini açar"
+      "injectorDescription": "Enjektör penceresini açar",
+      "code": "Betik Düzenleyici",
+      "codeDescription": "Betik düzenleyicisini açar"
     },
     "buttons": {
       "initialScan": "İlk Tarama",
@@ -754,6 +756,42 @@
       "stateSleeping": "Uyuyor",
       "stateFinished": "Tamamlandı",
       "stateError": "Hata"
+    }
+  },
+  "accessTracker": {
+    "title": "Erişim İzleyici",
+    "tracking": "İzleniyor",
+    "stop": "Durdur",
+    "clear": "Temizle",
+    "close": "Kapat",
+    "columnInstruction": "Komut",
+    "columnModule": "Modül",
+    "columnFunction": "İşlev",
+    "columnMnemonic": "Mnemonik",
+    "columnHits": "İsabet",
+    "columnAccess": "Erişim",
+    "columnSize": "Boyut",
+    "columnRegisters": "Kayıtçılar",
+    "columnCaller": "Çağıran",
+    "statusIdle": "Boşta",
+    "statusStarting": "Başlatılıyor…",
+    "statusActive": "Aktif",
+    "statusStopping": "Durduruluyor…",
+    "statusStartFailed": "Başlatma başarısız",
+    "statusStopFailed": "Durdurma başarısız",
+    "context": {
+      "viewInDisassembly": "Disassembly'de görüntüle",
+      "showCallStack": "Çağrı yığınını göster",
+      "copyInstructionAddress": "Komut adresini kopyala",
+      "copyRegisters": "Kayıtçıları kopyala"
+    },
+    "callStackDialog": {
+      "title": "Çağrı Yığını",
+      "columnIndex": "#",
+      "columnReturnAddress": "Dönüş Adresi",
+      "columnModule": "Modül",
+      "columnFunction": "İşlev",
+      "goToFrame": "Çerçeveye git"
     }
   }
 }

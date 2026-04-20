@@ -141,7 +141,9 @@
       "analytics": "Analytics",
       "analyticsDescription": "Opens up the analytics window",
       "injector": "Injector",
-      "injectorDescription": "Opens up the injector window"
+      "injectorDescription": "Opens up the injector window",
+      "code": "Script Editor",
+      "codeDescription": "Opens up the script editor"
     },
     "buttons": {
       "initialScan": "Initial Scan",
@@ -201,6 +203,7 @@
     "title": "Settings",
     "general": "General",
     "plugins": "Plugins",
+    "scripts": "Scripts",
     "language": "Language",
     "memoryScanner": "Memory Scanner",
     "pluginConfig": "Plugin Configuration",
@@ -277,6 +280,18 @@
       "selectLanguagePath": "Select Language Directory",
       "pathAlreadyExists": "This path is already in the list.",
       "confirmRemovePath": "Are you sure you want to remove the path:\n%s"
+    },
+    "scriptsTab": {
+      "availableScripts": "Available Scripts (check to auto-start on launch):",
+      "columnName": "Name",
+      "columnPath": "Path",
+      "refreshList": "Refresh List",
+      "scriptPaths": "Script Search Paths",
+      "pathColumn": "Path",
+      "addPath": "Add Path",
+      "removePath": "Remove Path",
+      "selectScriptPath": "Select Script Directory",
+      "pathAlreadyExists": "This path is already in the list."
     }
   },
   "aboutWindow": {
@@ -754,6 +769,42 @@
       "stateSleeping": "Sleeping",
       "stateFinished": "Finished",
       "stateError": "Error"
+    }
+  },
+  "accessTracker": {
+    "title": "Access Tracker",
+    "tracking": "Tracking",
+    "stop": "Stop",
+    "clear": "Clear",
+    "close": "Close",
+    "columnInstruction": "Instruction",
+    "columnModule": "Module",
+    "columnFunction": "Function",
+    "columnMnemonic": "Mnemonic",
+    "columnHits": "Hits",
+    "columnAccess": "Access",
+    "columnSize": "Size",
+    "columnRegisters": "Registers",
+    "columnCaller": "Caller",
+    "statusIdle": "Idle",
+    "statusStarting": "Starting…",
+    "statusActive": "Active",
+    "statusStopping": "Stopping…",
+    "statusStartFailed": "Start failed",
+    "statusStopFailed": "Stop failed",
+    "context": {
+      "viewInDisassembly": "View in Disassembly",
+      "showCallStack": "Show Call Stack",
+      "copyInstructionAddress": "Copy Instruction Address",
+      "copyRegisters": "Copy Registers"
+    },
+    "callStackDialog": {
+      "title": "Call Stack",
+      "columnIndex": "#",
+      "columnReturnAddress": "Return Address",
+      "columnModule": "Module",
+      "columnFunction": "Function",
+      "goToFrame": "Go to Frame"
     }
   }
 }

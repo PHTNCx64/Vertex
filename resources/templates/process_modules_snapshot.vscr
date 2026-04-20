@@ -1,0 +1,31 @@
+// Module snapshot template.
+// Prints modules of the currently open process.
+void main()
+{
+    if (!is_process_open())
+    {
+        log_warn("No process is open. Attach/open a process first.");
+        return;
+    }
+
+    int status = refresh_modules_list();
+    if (status != STATUS_OK)
+    {
+        log_error("refresh_modules_list failed: " + status);
+        return;
+    }
+
+    const uint count = get_module_count();
+    log_info("Module count: " + count);
+
+    uint preview = count;
+    if (preview > 10)
+    {
+        preview = 10;
+    }
+    for (uint i = 0; i < preview; ++i)
+    {
+        ModuleInfo module = get_module_at(i);
+        log_info("[" + i + "] " + module.name + " -> " + module.path);
+    }
+}

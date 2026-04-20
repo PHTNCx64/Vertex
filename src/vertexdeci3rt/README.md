@@ -10,3 +10,7 @@ provided with it.
 Due to legal reasons, Links cannot be provided to the SDK.
 
 It is best to figure it out yourself.
+
+## Usage
+
+You'll need to provide the PS3TMAPI headers in the include directories.

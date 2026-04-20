@@ -14,6 +14,7 @@
 
 #include <vertex/scanner/valuetypes.hh>
 #include <vertex/scanner/imemoryreader.hh>
+#include <vertex/scanner/scanner_typeschema.hh>
 
 namespace Vertex::Scanner
 {
@@ -26,6 +27,9 @@ namespace Vertex::Scanner
         std::vector<std::uint8_t> previousValue{};
         std::vector<std::uint8_t> firstValue{};
         bool isValid{true};
+
+        std::shared_ptr<const TypeSchema> schema{};
+        std::uint32_t valueSize{};
 
         std::string formattedValue{};
         std::string formattedPreviousValue{};
@@ -53,6 +57,8 @@ namespace Vertex::Scanner
 
         [[nodiscard]] MonitoredAddressPtr get_or_create(std::uint64_t address, ValueType valueType, Endianness endianness = Endianness::Little);
 
+        [[nodiscard]] MonitoredAddressPtr get_or_create_plugin(std::uint64_t address, std::shared_ptr<const TypeSchema> schema);
+
         [[nodiscard]] MonitoredAddressPtr get(std::uint64_t address, ValueType valueType) const;
 
         void remove(std::uint64_t address, ValueType valueType);
@@ -66,12 +72,25 @@ namespace Vertex::Scanner
         [[nodiscard]] std::size_t size() const;
 
     private:
-        [[nodiscard]] static std::uint64_t make_key(std::uint64_t address, ValueType valueType);
+        using AddressKey = std::pair<std::uint64_t, std::uint32_t>;
+
+        struct AddressKeyHash final
+        {
+            [[nodiscard]] std::size_t operator()(const AddressKey& key) const noexcept
+            {
+                const std::size_t h1 = std::hash<std::uint64_t>{}(key.first);
+                const std::size_t h2 = std::hash<std::uint32_t>{}(key.second);
+                return h1 ^ (h2 + 0x9e3779b97f4a7c15ULL + (h1 << 6) + (h1 >> 2));
+            }
+        };
+
+        [[nodiscard]] static AddressKey make_key(std::uint64_t address, ValueType valueType);
+        [[nodiscard]] static AddressKey make_key(std::uint64_t address, TypeId typeId);
 
         static void update_formatted_values(MonitoredAddress& entry, bool hexDisplay);
 
         mutable std::mutex m_mutex;
-        std::unordered_map<std::uint64_t, MonitoredAddressPtr> m_registry;
+        std::unordered_map<AddressKey, MonitoredAddressPtr, AddressKeyHash> m_registry;
         MemoryReadCallback m_memoryReader;
         BulkMemoryReadCallback m_bulkMemoryReader;
     };

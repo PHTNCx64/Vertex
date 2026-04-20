@@ -12,6 +12,7 @@
 #include <utility>
 #include <expected>
 #include <filesystem>
+#include <memory>
 #include <vector>
 #include <fmt/format.h>
 
@@ -27,67 +28,70 @@ namespace Vertex::Runtime
         }
     };
 
+    class LibraryHandle final
+    {
+      public:
+        explicit LibraryHandle(void* handle) noexcept
+            : m_handle(handle)
+        {
+        }
+
+        ~LibraryHandle()
+        {
+            if (m_handle != nullptr)
+            {
+                (void) LibraryLoader::unload_library(m_handle);
+                m_handle = nullptr;
+            }
+        }
+
+        LibraryHandle(const LibraryHandle&) = delete;
+        LibraryHandle& operator=(const LibraryHandle&) = delete;
+        LibraryHandle(LibraryHandle&&) = delete;
+        LibraryHandle& operator=(LibraryHandle&&) = delete;
+
+        [[nodiscard]] void* get() const noexcept
+        {
+            return m_handle;
+        }
+
+        [[nodiscard]] bool is_loaded() const noexcept
+        {
+            return m_handle != nullptr;
+        }
+
+      private:
+        void* m_handle{};
+    };
+
     class Library final
     {
       public:
         explicit Library(const std::filesystem::path& path)
         {
-            m_handle = LibraryLoader::load_library(path.string());
-            if (!m_handle)
+            void* handle = LibraryLoader::load_library(path.string());
+            if (handle == nullptr)
             {
                 const auto reason = LibraryLoader::last_error();
                 throw LibraryError(reason.empty()
                     ? fmt::format("Failed to load library '{}'", path.string())
                     : fmt::format("Failed to load library '{}': {}", path.string(), reason));
             }
+            m_handle = std::make_shared<LibraryHandle>(handle);
         }
 
-        ~Library()
-        {
-            unload();
-        }
-
-        Library(const Library&) = delete;
-        Library& operator=(const Library&) = delete;
-
-        Library(Library&& other) noexcept
-            : m_handle(other.m_handle)
-        {
-            other.m_handle = nullptr;
-        }
-
-        Library& operator=(Library&& other) noexcept
-        {
-            if (this != &other)
-            {
-                unload();
-                m_handle = other.m_handle;
-                other.m_handle = nullptr;
-            }
-            return *this;
-        }
-
-        bool unload() noexcept
-        {
-            if (m_handle)
-            {
-                const bool result = LibraryLoader::unload_library(m_handle);
-                m_handle = nullptr;
-                return result;
-            }
-            return true;
-        }
+        ~Library() = default;
 
         template <class FunctionType> [[nodiscard]] std::expected<FunctionType, std::string> get_function(std::string_view name) const
         {
             static_assert(std::is_pointer_v<FunctionType> && std::is_function_v<std::remove_pointer_t<FunctionType>>, "FunctionType must be a function pointer");
 
-            if (!m_handle)
+            if (!m_handle || !m_handle->is_loaded())
             {
                 return std::unexpected("Library handle is null");
             }
 
-            void* proc = LibraryLoader::resolve_address(m_handle, name);
+            void* proc = LibraryLoader::resolve_address(m_handle->get(), name);
             if (!proc)
             {
                 return std::unexpected(fmt::format("Function '{}' not found", name));
@@ -96,16 +100,21 @@ namespace Vertex::Runtime
             return reinterpret_cast<FunctionType>(proc);
         }
 
-        [[nodiscard]] void* handle() const noexcept { return m_handle; }
+        [[nodiscard]] void* handle() const noexcept { return m_handle ? m_handle->get() : nullptr; }
 
-        [[nodiscard]] bool is_loaded() const noexcept { return m_handle != nullptr; }
+        [[nodiscard]] bool is_loaded() const noexcept { return m_handle && m_handle->is_loaded(); }
 
         [[nodiscard]] static Library create_stub() noexcept { return Library{}; }
+
+        [[nodiscard]] std::shared_ptr<LibraryHandle> keepalive() const noexcept
+        {
+            return m_handle;
+        }
 
       private:
         Library() noexcept = default;
 
-        void* m_handle{};
+        std::shared_ptr<LibraryHandle> m_handle{};
     };
 
     enum class FunctionRequirement

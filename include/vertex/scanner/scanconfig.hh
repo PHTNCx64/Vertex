@@ -4,6 +4,7 @@
 //
 #pragma once
 
+#include <vertex/scanner/scanner_typeschema.hh>
 #include <vertex/scanner/valuetypes.hh>
 #include <cstdint>
 #include <optional>
@@ -13,9 +14,11 @@ namespace Vertex::Scanner
 {
     struct ScanConfiguration final
     {
+        TypeId typeId{TypeId::Invalid};
+
         ValueType valueType{ValueType::Int32};
 
-        std::uint8_t scanMode{};
+        std::uint32_t scanMode{};
 
         std::vector<std::uint8_t> input{};
         std::vector<std::uint8_t> input2{};
@@ -32,6 +35,9 @@ namespace Vertex::Scanner
 
         Endianness endianness{Endianness::Little};
 
+        std::optional<bool> pluginNeedsInput{};
+        std::optional<bool> pluginNeedsPrevious{};
+
         [[nodiscard]] NumericScanMode get_numeric_scan_mode() const
         {
             return static_cast<NumericScanMode>(scanMode);
@@ -44,6 +50,10 @@ namespace Vertex::Scanner
 
         [[nodiscard]] bool needs_input() const
         {
+            if (pluginNeedsInput.has_value())
+            {
+                return *pluginNeedsInput;
+            }
             if (is_string_type(valueType))
             {
                 return true;
@@ -53,6 +63,10 @@ namespace Vertex::Scanner
 
         [[nodiscard]] bool needs_second_input() const
         {
+            if (pluginNeedsInput.has_value())
+            {
+                return false;
+            }
             if (is_string_type(valueType))
             {
                 return false;
@@ -62,6 +76,10 @@ namespace Vertex::Scanner
 
         [[nodiscard]] bool needs_previous_value() const
         {
+            if (pluginNeedsPrevious.has_value())
+            {
+                return *pluginNeedsPrevious;
+            }
             if (is_string_type(valueType))
             {
                 return false;

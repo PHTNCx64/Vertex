@@ -18,7 +18,10 @@
 #include <vertex/event/eventbus.hh>
 #include <vertex/event/types/processopenevent.hh>
 #include <vertex/language/language.hh>
+#include <vertex/runtime/subscription_guard.hh>
+#include <vertex/scanner/iscannerruntimeservice.hh>
 #include <vertex/scanner/memoryscanner/imemoryscanner.hh>
+#include <vertex/scanner/scanner_typeschema.hh>
 #include <vertex/scanner/valuetypes.hh>
 #include <vertex/gui/iconmanager/iconmanager.hh>
 #include <vertex/utility.hh>
@@ -51,9 +54,19 @@ namespace Vertex::ViewModel
         std::string valueType {};
         std::string value {};
         int valueTypeIndex {};
+        Scanner::TypeId typeId {Scanner::TypeId::Invalid};
         std::vector<std::uint8_t> frozenBytes {};
 
         Scanner::MonitoredAddressPtr monitoredAddress {};
+
+        [[nodiscard]] Scanner::TypeId effective_type_id() const noexcept
+        {
+            if (typeId != Scanner::TypeId::Invalid)
+            {
+                return typeId;
+            }
+            return Scanner::builtin_type_id(static_cast<Scanner::ValueType>(valueTypeIndex));
+        }
     };
 
     class MainViewModel final
@@ -63,6 +76,7 @@ namespace Vertex::ViewModel
             std::unique_ptr<Model::MainModel> model,
             Event::EventBus& eventBus,
             Thread::IThreadDispatcher& dispatcher,
+            Scanner::IScannerRuntimeService& scannerService,
             std::string name = ViewModelName::MAIN
         );
 
@@ -95,6 +109,8 @@ namespace Vertex::ViewModel
         [[nodiscard]] std::vector<ScannedValue> get_scanned_values() const;
         [[nodiscard]] std::int64_t get_scanned_values_count() const;
         [[nodiscard]] ScannedValue get_scanned_value_at(int index);
+        [[nodiscard]] std::optional<std::uint64_t> get_scanned_result_address_at(int index) const;
+        [[nodiscard]] std::uint32_t get_scanned_value_size() const;
         void refresh_visible_range(int startIndex, int endIndex);
         void update_cache_window(int visibleStart, int visibleEnd);
         [[nodiscard]] bool is_scan_complete() const;
@@ -103,6 +119,11 @@ namespace Vertex::ViewModel
         [[nodiscard]] std::vector<std::string> get_value_type_names() const;
         [[nodiscard]] std::vector<std::string> get_scan_mode_names() const;
         [[nodiscard]] Scanner::ValueType get_current_value_type() const;
+        [[nodiscard]] Scanner::TypeId get_current_type_id() const;
+        [[nodiscard]] const DataTypeUIHints* get_current_type_ui_hints() const;
+        [[nodiscard]] bool current_type_supports_endianness() const;
+        [[nodiscard]] ::NumericSystem get_plugin_numeric_base() const;
+        void set_plugin_numeric_base(::NumericSystem base);
 
         [[nodiscard]] std::string get_value_input() const;
         void set_value_input(std::string_view value);
@@ -149,6 +170,7 @@ namespace Vertex::ViewModel
 
         [[nodiscard]] int get_saved_addresses_count() const;
         [[nodiscard]] SavedAddress get_saved_address_at(int index) const;
+        [[nodiscard]] std::uint32_t get_saved_address_watch_size(int index) const;
         [[nodiscard]] bool has_saved_address(std::uint64_t address) const;
         void add_saved_address(std::uint64_t address);
         void add_saved_address(std::uint64_t address, int valueTypeIndex);
@@ -177,6 +199,9 @@ namespace Vertex::ViewModel
 
         [[nodiscard]] std::uint8_t get_actual_scan_mode_value() const;
         [[nodiscard]] Scanner::ValueType get_scanned_value_type() const;
+        void reload_type_entries();
+        [[nodiscard]] const Scanner::TypeSchema* current_type_entry() const noexcept;
+        [[nodiscard]] bool current_type_is_plugin() const noexcept;
 
         bool m_isInitialScanAvailable {};
         bool m_isNextScanAvailable {};
@@ -191,6 +216,10 @@ namespace Vertex::ViewModel
         int m_endiannessTypeIndex {};
         int m_scannedEndiannessIndex {};
         int m_alignmentValue {4};
+        Scanner::TypeId m_scannedTypeId {Scanner::TypeId::Invalid};
+        bool m_scannedTypeIsPlugin {false};
+        std::optional<Scanner::TypeSchema> m_scannedPluginSchema {};
+        ::NumericSystem m_pluginNumericBase {VERTEX_DECIMAL};
 
         std::uint64_t m_minProcessAddress {};
         std::uint64_t m_maxProcessAddress {};
@@ -203,6 +232,8 @@ namespace Vertex::ViewModel
         ScanProgress m_scanProgress {};
         std::vector<ScannedValue> m_scannedValues {};
         std::vector<Scanner::NumericScanMode> m_availableNumericModes {};
+        std::vector<Scanner::TypeSchema> m_typeEntries {};
+        mutable std::mutex m_typeEntriesMutex {};
         std::vector<SavedAddress> m_savedAddresses {};
         std::unordered_map<int, ScannedValue> m_visibleCache {};
 
@@ -223,8 +254,15 @@ namespace Vertex::ViewModel
 
         Event::EventBus& m_eventBus;
         Thread::IThreadDispatcher& m_dispatcher;
+        Scanner::IScannerRuntimeService& m_scannerService;
 
         Scanner::AddressMonitor m_addressMonitor {};
+
+        std::shared_ptr<std::atomic<bool>> m_alive{std::make_shared<std::atomic<bool>>(true)};
+        Runtime::SubscriptionGuard<Scanner::IScannerRuntimeService> m_scanCompleteSub{};
+        Runtime::SubscriptionGuard<Scanner::IScannerRuntimeService> m_scanProgressSub{};
+        Runtime::SubscriptionGuard<Scanner::IScannerRuntimeService> m_valuesChangedSub{};
+        Runtime::SubscriptionGuard<Scanner::IScannerRuntimeService> m_registrySub{};
 
         mutable std::mutex m_savedAddressesMutex {};
     };

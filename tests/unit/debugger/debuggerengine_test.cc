@@ -1,3 +1,7 @@
+//
+// Copyright (C) 2026 PHTNC<>.
+// Licensed under GPLv3.0 with Plugin Interface exceptions.
+//
 #include <gtest/gtest.h>
 #include <vertex/debugger/debuggerengine.hh>
 #include <vertex/runtime/plugin.hh>
@@ -289,9 +293,9 @@ protected:
     }
 };
 
-// ===============================================================================================================
-// Construction and Destruction
-// ===============================================================================================================
+
+
+
 
 TEST_F(DebuggerEngineTest, Construction_InitialState_IsIdle)
 {
@@ -309,9 +313,9 @@ TEST_F(DebuggerEngineTest, Construction_GenerationIsZero)
     EXPECT_EQ(engine.get_generation(), 0u);
 }
 
-// ===============================================================================================================
-// start()
-// ===============================================================================================================
+
+
+
 
 TEST_F(DebuggerEngineTest, Start_NoPlugin_ReturnsPluginNotLoaded)
 {
@@ -361,9 +365,9 @@ TEST_F(DebuggerEngineTest, Start_AlreadyRunning_ReturnsError)
     stop_engine_cleanly(engine);
 }
 
-// ===============================================================================================================
-// stop()
-// ===============================================================================================================
+
+
+
 
 TEST_F(DebuggerEngineTest, Stop_NotRunning_ReturnsError)
 {
@@ -401,9 +405,9 @@ TEST_F(DebuggerEngineTest, Stop_DispatchFails_ReturnsError)
     EXPECT_EQ(engine.stop(), STATUS_ERROR_THREAD_IS_BUSY);
 }
 
-// ===============================================================================================================
-// send_command()
-// ===============================================================================================================
+
+
+
 
 TEST_F(DebuggerEngineTest, SendCommand_EnqueuesWithoutBlocking)
 {
@@ -413,9 +417,9 @@ TEST_F(DebuggerEngineTest, SendCommand_EnqueuesWithoutBlocking)
     engine.send_command(engine::CmdShutdown{});
 }
 
-// ===============================================================================================================
-// get_snapshot() / get_generation()
-// ===============================================================================================================
+
+
+
 
 TEST_F(DebuggerEngineTest, GetSnapshot_AfterStart_ReflectsDetached)
 {
@@ -431,9 +435,9 @@ TEST_F(DebuggerEngineTest, GetSnapshot_AfterStart_ReflectsDetached)
     stop_engine_cleanly(engine);
 }
 
-// ===============================================================================================================
-// set_event_callback() / set_tick_timeout()
-// ===============================================================================================================
+
+
+
 
 TEST_F(DebuggerEngineTest, SetEventCallback_CanBeCalledBeforeStart)
 {
@@ -450,9 +454,9 @@ TEST_F(DebuggerEngineTest, SetTickTimeout_StoresValues)
     engine.set_tick_timeout(200, 1000);
 }
 
-// ===============================================================================================================
-// DirtyFlags operators
-// ===============================================================================================================
+
+
+
 
 TEST_F(DebuggerEngineTest, DirtyFlags_BitwiseOr)
 {
@@ -478,9 +482,9 @@ TEST_F(DebuggerEngineTest, DirtyFlags_NoneIsZero)
     EXPECT_EQ(static_cast<std::uint32_t>(DirtyFlags::None), 0u);
 }
 
-// ===============================================================================================================
-// CmdShutdown — single authority for cleanup
-// ===============================================================================================================
+
+
+
 
 TEST_F(DebuggerEngineTest, CmdShutdown_TransitionsToStopped)
 {
@@ -511,9 +515,9 @@ TEST_F(DebuggerEngineTest, CmdShutdown_ClearsCallbacks)
     EXPECT_TRUE(g_ctx.clearCallbacksCalled);
 }
 
-// ===============================================================================================================
-// tick_once() — via captured recurring task
-// ===============================================================================================================
+
+
+
 
 TEST_F(DebuggerEngineTest, TickOnce_DetachedState_DoesNotCallTick)
 {
@@ -690,9 +694,9 @@ TEST_F(DebuggerEngineTest, TickOnce_MultiThread_DoesNotClampTimeout)
     stop_engine_cleanly(engine);
 }
 
-// ===============================================================================================================
-// tick_once() — tick result processing
-// ===============================================================================================================
+
+
+
 
 TEST_F(DebuggerEngineTest, TickResult_NoEvent_StaysRunning)
 {
@@ -820,9 +824,9 @@ TEST_F(DebuggerEngineTest, TickResult_Detached_BumpsGeneration)
     stop_engine_cleanly(engine);
 }
 
-// ===============================================================================================================
-// Command execution — CmdAttach
-// ===============================================================================================================
+
+
+
 
 TEST_F(DebuggerEngineTest, CmdAttach_FromDetached_TransitionsToRunning)
 {
@@ -895,9 +899,9 @@ TEST_F(DebuggerEngineTest, CmdAttach_BumpsGeneration)
     stop_engine_cleanly(engine);
 }
 
-// ===============================================================================================================
-// Command execution — CmdDetach
-// ===============================================================================================================
+
+
+
 
 TEST_F(DebuggerEngineTest, CmdDetach_FromRunning_TransitionsToDetached)
 {
@@ -977,9 +981,9 @@ TEST_F(DebuggerEngineTest, CmdDetach_CallsPluginDetach)
     stop_engine_cleanly(engine);
 }
 
-// ===============================================================================================================
-// Command execution — CmdContinue
-// ===============================================================================================================
+
+
+
 
 TEST_F(DebuggerEngineTest, CmdContinue_FromPaused_TransitionsToRunning)
 {
@@ -1044,9 +1048,9 @@ TEST_F(DebuggerEngineTest, CmdContinue_PassesExceptionFlag)
     stop_engine_cleanly(engine);
 }
 
-// ===============================================================================================================
-// Command execution — CmdPause
-// ===============================================================================================================
+
+
+
 
 TEST_F(DebuggerEngineTest, CmdPause_FromRunning_CallsPluginPause)
 {
@@ -1111,9 +1115,9 @@ TEST_F(DebuggerEngineTest, CmdPause_DoesNotTransitionImmediately)
     stop_engine_cleanly(engine);
 }
 
-// ===============================================================================================================
-// Command execution — CmdStepInto / CmdStepOver / CmdStepOut
-// ===============================================================================================================
+
+
+
 
 TEST_F(DebuggerEngineTest, CmdStepInto_FromPaused_TransitionsToRunning)
 {
@@ -1260,9 +1264,9 @@ TEST_F(DebuggerEngineTest, CmdStepOut_CallsPluginWithCorrectMode)
     stop_engine_cleanly(engine);
 }
 
-// ===============================================================================================================
-// Command execution — CmdRunToAddress
-// ===============================================================================================================
+
+
+
 
 TEST_F(DebuggerEngineTest, CmdRunToAddress_FromPaused_TransitionsToRunning)
 {
@@ -1327,9 +1331,9 @@ TEST_F(DebuggerEngineTest, CmdRunToAddress_FromRunning_Ignored)
     stop_engine_cleanly(engine);
 }
 
-// ===============================================================================================================
-// Command execution — CmdShutdown (via tick_once drain)
-// ===============================================================================================================
+
+
+
 
 TEST_F(DebuggerEngineTest, CmdShutdown_FromRunning_DetachesAndTransitionsToStopped)
 {
@@ -1386,9 +1390,9 @@ TEST_F(DebuggerEngineTest, CmdShutdown_ClearsCallbacksOnPlugin)
         << "Shutdown must call set_callbacks(nullptr) to clear callbacks";
 }
 
-// ===============================================================================================================
-// Command burst limit
-// ===============================================================================================================
+
+
+
 
 TEST_F(DebuggerEngineTest, DrainCommands_BurstLimit_DoesNotExceed32)
 {
@@ -1413,9 +1417,9 @@ TEST_F(DebuggerEngineTest, DrainCommands_BurstLimit_DoesNotExceed32)
     stop_engine_cleanly(engine);
 }
 
-// ===============================================================================================================
-// Generation tracking
-// ===============================================================================================================
+
+
+
 
 TEST_F(DebuggerEngineTest, Generation_IncrementsOnEachStateTransition)
 {
@@ -1458,9 +1462,9 @@ TEST_F(DebuggerEngineTest, Generation_SnapshotMatchesAtomicGeneration)
     stop_engine_cleanly(engine);
 }
 
-// ===============================================================================================================
-// Callback handlers — dirty flag setting
-// ===============================================================================================================
+
+
+
 
 TEST_F(DebuggerEngineTest, Callback_BreakpointHit_UpdatesSnapshotAndDirtyFlags)
 {
@@ -1568,9 +1572,9 @@ TEST_F(DebuggerEngineTest, Callback_WatchpointHit_UpdatesSnapshotAndDirtyFlags)
     stop_engine_cleanly(engine);
 }
 
-// ===============================================================================================================
-// Callback registration plumbing
-// ===============================================================================================================
+
+
+
 
 TEST_F(DebuggerEngineTest, Start_RegistersCallbacksWithPlugin)
 {
@@ -1609,9 +1613,9 @@ TEST_F(DebuggerEngineTest, Start_UserDataPointsToEngine)
     stop_engine_cleanly(engine);
 }
 
-// ===============================================================================================================
-// Recurring pump scheduling
-// ===============================================================================================================
+
+
+
 
 TEST_F(DebuggerEngineTest, Start_SchedulesPumpOnDebuggerChannel)
 {
@@ -1642,9 +1646,9 @@ TEST_F(DebuggerEngineTest, Start_SchedulesPumpOnDebuggerChannel)
     stop_engine_cleanly(engine);
 }
 
-// ===============================================================================================================
-// Full state machine cycle
-// ===============================================================================================================
+
+
+
 
 TEST_F(DebuggerEngineTest, StateMachine_FullCycle_IdleToStoppedThroughAllStates)
 {
@@ -1745,9 +1749,9 @@ TEST_F(DebuggerEngineTest, StateMachine_ReattachAfterPluginDetach)
     stop_engine_cleanly(engine);
 }
 
-// ===============================================================================================================
-// Structured error events — invalid state preconditions
-// ===============================================================================================================
+
+
+
 
 TEST_F(DebuggerEngineTest, CmdAttach_FromRunning_PostsError)
 {
@@ -1905,9 +1909,9 @@ TEST_F(DebuggerEngineTest, CmdRunToAddress_FromRunning_PostsError)
     stop_engine_cleanly(engine);
 }
 
-// ===============================================================================================================
-// Structured error events — plugin API failures
-// ===============================================================================================================
+
+
+
 
 TEST_F(DebuggerEngineTest, CmdAttach_PluginFails_PostsError)
 {
@@ -2027,9 +2031,9 @@ TEST_F(DebuggerEngineTest, CmdRunToAddress_PluginFails_PostsError)
     stop_engine_cleanly(engine);
 }
 
-// ===============================================================================================================
-// Structured error events — consume clears last error
-// ===============================================================================================================
+
+
+
 
 TEST_F(DebuggerEngineTest, ConsumeLastError_ClearsAfterRead)
 {
@@ -2094,9 +2098,9 @@ TEST_F(DebuggerEngineTest, PostError_SetsDirtyFlags)
     stop_engine_cleanly(engine);
 }
 
-// ===============================================================================================================
-// Fix 1: stop() drains entire queue to guarantee CmdShutdown executes
-// ===============================================================================================================
+
+
+
 
 TEST_F(DebuggerEngineTest, Stop_DeepQueue_StillExecutesShutdown)
 {
@@ -2122,9 +2126,9 @@ TEST_F(DebuggerEngineTest, Stop_DeepQueue_StillExecutesShutdown)
     EXPECT_EQ(engine.get_snapshot().state, EngineState::Stopped);
 }
 
-// ===============================================================================================================
-// Fix 2: Structured errors for CmdDetach and CmdShutdown API failures
-// ===============================================================================================================
+
+
+
 
 TEST_F(DebuggerEngineTest, CmdDetach_PluginFails_PostsError)
 {
@@ -2198,9 +2202,9 @@ TEST_F(DebuggerEngineTest, CmdShutdown_ClearCallbacksFails_PostsError)
     EXPECT_EQ(error->code, STATUS_ERROR_GENERAL);
 }
 
-// ===============================================================================================================
-// Fix 3: TICK_ERROR invalidates all caches (DirtyFlags::All)
-// ===============================================================================================================
+
+
+
 
 TEST_F(DebuggerEngineTest, TickResult_Error_InvalidatesAllCaches)
 {
@@ -2224,9 +2228,9 @@ TEST_F(DebuggerEngineTest, TickResult_Error_InvalidatesAllCaches)
     stop_engine_cleanly(engine);
 }
 
-// ===============================================================================================================
-// Destructor latency — never-started / failed-start must not block
-// ===============================================================================================================
+
+
+
 
 TEST_F(DebuggerEngineTest, Destructor_NeverStarted_DoesNotBlock)
 {
@@ -2250,9 +2254,9 @@ TEST_F(DebuggerEngineTest, Destructor_FailedStart_DoesNotBlock)
     EXPECT_LT(elapsed, std::chrono::milliseconds {100});
 }
 
-// ===============================================================================================================
-// stop() non-blocking contract
-// ===============================================================================================================
+
+
+
 
 TEST_F(DebuggerEngineTest, Stop_IsNonBlocking_CleanupDeferred)
 {
@@ -2314,9 +2318,9 @@ TEST_F(DebuggerEngineTest, Destructor_AfterStop_WaitsForCompletion)
     completionThread.join();
 }
 
-// ===============================================================================================================
-// tick safe_call failure — structured error
-// ===============================================================================================================
+
+
+
 
 TEST_F(DebuggerEngineTest, TickOnce_SafeCallFailure_PostsError)
 {

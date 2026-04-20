@@ -4,6 +4,7 @@
 //
 #include <vertexusrrt/debugger_internal.hh>
 #include <vertexusrrt/native_handle.hh>
+#include <vertexusrrt/watchpoint_throttle.hh>
 
 #include <windows.h>
 
@@ -250,6 +251,11 @@ namespace debugger
 
             if (is_watchpoint_hit(dr6Value, &hitWatchpointId, &watchType, &watchedAddress, &watchedSize))
             {
+                if (should_throttle_watchpoint(hitWatchpointId))
+                {
+                    return TickEventResult{.continueStatus = DBG_CONTINUE};
+                }
+
                 {
                     std::scoped_lock lock{state.callbackMutex};
                     if (state.callbacks.has_value())

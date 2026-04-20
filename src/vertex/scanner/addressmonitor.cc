@@ -3,6 +3,7 @@
 // Licensed under GPLv3.0 with Plugin Interface exceptions.
 //
 #include <vertex/scanner/addressmonitor.hh>
+#include <vertex/scanner/plugin_value_format.hh>
 #include <vertex/scanner/valueconverter.hh>
 
 #include <ranges>
@@ -38,6 +39,38 @@ namespace Vertex::Scanner
         entry->address = address;
         entry->valueType = valueType;
         entry->endianness = endianness;
+        entry->valueSize = static_cast<std::uint32_t>(get_value_type_size(valueType));
+        entry->isValid = true;
+
+        m_registry[key] = entry;
+        return entry;
+    }
+
+    MonitoredAddressPtr AddressMonitor::get_or_create_plugin(const std::uint64_t address,
+                                                               std::shared_ptr<const TypeSchema> schema)
+    {
+        if (!schema || schema->kind != TypeKind::PluginDefined || schema->valueSize == 0)
+        {
+            return nullptr;
+        }
+
+        std::scoped_lock<std::mutex> lock(m_mutex);
+
+        const auto key = make_key(address, schema->id);
+        const auto it = m_registry.find(key);
+
+        if (it != m_registry.end())
+        {
+            it->second->schema = schema;
+            return it->second;
+        }
+
+        auto entry = std::make_shared<MonitoredAddress>();
+        entry->address = address;
+        entry->valueType = ValueType::COUNT;
+        entry->endianness = Endianness::Little;
+        entry->schema = schema;
+        entry->valueSize = schema->valueSize;
         entry->isValid = true;
 
         m_registry[key] = entry;
@@ -92,7 +125,7 @@ namespace Vertex::Scanner
                     continue;
                 }
 
-                const std::size_t valueSize = get_value_type_size(entry->valueType);
+                const std::size_t valueSize = entry->valueSize;
                 if (valueSize == 0)
                 {
                     continue;
@@ -166,7 +199,7 @@ namespace Vertex::Scanner
                 continue;
             }
 
-            const std::size_t valueSize = get_value_type_size(entry->valueType);
+            const std::size_t valueSize = entry->valueSize;
             if (valueSize == 0)
             {
                 continue;
@@ -227,22 +260,25 @@ namespace Vertex::Scanner
         return m_registry.size();
     }
 
-    std::uint64_t AddressMonitor::make_key(const std::uint64_t address, const ValueType valueType)
+    AddressMonitor::AddressKey AddressMonitor::make_key(const std::uint64_t address, const ValueType valueType)
     {
-        return (static_cast<std::uint64_t>(valueType) << 56) | (address & 0x00FFFFFFFFFFFFFF);
+        return make_key(address, builtin_type_id(valueType));
+    }
+
+    AddressMonitor::AddressKey AddressMonitor::make_key(const std::uint64_t address, const TypeId typeId)
+    {
+        return AddressKey{address, static_cast<std::uint32_t>(typeId)};
     }
 
     void AddressMonitor::update_formatted_values(MonitoredAddress& entry, const bool hexDisplay)
     {
+        const bool isPlugin = entry.schema && entry.schema->kind == TypeKind::PluginDefined;
+
         if (entry.isValid && !entry.currentValue.empty())
         {
-            entry.formattedValue = ValueConverter::format(
-                entry.valueType,
-                entry.currentValue.data(),
-                entry.currentValue.size(),
-                hexDisplay,
-                entry.endianness
-            );
+            entry.formattedValue = isPlugin
+                ? format_plugin_bytes(*entry.schema, entry.currentValue.data(), entry.currentValue.size())
+                : ValueConverter::format(entry.valueType, entry.currentValue.data(), entry.currentValue.size(), hexDisplay, entry.endianness);
         }
         else
         {
@@ -251,24 +287,16 @@ namespace Vertex::Scanner
 
         if (!entry.previousValue.empty())
         {
-            entry.formattedPreviousValue = ValueConverter::format(
-                entry.valueType,
-                entry.previousValue.data(),
-                entry.previousValue.size(),
-                hexDisplay,
-                entry.endianness
-            );
+            entry.formattedPreviousValue = isPlugin
+                ? format_plugin_bytes(*entry.schema, entry.previousValue.data(), entry.previousValue.size())
+                : ValueConverter::format(entry.valueType, entry.previousValue.data(), entry.previousValue.size(), hexDisplay, entry.endianness);
         }
 
         if (!entry.firstValue.empty())
         {
-            entry.formattedFirstValue = ValueConverter::format(
-                entry.valueType,
-                entry.firstValue.data(),
-                entry.firstValue.size(),
-                hexDisplay,
-                entry.endianness
-            );
+            entry.formattedFirstValue = isPlugin
+                ? format_plugin_bytes(*entry.schema, entry.firstValue.data(), entry.firstValue.size())
+                : ValueConverter::format(entry.valueType, entry.firstValue.data(), entry.firstValue.size(), hexDisplay, entry.endianness);
         }
     }
 

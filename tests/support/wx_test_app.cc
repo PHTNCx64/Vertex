@@ -1,3 +1,7 @@
+//
+// Copyright (C) 2026 PHTNC<>.
+// Licensed under GPLv3.0 with Plugin Interface exceptions.
+//
 #include <wx/app.h>
 
 class WxTestApp final : public wxApp

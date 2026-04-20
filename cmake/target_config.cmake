@@ -74,6 +74,7 @@ function(configure_target target)
         target_compile_definitions(${target} PRIVATE
             _WIN32_WINNT=0x0A00
         )
+        target_link_libraries(${target} PRIVATE stdc++exp)
     endif()
 
     cmake_parse_arguments(CFG "" "SUBDIR" "" ${ARGN})

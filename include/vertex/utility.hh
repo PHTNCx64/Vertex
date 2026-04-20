@@ -67,14 +67,6 @@ namespace Vertex
         constexpr int DIALOG_HEIGHT = 180;
     }
 
-    namespace PointerScanConfigDialogValues
-    {
-        constexpr int DIALOG_WIDTH = 480;
-        constexpr int DIALOG_HEIGHT = 620;
-        constexpr int LABEL_COLUMN_WIDTH = 180;
-        constexpr int OFFSET_FILTER_LIST_HEIGHT = 80;
-    }
-
     namespace BreakpointConditionDialogValues
     {
         constexpr int DIALOG_WIDTH = 400;
@@ -132,11 +124,10 @@ namespace Vertex
         constexpr auto* MEMORYATTRIBUTES = "MemoryAttributesViewModel";
         constexpr auto* ANALYTICS = "AnalyticsViewModel";
         constexpr auto* DEBUGGER = "DebuggerViewModel";
-        constexpr auto* POINTERSCAN = "PointerScanViewModel";
-        constexpr auto* POINTERSCAN_MEMORYATTRIBUTES = "PointerScanMemoryAttributesViewModel";
         constexpr auto* INJECTOR = "InjectorViewModel";
         constexpr auto* PLUGINCONFIG = "PluginConfigViewModel";
         constexpr auto* SCRIPTING = "ScriptingViewModel";
+        constexpr auto* ACCESS_TRACKER = "AccessTrackerViewModel";
     }
 
     enum class ViewUpdateFlags : unsigned int
@@ -205,6 +196,34 @@ namespace Vertex
         };
     }
 
+    namespace AccessTrackerValues
+    {
+        constexpr int COL_INSTRUCTION_WIDTH = 200;
+        constexpr int COL_MNEMONIC_WIDTH = 220;
+        constexpr int COL_MODULE_WIDTH = 160;
+        constexpr int COL_FUNCTION_WIDTH = 220;
+        constexpr int COL_HITS_WIDTH = 80;
+        constexpr int COL_ACCESS_WIDTH = 60;
+        constexpr int COL_SIZE_WIDTH = 60;
+        constexpr int COL_REGISTERS_WIDTH = 360;
+        constexpr int COL_CALLER_WIDTH = 220;
+        constexpr int TOOLBAR_GAP_SMALL = 4;
+        constexpr int TOOLBAR_GAP_MEDIUM = 8;
+        constexpr int TOOLBAR_GAP_LARGE = 16;
+        constexpr int STATUS_LABEL_GRAY = 128;
+        constexpr std::size_t REGISTERS_PREVIEW_LIMIT = 4;
+    }
+
+    namespace AccessTrackerCallStackDialogValues
+    {
+        constexpr int DIALOG_WIDTH = 720;
+        constexpr int DIALOG_HEIGHT = 420;
+        constexpr int COLUMN_WIDTH_INDEX = 60;
+        constexpr int COLUMN_WIDTH_ADDRESS = 160;
+        constexpr int COLUMN_WIDTH_MODULE = 180;
+        constexpr int COLUMN_WIDTH_FUNCTION = 300;
+    }
+
     namespace XrefDialogValues
     {
         constexpr int DIALOG_WIDTH = 500;
@@ -224,6 +243,5 @@ namespace Vertex
 
         constexpr auto* CONFIGURATION_EXTENSION = ".json";
         constexpr auto* SCRIPTING_EXTENSION = ".vscr";
-        constexpr auto* POINTERSCAN_EXTENSION = ".vxp";
     }
 }

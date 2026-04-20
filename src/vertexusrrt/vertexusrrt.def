@@ -38,14 +38,14 @@ EXPORTS
     vertex_debugger_remove_breakpoint
     vertex_debugger_enable_breakpoint
     vertex_debugger_get_breakpoints
-    vertex_debugger_free_breakpoints
     vertex_debugger_set_watchpoint
     vertex_debugger_enable_watchpoint
     vertex_debugger_remove_watchpoint
     vertex_debugger_get_watchpoints
     vertex_debugger_get_watchpoint_hit_count
     vertex_debugger_reset_watchpoint_hit_count
-    vertex_debugger_free_watchpoints
+    vertex_debugger_set_watchpoint_throttle_ms
+    vertex_debugger_get_watchpoint_throttle_ms
     vertex_debugger_set_breakpoint_condition
     vertex_debugger_get_breakpoint_condition
     vertex_debugger_clear_breakpoint_condition

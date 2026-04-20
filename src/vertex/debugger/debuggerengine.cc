@@ -3,22 +3,47 @@
 // Licensed under GPLv3.0 with Plugin Interface exceptions.
 //
 #include <vertex/debugger/debuggerengine.hh>
+#include <vertex/debugger/engine_event.hh>
+#include <vertex/debugger/idebuggerruntimeservice.hh>
 #include <vertex/runtime/plugin.hh>
 #include <vertex/runtime/caller.hh>
 #include <vertex/thread/threadchannel.hh>
+
+#include <sdk/debugger.h>
 
 #include <sdk/feature.h>
 
 #include <fmt/format.h>
 
 #include <algorithm>
+#include <array>
 #include <chrono>
+#include <optional>
+#include <span>
+#include <vector>
 
 #include <wx/app.h>
 
 namespace Vertex::Debugger
 {
     static constexpr std::uint32_t MAX_COMMAND_BURST {32};
+
+    namespace
+    {
+        [[nodiscard]] constexpr DebuggerState engine_to_debugger_state(EngineState state) noexcept
+        {
+            switch (state)
+            {
+                case EngineState::Idle:     return DebuggerState::Detached;
+                case EngineState::Detached: return DebuggerState::Detached;
+                case EngineState::Running:  return DebuggerState::Running;
+                case EngineState::Paused:   return DebuggerState::Paused;
+                case EngineState::Exited:   return DebuggerState::Detached;
+                case EngineState::Stopped:  return DebuggerState::Detached;
+            }
+            std::unreachable();
+        }
+    }
 
     DebuggerEngine::DebuggerEngine(Runtime::ILoader& loader, Thread::IThreadDispatcher& dispatcher, Log::ILog& logger)
         : m_loader(loader),
@@ -158,6 +183,12 @@ namespace Vertex::Debugger
         m_wakeSignal.release();
     }
 
+    void DebuggerEngine::enqueue_service_command(Runtime::CommandId id, service::Command cmd)
+    {
+        m_serviceCommandQueue.enqueue(ServiceCommandRequest {.id = id, .command = std::move(cmd)});
+        m_wakeSignal.release();
+    }
+
     EngineSnapshot DebuggerEngine::get_snapshot() const
     {
         std::scoped_lock lock {m_snapshotMutex};
@@ -173,6 +204,11 @@ namespace Vertex::Debugger
     {
         std::scoped_lock lock {m_callbackMutex};
         m_eventCallback = std::move(callback);
+    }
+
+    void DebuggerEngine::set_runtime_service(IDebuggerRuntimeService* service) noexcept
+    {
+        m_runtimeService.store(service, std::memory_order_release);
     }
 
     void DebuggerEngine::set_tick_timeout(const std::uint32_t activeMs, const std::uint32_t parkedMs)
@@ -199,14 +235,20 @@ namespace Vertex::Debugger
 
     void DebuggerEngine::post_error(const std::string_view operation, const StatusCode code)
     {
+        const auto stateAtError = m_state.load(std::memory_order_acquire);
         {
             std::scoped_lock lock {m_snapshotMutex};
             m_lastError = EngineError {
                 .operation = operation,
                 .code = code,
-                .stateAtError = m_state.load(std::memory_order_acquire)
+                .stateAtError = stateAtError
             };
         }
+
+        m_loggerService.log_error(fmt::format(
+            "{}: {} failed (code={}, state={})",
+            ENGINE_NAME, operation, static_cast<int>(code), to_string_view(stateAtError)));
+
         m_dirtyFlags.fetch_or(
             static_cast<std::uint32_t>(DirtyFlags::State), std::memory_order_relaxed);
     }
@@ -214,6 +256,7 @@ namespace Vertex::Debugger
     StatusCode DebuggerEngine::tick_once()
     {
         drain_commands();
+        drain_service_commands();
 
         const auto currentState = m_state.load(std::memory_order_acquire);
         if (currentState == EngineState::Detached || currentState == EngineState::Stopped)
@@ -307,6 +350,260 @@ namespace Vertex::Debugger
             }
             execute_command(plugin, cmd);
         }
+
+        drain_all_service_commands();
+    }
+
+    void DebuggerEngine::drain_service_commands()
+    {
+        auto* plugin = get_plugin();
+
+        ServiceCommandRequest request {};
+        for (std::uint32_t i {}; i < MAX_COMMAND_BURST && m_serviceCommandQueue.try_dequeue(request); ++i)
+        {
+            if (plugin == nullptr) [[unlikely]]
+            {
+                post_service_result(request.id, StatusCode::STATUS_ERROR_PLUGIN_NOT_LOADED);
+                continue;
+            }
+            execute_service_command(plugin, request);
+        }
+    }
+
+    void DebuggerEngine::drain_all_service_commands()
+    {
+        auto* plugin = get_plugin();
+
+        ServiceCommandRequest request {};
+        while (m_serviceCommandQueue.try_dequeue(request))
+        {
+            if (plugin == nullptr) [[unlikely]]
+            {
+                post_service_result(request.id, StatusCode::STATUS_SHUTDOWN);
+                continue;
+            }
+            execute_service_command(plugin, request);
+        }
+    }
+
+    void DebuggerEngine::post_service_result(Runtime::CommandId id,
+                                              StatusCode status,
+                                              service::CommandResultPayload payload)
+    {
+        if (id == Runtime::INVALID_COMMAND_ID)
+        {
+            return;
+        }
+        auto* service = m_runtimeService.load(std::memory_order_acquire);
+        if (service == nullptr)
+        {
+            return;
+        }
+        service->on_engine_command_result(service::CommandResult {
+            .id = id,
+            .code = status,
+            .payload = std::move(payload),
+        });
+    }
+
+    void DebuggerEngine::execute_service_command(Runtime::Plugin* plugin,
+                                                  const ServiceCommandRequest& request)
+    {
+        const auto commandId = request.id;
+        std::visit(
+            [this, plugin, commandId]<class T>(const T& arg)
+            {
+                using Cmd = std::decay_t<T>;
+
+                if constexpr (std::is_same_v<Cmd, service::CmdAddWatchpoint>)
+                {
+                    ::Watchpoint wp {};
+                    wp.address = arg.address;
+                    wp.size = arg.size;
+                    wp.active = true;
+                    switch (arg.type)
+                    {
+                        case WatchpointType::Read:      wp.type = VERTEX_WP_READ; break;
+                        case WatchpointType::Write:     wp.type = VERTEX_WP_WRITE; break;
+                        case WatchpointType::Execute:   wp.type = VERTEX_WP_EXECUTE; break;
+                        case WatchpointType::ReadWrite:
+                        default:                        wp.type = VERTEX_WP_READWRITE; break;
+                    }
+
+                    std::uint32_t watchpointId {};
+                    const auto result = Runtime::safe_call(
+                        plugin->internal_vertex_debugger_set_watchpoint, &wp, &watchpointId);
+                    const auto status = Runtime::get_status(result);
+                    if (status != StatusCode::STATUS_OK)
+                    {
+                        post_service_result(commandId, status);
+                        return;
+                    }
+
+                    m_dirtyFlags.fetch_or(
+                        static_cast<std::uint32_t>(DirtyFlags::Watchpoints), std::memory_order_relaxed);
+                    post_service_result(commandId, StatusCode::STATUS_OK,
+                        service::AddWatchpointResultPayload {.watchpointId = watchpointId});
+                }
+                else if constexpr (std::is_same_v<Cmd, service::CmdRemoveWatchpoint>)
+                {
+                    const auto result = Runtime::safe_call(
+                        plugin->internal_vertex_debugger_remove_watchpoint, arg.id);
+                    const auto status = Runtime::get_status(result);
+                    if (status == StatusCode::STATUS_OK)
+                    {
+                        m_dirtyFlags.fetch_or(
+                            static_cast<std::uint32_t>(DirtyFlags::Watchpoints), std::memory_order_relaxed);
+                    }
+                    post_service_result(commandId, status);
+                }
+                else if constexpr (std::is_same_v<Cmd, service::CmdReadRegisters>)
+                {
+                    ::RegisterSet sdkRegs {};
+                    const auto result = Runtime::safe_call(
+                        plugin->internal_vertex_debugger_get_registers, arg.threadId, &sdkRegs);
+                    const auto status = Runtime::get_status(result);
+                    if (status != StatusCode::STATUS_OK)
+                    {
+                        post_service_result(commandId, status);
+                        return;
+                    }
+
+                    RegisterSet registerSet {};
+                    registerSet.instructionPointer = sdkRegs.instructionPointer;
+                    registerSet.stackPointer = sdkRegs.stackPointer;
+                    registerSet.basePointer = sdkRegs.basePointer;
+
+                    const auto count = std::min<std::uint32_t>(sdkRegs.registerCount, VERTEX_MAX_REGISTERS);
+                    for (const auto& sdkReg : std::span {sdkRegs.registers, count})
+                    {
+                        Register reg {};
+                        reg.name = sdkReg.name;
+                        reg.value = sdkReg.value;
+                        reg.previousValue = sdkReg.previousValue;
+                        reg.bitWidth = sdkReg.bitWidth;
+                        reg.modified = sdkReg.modified != 0;
+                        switch (sdkReg.category)
+                        {
+                            case VERTEX_REG_SEGMENT:
+                                reg.category = RegisterCategory::Segment;
+                                registerSet.segment.push_back(std::move(reg));
+                                break;
+                            case VERTEX_REG_FLAGS:
+                                reg.category = RegisterCategory::Flags;
+                                registerSet.flags.push_back(std::move(reg));
+                                break;
+                            case VERTEX_REG_FLOATING_POINT:
+                                reg.category = RegisterCategory::FloatingPoint;
+                                registerSet.floatingPoint.push_back(std::move(reg));
+                                break;
+                            case VERTEX_REG_VECTOR:
+                                reg.category = RegisterCategory::Vector;
+                                registerSet.vector.push_back(std::move(reg));
+                                break;
+                            case VERTEX_REG_GENERAL:
+                            default:
+                                reg.category = RegisterCategory::General;
+                                registerSet.generalPurpose.push_back(std::move(reg));
+                                break;
+                        }
+                    }
+
+                    post_service_result(commandId, StatusCode::STATUS_OK,
+                        service::RegisterSnapshotPayload {
+                            .registers = std::move(registerSet),
+                            .engineGeneration = m_generation.load(std::memory_order_acquire),
+                        });
+                }
+                else if constexpr (std::is_same_v<Cmd, service::CmdReadCallStack>)
+                {
+                    ::CallStack sdkCallStack {};
+                    const auto result = Runtime::safe_call(
+                        plugin->internal_vertex_debugger_get_call_stack, arg.threadId, &sdkCallStack);
+                    const auto status = Runtime::get_status(result);
+                    if (status != StatusCode::STATUS_OK)
+                    {
+                        post_service_result(commandId, status);
+                        return;
+                    }
+
+                    std::vector<StackFrame> frames {};
+                    const auto count = std::min<std::uint32_t>(sdkCallStack.frameCount, VERTEX_MAX_STACK_FRAMES);
+                    frames.reserve(count);
+                    for (const auto& sdkFrame : std::span {sdkCallStack.frames, count})
+                    {
+                        StackFrame frame {};
+                        frame.frameIndex = sdkFrame.frameIndex;
+                        frame.returnAddress = sdkFrame.returnAddress;
+                        frame.framePointer = sdkFrame.framePointer;
+                        frame.stackPointer = sdkFrame.stackPointer;
+                        frame.functionName = sdkFrame.functionName;
+                        frame.moduleName = sdkFrame.moduleName;
+                        frame.sourceFile = sdkFrame.sourceFile;
+                        frame.sourceLine = sdkFrame.sourceLine;
+                        frames.push_back(std::move(frame));
+                    }
+
+                    post_service_result(commandId, StatusCode::STATUS_OK,
+                        service::CallStackSnapshotPayload {
+                            .frames = std::move(frames),
+                            .engineGeneration = m_generation.load(std::memory_order_acquire),
+                        });
+                }
+                else if constexpr (std::is_same_v<Cmd, service::CmdDisassemble>)
+                {
+                    static constexpr std::size_t MAX_INSTRUCTIONS {16};
+                    static constexpr std::uint32_t DISASM_BYTE_WINDOW {64};
+                    std::array<::DisassemblerResult, MAX_INSTRUCTIONS> buffer {};
+                    ::DisassemblerResults sdkResults {};
+                    sdkResults.results = buffer.data();
+                    sdkResults.count = 0;
+                    sdkResults.capacity = static_cast<std::uint32_t>(buffer.size());
+                    sdkResults.startAddress = arg.address;
+
+                    const auto result = Runtime::safe_call(
+                        plugin->internal_vertex_process_disassemble_range,
+                        arg.address, DISASM_BYTE_WINDOW, &sdkResults);
+                    const auto status = Runtime::get_status(result);
+                    if (status != StatusCode::STATUS_OK || sdkResults.count == 0)
+                    {
+                        post_service_result(commandId,
+                            status == StatusCode::STATUS_OK ? StatusCode::STATUS_ERROR_NO_VALUES_FOUND : status);
+                        return;
+                    }
+
+                    const auto take = std::min<std::uint32_t>(sdkResults.count, arg.instructionCount);
+                    std::vector<DisassemblyLine> lines {};
+                    lines.reserve(take);
+                    for (const auto& instr : std::span {sdkResults.results, take})
+                    {
+                        DisassemblyLine line {};
+                        line.address = instr.address;
+                        line.bytes.assign(instr.rawBytes, instr.rawBytes + instr.size);
+                        line.mnemonic = instr.mnemonic;
+                        line.operands = instr.operands;
+                        line.comment = instr.comment;
+                        line.sectionName = instr.sectionName;
+                        line.targetSymbolName = instr.targetSymbol;
+                        line.functionStart = instr.functionStart;
+                        line.branchTarget = instr.targetAddress != 0
+                            ? std::optional<std::uint64_t> {instr.targetAddress}
+                            : std::nullopt;
+                        lines.push_back(std::move(line));
+                    }
+
+                    post_service_result(commandId, StatusCode::STATUS_OK,
+                        service::DisassemblyPayload {
+                            .lines = std::move(lines),
+                            .engineGeneration = m_generation.load(std::memory_order_acquire),
+                        });
+                }
+                else
+                {
+                    post_service_result(commandId, StatusCode::STATUS_ERROR_NOT_IMPLEMENTED);
+                }
+            },
+            request.command);
     }
 
     void DebuggerEngine::execute_command(Runtime::Plugin* plugin, const EngineCommand& cmd)
@@ -584,15 +881,35 @@ namespace Vertex::Debugger
 
         const auto gen = m_generation.fetch_add(1, std::memory_order_acq_rel) + 1;
 
-        std::scoped_lock lock {m_snapshotMutex};
-        m_snapshot.state = newState;
-        m_snapshot.generation = gen;
-
-        if (newState != EngineState::Paused)
         {
-            m_snapshot.hasException = false;
-            m_snapshot.exceptionCode = 0;
-            m_snapshot.exceptionFirstChance = false;
+            std::scoped_lock lock {m_snapshotMutex};
+            m_snapshot.state = newState;
+            m_snapshot.generation = gen;
+
+            if (newState != EngineState::Paused)
+            {
+                m_snapshot.hasException = false;
+                m_snapshot.exceptionCode = 0;
+                m_snapshot.exceptionFirstChance = false;
+                m_snapshot.lastWatchpointId = 0;
+                m_snapshot.lastWatchpointAddress = 0;
+                m_snapshot.lastWatchpointAccessorAddress = 0;
+                m_snapshot.lastWatchpointAccessType = WatchpointType::ReadWrite;
+                m_snapshot.lastWatchpointAccessSize = 0;
+            }
+        }
+
+        if (auto* service = m_runtimeService.load(std::memory_order_acquire))
+        {
+            EngineEvent event {
+                .kind = EngineEventKind::StateChanged,
+                .detail = StateChangedInfo {
+                    .previous = engine_to_debugger_state(previous),
+                    .current = engine_to_debugger_state(newState),
+                    .pid = std::nullopt
+                }
+            };
+            service->on_engine_event(std::move(event));
         }
 
         return true;
@@ -746,16 +1063,44 @@ namespace Vertex::Debugger
             return;
         }
         auto* engine = static_cast<DebuggerEngine*>(userData);
+        WatchpointType accessType {WatchpointType::ReadWrite};
+        switch (event->type)
+        {
+            case VERTEX_WP_READ:      accessType = WatchpointType::Read;      break;
+            case VERTEX_WP_WRITE:     accessType = WatchpointType::Write;     break;
+            case VERTEX_WP_EXECUTE:   accessType = WatchpointType::Execute;   break;
+            case VERTEX_WP_READWRITE:
+            default:                  accessType = WatchpointType::ReadWrite; break;
+        }
         {
             std::scoped_lock lock {engine->m_snapshotMutex};
             engine->m_snapshot.currentAddress = event->accessAddress;
             engine->m_snapshot.currentThreadId = event->threadId;
             engine->m_snapshot.lastWatchpointId = event->breakpointId;
+            engine->m_snapshot.lastWatchpointAddress = event->address;
             engine->m_snapshot.lastWatchpointAccessorAddress = event->accessAddress;
+            engine->m_snapshot.lastWatchpointAccessType = accessType;
+            engine->m_snapshot.lastWatchpointAccessSize = event->size;
         }
         engine->m_dirtyFlags.fetch_or(
             static_cast<std::uint32_t>(DirtyFlags::Watchpoints | DirtyFlags::State),
             std::memory_order_relaxed);
+
+        if (auto* service = engine->m_runtimeService.load(std::memory_order_acquire))
+        {
+            EngineEvent evt {
+                .kind = EngineEventKind::WatchpointHit,
+                .detail = WatchpointHitInfo {
+                    .watchpointId = event->breakpointId,
+                    .threadId = event->threadId,
+                    .accessAddress = event->accessAddress,
+                    .instructionAddress = event->address,
+                    .accessType = accessType,
+                    .accessSize = event->size
+                }
+            };
+            service->on_engine_event(std::move(evt));
+        }
     }
 
     void DebuggerEngine::on_thread_created([[maybe_unused]] const ::ThreadEvent* event, void* userData)

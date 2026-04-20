@@ -9,7 +9,6 @@
 #include <wx/timer.h>
 #include <vertex/viewmodel/analyticsviewmodel.hh>
 #include <vertex/language/ilanguage.hh>
-#include <vertex/gui/theme/ithemeprovider.hh>
 #include <memory>
 
 namespace Vertex::View
@@ -17,7 +16,7 @@ namespace Vertex::View
     class AnalyticsView final : public wxDialog
     {
       public:
-        AnalyticsView(Language::ILanguage& languageService, std::unique_ptr<ViewModel::AnalyticsViewModel> viewModel, Gui::IThemeProvider& themeProvider);
+        AnalyticsView(Language::ILanguage& languageService, std::unique_ptr<ViewModel::AnalyticsViewModel> viewModel);
         void initialize_view();
         void refresh_logs();
 
@@ -37,7 +36,6 @@ namespace Vertex::View
         [[nodiscard]] static wxColour get_log_color(Log::LogLevel level, bool isDarkMode);
 
         Language::ILanguage& m_languageService;
-        Gui::IThemeProvider& m_themeProvider;
         std::unique_ptr<ViewModel::AnalyticsViewModel> m_viewModel;
         wxRichTextCtrl* m_logTextCtrl{};
         wxButton* m_clearButton{};

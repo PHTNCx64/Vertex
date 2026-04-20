@@ -2557,10 +2557,7 @@ namespace Vertex::Model
                         rawRegions = nullptr;
                     }
 
-                    // Query results may be filtered by plugin memory-attribute settings.
-                    // If the current request has no overlap in the returned map, fall back
-                    // to direct page reads so valid addresses do not render as unreadable.
-                    hasMappedRanges = !mappedRanges.empty() && !regionSlices.empty();
+                    hasMappedRanges = !mappedRanges.empty();
                 }
 
                 if (targetSize <= std::numeric_limits<std::uint64_t>::max() - targetAddress)
@@ -2639,7 +2636,7 @@ namespace Vertex::Model
                     };
 
                     bool handledByBulk{};
-                    if (plugin.internal_vertex_memory_read_process_bulk != nullptr && targetSize > PAGE_SIZE)
+                    if (plugin.internal_vertex_memory_read_process_bulk != nullptr)
                     {
                         std::vector<::BulkReadRequest> requests{};
                         std::vector<::BulkReadResult> results{};

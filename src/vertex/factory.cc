@@ -3,23 +3,25 @@
 // Licensed under GPLv3.0 with Plugin Interface exceptions.
 //
 #include <vertex/factory.hh>
+#include <vertex/model/accesstrackermodel.hh>
 #include <vertex/model/scriptingmodel.hh>
+#include <vertex/viewmodel/accesstrackerviewmodel.hh>
 #include <vertex/viewmodel/scriptingviewmodel.hh>
 
 namespace Vertex
 {
     View::MainView* ViewFactory::create_mainview(const std::string_view name) const
     {
-        auto model = std::make_unique<Model::MainModel>(m_settingsService, m_memoryService, m_loaderService, m_loggerService, m_dispatcher);
-        auto viewModel = std::make_unique<ViewModel::MainViewModel>(std::move(model), m_eventBus, m_dispatcher);
-        return new View::MainView(wxString{std::string{name}}, std::move(viewModel), m_languageService, m_iconService, m_themeService);
+        auto model = std::make_unique<Model::MainModel>(m_settingsService, m_memoryService, m_scannerService, m_loaderService, m_loggerService, m_dispatcher);
+        auto viewModel = std::make_unique<ViewModel::MainViewModel>(std::move(model), m_eventBus, m_dispatcher, m_scannerService);
+        return new View::MainView(wxString{std::string{name}}, std::move(viewModel), m_languageService, m_iconService);
     }
 
     View::ProcessListView* ViewFactory::create_processlistview(const std::string_view name) const
     {
         auto model = std::make_unique<Model::ProcessListModel>(m_loaderService, m_loggerService, m_settingsService, m_dispatcher);
         const auto viewModel = std::make_shared<ViewModel::ProcessListViewModel>(std::move(model), m_eventBus, m_dispatcher, std::string{name});
-        return new View::ProcessListView(m_languageService, viewModel, m_themeService);
+        return new View::ProcessListView(m_languageService, viewModel);
     }
 
     View::SettingsView* ViewFactory::create_settingsview(const std::string_view name) const
@@ -32,42 +34,44 @@ namespace Vertex
             return create_pluginconfigview(parent);
         };
 
-        return new View::SettingsView(m_languageService, std::move(viewModel), m_themeService, std::move(configFactory));
+        return new View::SettingsView(m_languageService, std::move(viewModel), std::move(configFactory));
     }
 
     View::MemoryAttributeView* ViewFactory::create_memoryattributeview(const std::string_view name) const
     {
         auto model = std::make_unique<Model::MemoryAttributeModel>(m_loaderService, m_pluginConfigService, m_dispatcher);
         auto viewModel = std::make_unique<ViewModel::MemoryAttributeViewModel>(std::move(model), m_eventBus, std::string{name});
-        return new View::MemoryAttributeView(std::move(viewModel), m_languageService, m_themeService);
+        return new View::MemoryAttributeView(std::move(viewModel), m_languageService);
     }
 
     View::AnalyticsView* ViewFactory::create_analyticsview(const std::string_view name) const
     {
         auto model = std::make_unique<Model::AnalyticsModel>(m_loggerService);
         auto viewModel = std::make_unique<ViewModel::AnalyticsViewModel>(std::move(model), m_eventBus, std::string{name});
-        return new View::AnalyticsView(m_languageService, std::move(viewModel), m_themeService);
+        return new View::AnalyticsView(m_languageService, std::move(viewModel));
+    }
+
+    View::AccessTrackerView* ViewFactory::create_accesstrackerview(const std::string_view name) const
+    {
+        auto model = std::make_unique<Model::AccessTrackerModel>(m_runtimeService);
+        auto viewModel = std::make_unique<ViewModel::AccessTrackerViewModel>(std::move(model), m_dispatcher, m_loggerService, std::string{name});
+        return new View::AccessTrackerView(std::move(viewModel), m_languageService, m_eventBus);
     }
 
     View::DebuggerView* ViewFactory::create_debuggerview(const std::string_view name) const
     {
         auto model = std::make_unique<Model::DebuggerModel>(m_settingsService, m_loaderService, m_loggerService, m_dispatcher);
+        model->engine().set_runtime_service(&m_runtimeService);
+        m_runtimeService.attach_engine(&model->engine());
         auto viewModel = std::make_unique<ViewModel::DebuggerViewModel>(std::move(model), m_eventBus, m_loggerService, std::string{name});
-        return new View::DebuggerView(wxString::FromUTF8(m_languageService.fetch_translation("debugger.title")), std::move(viewModel), m_languageService, m_iconService, m_themeService);
-    }
-
-    View::MemoryAttributeView* ViewFactory::create_pointerscan_memoryattributeview(const std::string_view name) const
-    {
-        auto model = std::make_unique<Model::MemoryAttributeModel>(m_loaderService, m_pluginConfigService, m_dispatcher, "pointerScanMemoryAttributes", false);
-        auto viewModel = std::make_unique<ViewModel::MemoryAttributeViewModel>(std::move(model), m_eventBus, std::string{name}, false);
-        return new View::MemoryAttributeView(std::move(viewModel), m_languageService, m_themeService);
+        return new View::DebuggerView(wxString::FromUTF8(m_languageService.fetch_translation("debugger.title")), std::move(viewModel), m_languageService, m_iconService);
     }
 
     View::InjectorView* ViewFactory::create_injectorview(const std::string_view name) const
     {
         auto model = std::make_unique<Model::InjectorModel>(m_loaderService, m_loggerService, m_dispatcher);
         auto viewModel = std::make_unique<ViewModel::InjectorViewModel>(std::move(model), m_eventBus, m_loggerService, std::string{name});
-        return new View::InjectorView(m_languageService, std::move(viewModel), m_themeService);
+        return new View::InjectorView(m_languageService, std::move(viewModel));
     }
 
     View::PluginConfigView* ViewFactory::create_pluginconfigview(wxWindow* parent) const
@@ -77,22 +81,10 @@ namespace Vertex
         return new View::PluginConfigView(parent, m_languageService, std::move(viewModel));
     }
 
-    View::PointerScanConfigDialog* ViewFactory::create_pointerscanconfigdialog(wxWindow* parent, const std::uint64_t targetAddress) const
-    {
-        return new View::PointerScanConfigDialog(parent, m_languageService, targetAddress);
-    }
-
-    View::PointerScanView* ViewFactory::create_pointerscanview(const std::string_view name) const
-    {
-        auto model = std::make_unique<Model::PointerScanModel>(m_pointerScanService, m_loaderService, m_pluginConfigService, m_loggerService, m_dispatcher);
-        auto viewModel = std::make_unique<ViewModel::PointerScanViewModel>(std::move(model), m_eventBus, m_loggerService, std::string{name});
-        return new View::PointerScanView(m_languageService, std::move(viewModel));
-    }
-
     View::ScriptingView* ViewFactory::create_scriptingview(const std::string_view name) const
     {
         auto model = std::make_unique<Model::ScriptingModel>(m_scriptingService, m_settingsService, m_loggerService);
         auto viewModel = std::make_unique<ViewModel::ScriptingViewModel>(std::move(model), m_eventBus, m_loggerService, std::string{name});
-        return new View::ScriptingView(m_languageService, std::move(viewModel), m_iconService, m_themeService);
+        return new View::ScriptingView(m_languageService, std::move(viewModel), m_iconService);
     }
 }

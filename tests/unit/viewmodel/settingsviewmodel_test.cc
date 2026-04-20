@@ -1,6 +1,10 @@
 //
-// Unit tests for SettingsViewModel
+// Copyright (C) 2026 PHTNC<>.
+// Licensed under GPLv3.0 with Plugin Interface exceptions.
 //
+
+
+
 
 #include <gtest/gtest.h>
 #include <gmock/gmock.h>
@@ -39,7 +43,7 @@ protected:
     std::unique_ptr<ViewModel::SettingsViewModel> viewModel;
 };
 
-// ==================== Thread Settings Tests ====================
+
 
 TEST_F(SettingsViewModelTest, GetReaderThreads_ReturnsModelValue)
 {
@@ -61,7 +65,7 @@ TEST_F(SettingsViewModelTest, SetReaderThreads_CallsModel)
     viewModel->set_reader_threads(threadCount);
 }
 
-// ==================== Plugin Path Tests ====================
+
 
 TEST_F(SettingsViewModelTest, AddPluginPath_Success_ReturnsTrue)
 {
@@ -106,7 +110,7 @@ TEST_F(SettingsViewModelTest, GetPluginPaths_ReturnsModelPaths)
     EXPECT_EQ(expectedPaths.size(), result.size());
 }
 
-// ==================== General Settings Tests ====================
+
 
 TEST_F(SettingsViewModelTest, GetTheme_ReturnsModelValue)
 {
@@ -154,7 +158,7 @@ TEST_F(SettingsViewModelTest, ApplySettings_CallsModel)
     viewModel->apply_settings();
 }
 
-// ==================== Language Management Tests ====================
+
 
 TEST_F(SettingsViewModelTest, GetAvailableLanguages_ReturnsModelLanguages)
 {

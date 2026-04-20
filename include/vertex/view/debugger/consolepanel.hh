@@ -16,7 +16,6 @@
 #include <deque>
 #include <vertex/debugger/debuggertypes.hh>
 #include <vertex/language/language.hh>
-#include <vertex/gui/theme/ithemeprovider.hh>
 
 namespace Vertex::View::Debugger
 {
@@ -25,9 +24,7 @@ namespace Vertex::View::Debugger
     public:
         using CommandCallback = std::function<void(const std::string& command)>;
 
-        explicit ConsolePanel(wxWindow* parent, Language::ILanguage& languageService, Gui::IThemeProvider& themeProvider);
-
-        void refresh_theme();
+        explicit ConsolePanel(wxWindow* parent, Language::ILanguage& languageService);
 
         void append_log(const ::Vertex::Debugger::LogEntry& entry);
         void append_logs(const std::vector<::Vertex::Debugger::LogEntry>& entries);
@@ -79,6 +76,5 @@ namespace Vertex::View::Debugger
 
         CommandCallback m_commandCallback{};
         Language::ILanguage& m_languageService;
-        Gui::IThemeProvider& m_themeProvider;
     };
 }

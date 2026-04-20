@@ -5,10 +5,10 @@
 
 #pragma once
 
-#include <vertexusrrt/native_handle.hh>
-
 #include <sdk/api.h>
 #include <sdk/process.h>
+
+#include <vertexusrrt/native_handle.hh>
 
 #include <cstdint>
 

@@ -7,7 +7,9 @@
 #include <sdk/statuscode.h>
 #include <sdk/debugger.h>
 #include <vertex/debugger/debuggertypes.hh>
+#include <vertex/debugger/engine_command.hh>
 #include <vertex/log/ilog.hh>
+#include <vertex/runtime/command.hh>
 #include <vertex/runtime/iloader.hh>
 #include <vertex/thread/ithreaddispatcher.hh>
 
@@ -26,6 +28,8 @@
 
 namespace Vertex::Debugger
 {
+    class IDebuggerRuntimeService;
+
     enum class EngineState : std::uint8_t
     {
         Idle,
@@ -60,7 +64,10 @@ namespace Vertex::Debugger
         bool exceptionFirstChance {};
         bool hasException {};
         std::uint32_t lastWatchpointId {};
+        std::uint64_t lastWatchpointAddress {};
         std::uint64_t lastWatchpointAccessorAddress {};
+        WatchpointType lastWatchpointAccessType {WatchpointType::ReadWrite};
+        std::uint8_t lastWatchpointAccessSize {};
     };
 
     enum class DirtyFlags : std::uint32_t
@@ -124,6 +131,12 @@ namespace Vertex::Debugger
         engine::CmdShutdown
     >;
 
+    struct ServiceCommandRequest final
+    {
+        Runtime::CommandId id {Runtime::INVALID_COMMAND_ID};
+        service::Command command {};
+    };
+
     using EngineEventCallback = std::function<void(DirtyFlags flags, const EngineSnapshot& snapshot)>;
 
     struct EngineError final
@@ -148,11 +161,13 @@ namespace Vertex::Debugger
         [[nodiscard]] StatusCode stop();
 
         void send_command(EngineCommand cmd);
+        void enqueue_service_command(Runtime::CommandId id, service::Command cmd);
 
         [[nodiscard]] EngineSnapshot get_snapshot() const;
         [[nodiscard]] std::uint64_t get_generation() const noexcept;
 
         void set_event_callback(EngineEventCallback callback);
+        void set_runtime_service(IDebuggerRuntimeService* service) noexcept;
         void set_tick_timeout(std::uint32_t activeMs, std::uint32_t parkedMs);
 
         [[nodiscard]] std::optional<EngineError> consume_last_error();
@@ -163,7 +178,13 @@ namespace Vertex::Debugger
 
         void drain_commands();
         void drain_all_commands();
+        void drain_service_commands();
+        void drain_all_service_commands();
         void execute_command(Runtime::Plugin* plugin, const EngineCommand& cmd);
+        void execute_service_command(Runtime::Plugin* plugin, const ServiceCommandRequest& request);
+        void post_service_result(Runtime::CommandId id,
+                                 StatusCode status,
+                                 service::CommandResultPayload payload = {});
         void process_tick_result(StatusCode tickResult);
         [[nodiscard]] bool transition_state(EngineState newState);
         void flush_events();
@@ -199,6 +220,7 @@ namespace Vertex::Debugger
         EngineSnapshot m_snapshot {};
 
         moodycamel::ConcurrentQueue<EngineCommand> m_commandQueue {};
+        moodycamel::ConcurrentQueue<ServiceCommandRequest> m_serviceCommandQueue {};
 
         std::atomic<std::uint32_t> m_dirtyFlags {};
         std::atomic<std::uint32_t> m_pendingUiFlags {};
@@ -219,5 +241,7 @@ namespace Vertex::Debugger
         bool m_isSingleThreadMode {};
         bool m_isDebuggerDependent {};
         std::shared_ptr<std::atomic<bool>> m_uiLifetime {std::make_shared<std::atomic<bool>>(true)};
+
+        std::atomic<IDebuggerRuntimeService*> m_runtimeService {nullptr};
     };
 }

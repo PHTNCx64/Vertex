@@ -276,7 +276,9 @@ namespace Vertex::Scripting::Stdlib
                 {
                     return StatusCode::STATUS_ERROR_PLUGIN_NOT_ACTIVE;
                 }
-                return Runtime::get_status(Runtime::safe_call(ref->get().internal_vertex_process_close));
+                const auto closeStatus = Runtime::get_status(Runtime::safe_call(ref->get().internal_vertex_process_close));
+                std::ignore = m_loader.get().dispatch_event(VERTEX_PROCESS_CLOSED, nullptr);
+                return closeStatus;
             });
 
         auto dispatchResult = m_dispatcher.get().dispatch(Thread::ThreadChannel::ProcessList, std::move(task));

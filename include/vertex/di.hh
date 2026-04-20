@@ -12,17 +12,23 @@
 #include <boost/di.hpp>
 #include <vertex/configuration/settings.hh>
 #include <vertex/configuration/pluginconfig.hh>
+#include <vertex/debugger/debuggerruntimeservice.hh>
+#include <vertex/debugger/idebuggerruntimeservice.hh>
 #include <vertex/runtime/loader.hh>
+#include <vertex/runtime/ipluginruntimeservice.hh>
+#include <vertex/runtime/pluginruntimeservice.hh>
 #include <vertex/log/log.hh>
 #include <vertex/gui/iconmanager/iconmanager.hh>
-#include <vertex/gui/theme/themeprovider.hh>
 #include <vertex/language/language.hh>
+#include <vertex/scanner/iscannerruntimeservice.hh>
 #include <vertex/scanner/memoryscanner/memoryscanner.hh>
-#include <vertex/scanner/pointerscanner/pointerscanner.hh>
+#include <vertex/scanner/scannerruntimeservice.hh>
 #include <vertex/io/io.hh>
 #include <vertex/event/eventbus.hh>
 #include <vertex/thread/threaddispatcher.hh>
 #include <vertex/scripting/angelscript.hh>
+#include <vertex/scripting/iscriptingruntimeservice.hh>
+#include <vertex/scripting/scriptingruntimeservice.hh>
 
 namespace Vertex::DI
 {
@@ -46,10 +52,6 @@ namespace Vertex::DI
             .to<Gui::IconManager>()
             .in(di::singleton),
 
-        di::bind<Gui::IThemeProvider>()
-            .to<Gui::ThemeProvider>()
-            .in(di::singleton),
-
         di::bind<Language::ILanguage>()
             .to<Language::Language>()
             .in(di::singleton),
@@ -64,10 +66,6 @@ namespace Vertex::DI
             .to<Scanner::MemoryScanner>()
             .in(di::singleton),
 
-        di::bind<Scanner::IPointerScanner>()
-            .to<Scanner::PointerScanner>()
-            .in(di::singleton),
-
         di::bind<Runtime::ILoader>()
             .to<Runtime::Loader>()
             .in(di::singleton),
@@ -78,6 +76,22 @@ namespace Vertex::DI
 
         di::bind<Scripting::IAngelScript>()
             .to<Scripting::AngelScript>()
+            .in(di::singleton),
+
+        di::bind<Debugger::IDebuggerRuntimeService>()
+            .to<Debugger::DebuggerRuntimeService>()
+            .in(di::singleton),
+
+        di::bind<Scanner::IScannerRuntimeService>()
+            .to<Scanner::ScannerRuntimeService>()
+            .in(di::singleton),
+
+        di::bind<Scripting::IScriptingRuntimeService>()
+            .to<Scripting::ScriptingRuntimeService>()
+            .in(di::singleton),
+
+        di::bind<Runtime::PluginRuntime::IPluginRuntimeService>()
+            .to<Runtime::PluginRuntime::PluginRuntimeService>()
             .in(di::singleton));
     }
 

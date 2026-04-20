@@ -1,7 +1,11 @@
 //
-// Mock for EventBus
-// Note: EventBus is a concrete class, so we create a wrapper interface for mocking
+// Copyright (C) 2026 PHTNC<>.
+// Licensed under GPLv3.0 with Plugin Interface exceptions.
 //
+
+
+
+
 
 #pragma once
 
@@ -11,7 +15,7 @@
 
 namespace Vertex::Testing::Mocks
 {
-    // Interface wrapper for EventBus to enable mocking
+    
     class IEventBus
     {
     public:
@@ -51,4 +55,4 @@ namespace Vertex::Testing::Mocks
                    (const std::string& subscriber, const Event::VertexEvent& event),
                    (const, override));
     };
-} // namespace Vertex::Testing::Mocks
+} 

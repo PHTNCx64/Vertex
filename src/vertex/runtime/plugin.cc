@@ -10,7 +10,7 @@
 
 namespace Vertex::Runtime
 {
-    void Plugin::unload()
+    void Plugin::release_library()
     {
         if (m_library.has_value())
         {
@@ -18,11 +18,6 @@ namespace Vertex::Runtime
             if (!status_ok(result))
             {
                 m_logService.get().log_error(fmt::format("[Plugin Unload] vertex_exit failed for: {}", get_filename()));
-            }
-
-            if (!m_library->unload())
-            {
-                m_logService.get().log_error(fmt::format("[Plugin Unload] Failed to unload library: {}", get_filename()));
             }
             m_library.reset();
         }
@@ -34,6 +29,6 @@ namespace Vertex::Runtime
 
     Plugin::~Plugin()
     {
-        unload();
+        release_library();
     }
 }

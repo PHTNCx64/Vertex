@@ -13,6 +13,8 @@ with the software.
 The plugin API is designed to be C ABI compatible, which allows developers to write extensions and modifications in
 different languages other than C or C++.
 
+For the user-facing AngelScript API (used in Vertex script files), see [Scripting.md](Scripting.md).
+
 ## Entry Point
 
 A plugin must export the `vertex_init` function and `vertex_exit`.

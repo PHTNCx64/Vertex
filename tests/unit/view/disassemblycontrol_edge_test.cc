@@ -1,9 +1,12 @@
+//
+// Copyright (C) 2026 PHTNC<>.
+// Licensed under GPLv3.0 with Plugin Interface exceptions.
+//
 #include <gtest/gtest.h>
 #include <gmock/gmock.h>
 #include <vertex/view/debugger/disassemblycontrol.hh>
 #include <vertex/debugger/debuggertypes.hh>
 #include "../../mocks/MockILanguage.hh"
-#include "../../mocks/MockIThemeProvider.hh"
 
 #include <wx/app.h>
 #include <wx/frame.h>
@@ -32,17 +35,12 @@ protected:
     void SetUp() override
     {
         m_language = std::make_unique<NiceMock<MockILanguage>>();
-        m_themeProvider = std::make_unique<NiceMock<MockIThemeProvider>>();
         m_emptyString = "";
         ON_CALL(*m_language, fetch_translation(_))
             .WillByDefault(ReturnRef(m_emptyString));
-        ON_CALL(*m_themeProvider, palette())
-            .WillByDefault(ReturnRef(m_defaultPalette));
-        ON_CALL(*m_themeProvider, is_dark())
-            .WillByDefault(Return(true));
 
         m_frame = new wxFrame(nullptr, wxID_ANY, "Test");
-        m_control = new DisassemblyControl(m_frame, *m_language, *m_themeProvider);
+        m_control = new DisassemblyControl(m_frame, *m_language);
     }
 
     void TearDown() override
@@ -76,11 +74,9 @@ protected:
     }
 
     std::unique_ptr<NiceMock<MockILanguage>> m_language;
-    std::unique_ptr<NiceMock<MockIThemeProvider>> m_themeProvider;
     wxFrame* m_frame {};
     DisassemblyControl* m_control {};
     std::string m_emptyString;
-    Vertex::Gui::ColorPalette m_defaultPalette {};
 };
 
 TEST_F(DisassemblyControlEdgeTest, InitialEdgeStatesAreIdle)

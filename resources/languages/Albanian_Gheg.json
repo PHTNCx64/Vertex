@@ -141,7 +141,9 @@
       "analytics": "Analitika",
       "analyticsDescription": "Hap dritaren e analitikës",
       "injector": "Injektori",
-      "injectorDescription": "Hap dritaren e injektorit"
+      "injectorDescription": "Hap dritaren e injektorit",
+      "code": "Redaktori i Skripteve",
+      "codeDescription": "Hap redaktorin e skripteve"
     },
     "buttons": {
       "initialScan": "Skanimi Fillestar",
@@ -764,6 +766,42 @@
       "stateSleeping": "Duke Fjete",
       "stateFinished": "Perfundun",
       "stateError": "Gabim"
+    }
+  },
+  "accessTracker": {
+    "title": "Ndjekesi i Aksesit",
+    "tracking": "Ndjekje",
+    "stop": "Ndal",
+    "clear": "Pastro",
+    "close": "Mbyll",
+    "columnInstruction": "Instruksioni",
+    "columnModule": "Moduli",
+    "columnFunction": "Funksioni",
+    "columnMnemonic": "Mnemonika",
+    "columnHits": "Goditje",
+    "columnAccess": "Akses",
+    "columnSize": "Madhesia",
+    "columnRegisters": "Registrat",
+    "columnCaller": "Thirresi",
+    "statusIdle": "Ne pritje",
+    "statusStarting": "Po fillon…",
+    "statusActive": "Aktiv",
+    "statusStopping": "Po ndalon…",
+    "statusStartFailed": "Fillimi deshtoi",
+    "statusStopFailed": "Ndalja deshtoi",
+    "context": {
+      "viewInDisassembly": "Shikoje ne Disassembly",
+      "showCallStack": "Shfaq Stacin e Thirrjeve",
+      "copyInstructionAddress": "Kopjo Adresen e Instruksionit",
+      "copyRegisters": "Kopjo Registrat"
+    },
+    "callStackDialog": {
+      "title": "Staci i Thirrjeve",
+      "columnIndex": "#",
+      "columnReturnAddress": "Adresa e Kthimit",
+      "columnModule": "Moduli",
+      "columnFunction": "Funksioni",
+      "goToFrame": "Shko te Kornize"
     }
   }
 }

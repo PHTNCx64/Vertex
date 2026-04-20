@@ -154,47 +154,6 @@ namespace Vertex::Configuration
         return std::ranges::find(attributes, attributeName) != attributes.end();
     }
 
-    std::vector<std::string> PluginConfig::get_excluded_modules() const
-    {
-        std::vector<std::string> result{};
-
-        try
-        {
-            if (m_config.contains("pointerScanExcludedModules") &&
-                m_config["pointerScanExcludedModules"].is_array())
-            {
-                for (const auto& module : m_config["pointerScanExcludedModules"])
-                {
-                    if (module.is_string())
-                    {
-                        result.push_back(module.get<std::string>());
-                    }
-                }
-            }
-        }
-        catch (const nlohmann::json::exception&)
-        {
-        }
-
-        return result;
-    }
-
-    void PluginConfig::set_excluded_modules(const std::vector<std::string>& modules)
-    {
-        try
-        {
-            m_config["pointerScanExcludedModules"] = nlohmann::json::array();
-            for (const auto& module : modules)
-            {
-                m_config["pointerScanExcludedModules"].push_back(module);
-            }
-            m_isModified = true;
-        }
-        catch (const nlohmann::json::exception&)
-        {
-        }
-    }
-
     std::string PluginConfig::get_current_plugin() const
     {
         return m_currentPluginFilename;
@@ -220,11 +179,6 @@ namespace Vertex::Configuration
         m_config["memoryAttributes"]["protections"] = nlohmann::json::array();
         m_config["memoryAttributes"]["states"] = nlohmann::json::array();
         m_config["memoryAttributes"]["types"] = nlohmann::json::array();
-        m_config["pointerScanMemoryAttributes"] = nlohmann::json::object();
-        m_config["pointerScanMemoryAttributes"]["protections"] = nlohmann::json::array();
-        m_config["pointerScanMemoryAttributes"]["states"] = nlohmann::json::array();
-        m_config["pointerScanMemoryAttributes"]["types"] = nlohmann::json::array();
-        m_config["pointerScanExcludedModules"] = nlohmann::json::array();
     }
 
     void PluginConfig::set_ui_value(const std::string& panelId, const std::string& fieldId, const UIValue& value, const UIFieldType type)

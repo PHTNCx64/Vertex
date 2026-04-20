@@ -1,3 +1,7 @@
+//
+// Copyright (C) 2026 PHTNC<>.
+// Licensed under GPLv3.0 with Plugin Interface exceptions.
+//
 #include <gtest/gtest.h>
 #include <vertex/scanner/simd/simd_scanner.hh>
 #include <array>
@@ -87,7 +91,7 @@ namespace
 
         EXPECT_EQ(extract_addresses(result), expectedAddresses);
     }
-} // namespace
+} 
 
 TEST(SimdScannerTest, ResolveSimdScanner_ReturnsAvailableForPhaseFourNumericModes)
 {

@@ -3,310 +3,71 @@
 // Licensed under GPLv3.0 with Plugin Interface exceptions.
 //
 #include <vertex/customwidgets/savedaddressescontrol.hh>
-#include <vertex/customwidgets/valueeditdialog.hh>
-#include <vertex/gui/theme/themeprovider.hh>
-#include <vertex/scanner/valuetypes.hh>
-#include <wx/menu.h>
-#include <wx/clipbrd.h>
-#include <wx/renderer.h>
+
 #include <algorithm>
+#include <limits>
+#include <utility>
+
+#include <wx/arrstr.h>
+#include <wx/clipbrd.h>
+#include <wx/dataview.h>
+#include <wx/menu.h>
 
 namespace Vertex::CustomWidgets
 {
-    SavedAddressesHeader::SavedAddressesHeader(
-        wxWindow* parent,
-        Language::ILanguage& languageService,
-        Gui::IThemeProvider& themeProvider
-    )
-        : wxPanel()
-        , m_themeProvider(themeProvider)
-    {
-        SetBackgroundStyle(wxBG_STYLE_PAINT);
-        Create(parent, wxID_ANY, wxDefaultPosition, wxDefaultSize, wxFULL_REPAINT_ON_RESIZE);
-        refresh_theme();
-
-        m_codeFont = wxFont(10, wxFONTFAMILY_TELETYPE, wxFONTSTYLE_NORMAL, wxFONTWEIGHT_NORMAL);
-        m_codeFontBold = m_codeFont.Bold();
-
-        wxClientDC dc(this);
-        dc.SetFont(m_codeFontBold);
-        m_charWidth = dc.GetCharWidth();
-        m_headerHeight = dc.GetCharHeight() + FromDIP(8);
-        m_columnPadding = FromDIP(8);
-
-        m_freezeWidth = m_charWidth * 8;
-        m_addressWidth = m_charWidth * 18;
-        m_typeWidth = m_charWidth * 12;
-        m_valueWidth = m_charWidth * 24;
-
-        m_headerFreeze = wxString::FromUTF8(languageService.fetch_translation("mainWindow.ui.savedColumnFreeze"));
-        m_headerAddress = wxString::FromUTF8(languageService.fetch_translation("mainWindow.ui.savedColumnAddress"));
-        m_headerType = wxString::FromUTF8(languageService.fetch_translation("mainWindow.ui.savedColumnType"));
-        m_headerValue = wxString::FromUTF8(languageService.fetch_translation("mainWindow.ui.savedColumnValue"));
-
-        wxWindowBase::SetMinSize(wxSize(-1, m_headerHeight));
-        wxWindowBase::SetMaxSize(wxSize(-1, m_headerHeight));
-
-        Bind(wxEVT_PAINT, &SavedAddressesHeader::on_paint, this);
-        Bind(wxEVT_ERASE_BACKGROUND, &SavedAddressesHeader::on_erase_background, this);
-        Bind(wxEVT_MOTION, &SavedAddressesHeader::on_mouse_motion, this);
-        Bind(wxEVT_LEFT_DOWN, &SavedAddressesHeader::on_mouse_left_down, this);
-        Bind(wxEVT_LEFT_UP, &SavedAddressesHeader::on_mouse_left_up, this);
-        Bind(wxEVT_MOUSE_CAPTURE_LOST, &SavedAddressesHeader::on_mouse_capture_lost, this);
-        Bind(wxEVT_LEAVE_WINDOW, &SavedAddressesHeader::on_mouse_leave, this);
-    }
-
-    void SavedAddressesHeader::set_horizontal_scroll_offset(const int offset)
-    {
-        if (m_hScrollOffset != offset)
-        {
-            m_hScrollOffset = offset;
-            Refresh(false);
-        }
-    }
-
-    void SavedAddressesHeader::set_column_resize_callback(ColumnResizeCallback callback)
-    {
-        m_columnResizeCallback = std::move(callback);
-    }
-
-    void SavedAddressesHeader::refresh_theme()
-    {
-        const auto& pal = m_themeProvider.palette();
-        m_colors.headerBackground = pal.panel;
-        m_colors.headerBorder = pal.border;
-        m_colors.headerText = pal.textHeader;
-        m_colors.separatorHover = pal.accent;
-        Refresh();
-    }
-
-    int SavedAddressesHeader::get_separator_x(const int separatorIndex) const
-    {
-        int x = m_columnPadding - m_hScrollOffset;
-
-        switch (separatorIndex)
-        {
-            case 0:
-                x += m_freezeWidth + m_columnPadding / 2;
-                break;
-            case 1:
-                x += m_freezeWidth + m_columnPadding + m_addressWidth + m_columnPadding / 2;
-                break;
-            case 2:
-                x += m_freezeWidth + m_columnPadding + m_addressWidth + m_columnPadding +
-                     m_typeWidth + m_columnPadding / 2;
-                break;
-            default:
-                return -1;
-        }
-        return x;
-    }
-
-    int SavedAddressesHeader::get_separator_at_x(const int x) const
-    {
-        for (int i = 0; i < 3; ++i)
-        {
-            const int sepX = get_separator_x(i);
-            if (std::abs(x - sepX) <= SEPARATOR_HIT_TOLERANCE)
-            {
-                return i;
-            }
-        }
-        return -1;
-    }
-
-    void SavedAddressesHeader::on_mouse_motion(wxMouseEvent& event)
-    {
-        const int mouseX = event.GetX();
-
-        if (m_resizingColumn >= 0)
-        {
-            const int delta = mouseX - m_resizeStartX;
-            const int newWidth = std::max(MIN_COLUMN_WIDTH, m_resizeStartWidth + delta);
-
-            switch (m_resizingColumn)
-            {
-                case 0: m_freezeWidth = newWidth; break;
-                case 1: m_addressWidth = newWidth; break;
-                case 2: m_typeWidth = newWidth; break;
-                default: break;
-            }
-
-            Refresh(false);
-
-            if (m_columnResizeCallback)
-            {
-                m_columnResizeCallback();
-            }
-        }
-        else
-        {
-            const int sep = get_separator_at_x(mouseX);
-            if (sep >= 0)
-            {
-                SetCursor(wxCursor(wxCURSOR_SIZEWE));
-            }
-            else
-            {
-                SetCursor(wxNullCursor);
-            }
-        }
-
-        event.Skip();
-    }
-
-    void SavedAddressesHeader::on_mouse_left_down(wxMouseEvent& event)
-    {
-        const int mouseX = event.GetX();
-        const int sep = get_separator_at_x(mouseX);
-
-        if (sep >= 0)
-        {
-            m_resizingColumn = sep;
-            m_resizeStartX = mouseX;
-
-            switch (sep)
-            {
-                case 0: m_resizeStartWidth = m_freezeWidth; break;
-                case 1: m_resizeStartWidth = m_addressWidth; break;
-                case 2: m_resizeStartWidth = m_typeWidth; break;
-                default: break;
-            }
-
-            CaptureMouse();
-        }
-
-        event.Skip();
-    }
-
-    void SavedAddressesHeader::on_mouse_left_up([[maybe_unused]] wxMouseEvent& event)
-    {
-        if (m_resizingColumn >= 0)
-        {
-            m_resizingColumn = -1;
-
-            if (HasCapture())
-            {
-                ReleaseMouse();
-            }
-
-            Refresh(false);
-            if (m_columnResizeCallback)
-            {
-                m_columnResizeCallback();
-            }
-        }
-
-        event.Skip();
-    }
-
-    void SavedAddressesHeader::on_mouse_capture_lost([[maybe_unused]] wxMouseCaptureLostEvent& event)
-    {
-        m_resizingColumn = -1;
-        SetCursor(wxNullCursor);
-    }
-
-    void SavedAddressesHeader::on_mouse_leave([[maybe_unused]] wxMouseEvent& event)
-    {
-        if (m_resizingColumn < 0)
-        {
-            SetCursor(wxNullCursor);
-        }
-        event.Skip();
-    }
-
-    void SavedAddressesHeader::on_paint([[maybe_unused]] wxPaintEvent& event)
-    {
-        wxBufferedPaintDC dc(this);
-        const wxSize size = GetClientSize();
-
-        dc.SetPen(*wxTRANSPARENT_PEN);
-        dc.SetBrush(wxBrush(m_colors.headerBackground));
-        dc.DrawRectangle(0, 0, size.GetWidth(), size.GetHeight());
-
-        dc.SetPen(wxPen(m_colors.headerBorder, 1));
-        dc.DrawLine(0, size.GetHeight() - 1, size.GetWidth(), size.GetHeight() - 1);
-
-        dc.SetFont(m_codeFontBold);
-        dc.SetTextForeground(m_colors.headerText);
-
-        int x = m_columnPadding - m_hScrollOffset;
-        const int y = (m_headerHeight - dc.GetCharHeight()) / 2;
-
-        dc.DrawText(m_headerFreeze, x, y);
-        x += m_freezeWidth + m_columnPadding;
-
-        dc.SetPen(wxPen(m_resizingColumn == 0 ? m_colors.separatorHover : m_colors.headerBorder, 1));
-        dc.DrawLine(x - m_columnPadding / 2, 2, x - m_columnPadding / 2, m_headerHeight - 2);
-
-        dc.DrawText(m_headerAddress, x, y);
-        x += m_addressWidth + m_columnPadding;
-
-        dc.SetPen(wxPen(m_resizingColumn == 1 ? m_colors.separatorHover : m_colors.headerBorder, 1));
-        dc.DrawLine(x - m_columnPadding / 2, 2, x - m_columnPadding / 2, m_headerHeight - 2);
-
-        dc.DrawText(m_headerType, x, y);
-        x += m_typeWidth + m_columnPadding;
-
-        dc.SetPen(wxPen(m_resizingColumn == 2 ? m_colors.separatorHover : m_colors.headerBorder, 1));
-        dc.DrawLine(x - m_columnPadding / 2, 2, x - m_columnPadding / 2, m_headerHeight - 2);
-
-        dc.DrawText(m_headerValue, x, y);
-    }
-
-    void SavedAddressesHeader::on_erase_background([[maybe_unused]] wxEraseEvent& event)
-    {
-    }
-
     SavedAddressesControl::SavedAddressesControl(
         wxWindow* parent,
         Language::ILanguage& languageService,
-        Gui::IThemeProvider& themeProvider,
-        const std::shared_ptr<ViewModel::MainViewModel>& viewModel,
-        SavedAddressesHeader* header
+        const std::shared_ptr<ViewModel::MainViewModel>& viewModel
     )
-        : wxScrolledWindow()
+        : VertexDataViewCtrl(parent, wxID_ANY, wxDV_ROW_LINES | wxDV_SINGLE)
         , m_languageService(languageService)
-        , m_themeProvider(themeProvider)
         , m_viewModel(viewModel)
-        , m_header(header)
+        , m_dataModel(new SavedAddressesDataModel(viewModel))
     {
-        SetBackgroundStyle(wxBG_STYLE_PAINT);
-        Create(parent, wxID_ANY, wxDefaultPosition, wxDefaultSize,
-               wxVSCROLL | wxHSCROLL | wxFULL_REPAINT_ON_RESIZE | wxWANTS_CHARS);
-        refresh_theme();
+        AssociateModel(m_dataModel.get());
 
-        m_codeFont = wxFont(10, wxFONTFAMILY_TELETYPE, wxFONTSTYLE_NORMAL, wxFONTWEIGHT_NORMAL);
+        auto* freezeRenderer = new wxDataViewToggleRenderer("bool", wxDATAVIEW_CELL_ACTIVATABLE);
+        AppendColumn(new wxDataViewColumn(
+            wxString::FromUTF8(m_languageService.fetch_translation("mainWindow.ui.savedColumnFreeze")),
+            freezeRenderer, SavedAddressesDataModel::FREEZE_COL,
+            FromDIP(COLUMN_WIDTH_FREEZE_DIP),
+            wxALIGN_CENTER, wxDATAVIEW_COL_RESIZABLE | wxDATAVIEW_COL_SORTABLE));
 
-        wxClientDC dc(this);
-        dc.SetFont(m_codeFont);
-        m_lineHeight = dc.GetCharHeight() + FromDIP(4);
+        auto* addressRenderer = new wxDataViewTextRenderer("string", wxDATAVIEW_CELL_EDITABLE);
+        AppendColumn(new wxDataViewColumn(
+            wxString::FromUTF8(m_languageService.fetch_translation("mainWindow.ui.savedColumnAddress")),
+            addressRenderer, SavedAddressesDataModel::ADDRESS_COL,
+            FromDIP(COLUMN_WIDTH_ADDRESS_DIP),
+            wxALIGN_LEFT, wxDATAVIEW_COL_RESIZABLE | wxDATAVIEW_COL_SORTABLE));
+
+        wxArrayString typeChoices{};
+        for (const auto& typeName : m_viewModel->get_value_type_names())
+        {
+            typeChoices.Add(wxString::FromUTF8(typeName));
+        }
+        auto* typeRenderer = new wxDataViewChoiceByIndexRenderer(typeChoices, wxDATAVIEW_CELL_EDITABLE);
+        AppendColumn(new wxDataViewColumn(
+            wxString::FromUTF8(m_languageService.fetch_translation("mainWindow.ui.savedColumnType")),
+            typeRenderer, SavedAddressesDataModel::TYPE_COL,
+            FromDIP(COLUMN_WIDTH_TYPE_DIP),
+            wxALIGN_LEFT, wxDATAVIEW_COL_RESIZABLE | wxDATAVIEW_COL_SORTABLE));
+
+        auto* valueRenderer = new wxDataViewTextRenderer("string", wxDATAVIEW_CELL_EDITABLE);
+        AppendColumn(new wxDataViewColumn(
+            wxString::FromUTF8(m_languageService.fetch_translation("mainWindow.ui.savedColumnValue")),
+            valueRenderer, SavedAddressesDataModel::VALUE_COL,
+            FromDIP(COLUMN_WIDTH_VALUE_DIP),
+            wxALIGN_LEFT, wxDATAVIEW_COL_RESIZABLE | wxDATAVIEW_COL_SORTABLE));
 
         m_refreshTimer = new wxTimer(this, wxID_ANY);
-        m_scrollStopTimer = new wxTimer(this, wxID_ANY + 1);
 
-        Bind(wxEVT_PAINT, &SavedAddressesControl::on_paint, this);
-        Bind(wxEVT_SIZE, &SavedAddressesControl::on_size, this);
-        Bind(wxEVT_LEFT_DOWN, &SavedAddressesControl::on_mouse_left_down, this);
-        Bind(wxEVT_LEFT_DCLICK, &SavedAddressesControl::on_mouse_left_dclick, this);
-        Bind(wxEVT_RIGHT_DOWN, &SavedAddressesControl::on_mouse_right_down, this);
-        Bind(wxEVT_MOUSEWHEEL, &SavedAddressesControl::on_mouse_wheel, this);
+        Bind(wxEVT_DATAVIEW_ITEM_CONTEXT_MENU, &SavedAddressesControl::on_context_menu, this);
+        Bind(wxEVT_DATAVIEW_SELECTION_CHANGED, &SavedAddressesControl::on_selection_changed, this);
         Bind(wxEVT_KEY_DOWN, &SavedAddressesControl::on_key_down, this);
-        Bind(wxEVT_ERASE_BACKGROUND, &SavedAddressesControl::on_erase_background, this);
-
-        Bind(wxEVT_SCROLLWIN_TOP, &SavedAddressesControl::on_scrollwin, this);
-        Bind(wxEVT_SCROLLWIN_BOTTOM, &SavedAddressesControl::on_scrollwin, this);
-        Bind(wxEVT_SCROLLWIN_LINEUP, &SavedAddressesControl::on_scrollwin, this);
-        Bind(wxEVT_SCROLLWIN_LINEDOWN, &SavedAddressesControl::on_scrollwin, this);
-        Bind(wxEVT_SCROLLWIN_PAGEUP, &SavedAddressesControl::on_scrollwin, this);
-        Bind(wxEVT_SCROLLWIN_PAGEDOWN, &SavedAddressesControl::on_scrollwin, this);
-        Bind(wxEVT_SCROLLWIN_THUMBTRACK, &SavedAddressesControl::on_scrollwin, this);
-        Bind(wxEVT_SCROLLWIN_THUMBRELEASE, &SavedAddressesControl::on_scrollwin, this);
-
         Bind(wxEVT_TIMER, &SavedAddressesControl::on_refresh_timer, this, m_refreshTimer->GetId());
-        Bind(wxEVT_TIMER, &SavedAddressesControl::on_scroll_timer, this, m_scrollStopTimer->GetId());
-
-        SetScrollRate(m_header->get_char_width(), m_lineHeight);
+        Bind(wxEVT_DATAVIEW_ITEM_EDITING_STARTED, &SavedAddressesControl::on_editing_started, this);
+        Bind(wxEVT_DATAVIEW_ITEM_EDITING_DONE, &SavedAddressesControl::on_editing_done, this);
     }
 
     SavedAddressesControl::~SavedAddressesControl()
@@ -316,42 +77,105 @@ namespace Vertex::CustomWidgets
             m_refreshTimer->Stop();
             delete m_refreshTimer;
         }
-        if (m_scrollStopTimer)
-        {
-            m_scrollStopTimer->Stop();
-            delete m_scrollStopTimer;
-        }
     }
 
     void SavedAddressesControl::refresh_list()
     {
-        m_itemCount = m_viewModel->get_saved_addresses_count();
-        update_virtual_size();
-        Refresh(false);
+        const unsigned int count = static_cast<unsigned int>(m_viewModel->get_saved_addresses_count());
+        m_dataModel->reset_rows(count);
     }
 
     void SavedAddressesControl::clear_list()
     {
         stop_auto_refresh();
-        m_itemCount = 0;
-        m_selectedLine = -1;
-        update_virtual_size();
-        Refresh(false);
+        m_dataModel->reset_rows(0);
+        UnselectAll();
     }
 
-    void SavedAddressesControl::start_auto_refresh() const
+    void SavedAddressesControl::start_auto_refresh()
     {
         if (m_refreshTimer && !m_refreshTimer->IsRunning())
         {
-            m_refreshTimer->Start(100);
+            m_refreshTimer->Start(AUTO_REFRESH_INTERVAL_MS);
         }
     }
 
-    void SavedAddressesControl::stop_auto_refresh() const
+    void SavedAddressesControl::stop_auto_refresh()
     {
         if (m_refreshTimer && m_refreshTimer->IsRunning())
         {
             m_refreshTimer->Stop();
+        }
+    }
+
+    void SavedAddressesControl::on_refresh_timer([[maybe_unused]] wxTimerEvent& event)
+    {
+        if (m_isEditing)
+        {
+            return;
+        }
+        if (!IsShownOnScreen())
+        {
+            return;
+        }
+        const wxSize clientSize = GetClientSize();
+        if (clientSize.GetWidth() <= 1 || clientSize.GetHeight() <= MIN_SAFE_VIEWPORT_HEIGHT_PX)
+        {
+            return;
+        }
+        refresh_values();
+    }
+
+    void SavedAddressesControl::on_editing_started([[maybe_unused]] wxDataViewEvent& event)
+    {
+        m_isEditing = true;
+    }
+
+    void SavedAddressesControl::on_editing_done([[maybe_unused]] wxDataViewEvent& event)
+    {
+        m_isEditing = false;
+    }
+
+    void SavedAddressesControl::refresh_values()
+    {
+        const unsigned int rowCount = m_dataModel->GetCount();
+        if (rowCount == 0)
+        {
+            return;
+        }
+
+        const wxDataViewItem topItem = GetTopItem();
+        unsigned int topRow{};
+        if (topItem.IsOk())
+        {
+            topRow = m_dataModel->GetRow(topItem);
+        }
+        if (topRow >= rowCount)
+        {
+            topRow = rowCount - 1;
+        }
+
+        const int perPage = std::max(1, GetCountPerPage());
+        const int endRowExclusive = std::min(
+            static_cast<int>(rowCount),
+            static_cast<int>(topRow) + perPage + REFRESH_OVERSCAN_ROWS);
+
+        unsigned int minSource{std::numeric_limits<unsigned int>::max()};
+        unsigned int maxSource{};
+        for (unsigned int r = topRow; r < static_cast<unsigned int>(endRowExclusive); ++r)
+        {
+            const unsigned int sourceRow = m_dataModel->get_source_row(r);
+            minSource = std::min(minSource, sourceRow);
+            maxSource = std::max(maxSource, sourceRow);
+        }
+
+        m_viewModel->refresh_saved_addresses_range(
+            static_cast<int>(minSource),
+            static_cast<int>(maxSource));
+
+        for (unsigned int r = topRow; r < static_cast<unsigned int>(endRowExclusive); ++r)
+        {
+            m_dataModel->RowChanged(r);
         }
     }
 
@@ -363,21 +187,18 @@ namespace Vertex::CustomWidgets
     void SavedAddressesControl::set_freeze_toggle_callback(FreezeToggleCallback callback)
     {
         m_freezeToggleCallback = std::move(callback);
+        m_dataModel->set_freeze_toggle_callback(m_freezeToggleCallback);
     }
 
     void SavedAddressesControl::set_value_edit_callback(ValueEditCallback callback)
     {
         m_valueEditCallback = std::move(callback);
+        m_dataModel->set_value_edit_callback(m_valueEditCallback);
     }
 
     void SavedAddressesControl::set_delete_callback(DeleteCallback callback)
     {
         m_deleteCallback = std::move(callback);
-    }
-
-    void SavedAddressesControl::set_pointer_scan_callback(PointerScanCallback callback)
-    {
-        m_pointerScanCallback = std::move(callback);
     }
 
     void SavedAddressesControl::set_view_in_disassembly_callback(ViewInDisassemblyCallback callback)
@@ -392,733 +213,148 @@ namespace Vertex::CustomWidgets
 
     int SavedAddressesControl::get_selected_index() const
     {
-        return m_selectedLine;
-    }
-
-    void SavedAddressesControl::on_columns_resized()
-    {
-        update_virtual_size();
-        Refresh(false);
-    }
-
-    void SavedAddressesControl::refresh_theme()
-    {
-        const auto& pal = m_themeProvider.palette();
-        m_colors.background = pal.background;
-        m_colors.backgroundAlt = pal.backgroundAlt;
-        m_colors.selectedLine = pal.selection;
-        m_colors.address = pal.accent;
-        m_colors.type = pal.syntaxType;
-        m_colors.value = pal.syntaxArithmetic;
-        m_colors.frozenValue = pal.markerFrozen;
-        m_colors.separator = pal.border;
-        Refresh();
-    }
-
-    bool SavedAddressesControl::is_click_on_checkbox(const int x) const
-    {
-        const int padding = m_header->get_column_padding();
-        const int freezeWidth = m_header->get_freeze_width();
-
-        const int checkboxX = padding + (freezeWidth - CHECKBOX_SIZE) / 2;
-        const int checkboxEndX = checkboxX + CHECKBOX_SIZE;
-
-        return x >= checkboxX && x < checkboxEndX;
-    }
-
-    int SavedAddressesControl::get_column_at_x(const int x) const
-    {
-        const int padding = m_header->get_column_padding();
-        const int freezeWidth = m_header->get_freeze_width();
-        const int addressWidth = m_header->get_address_width();
-        const int typeWidth = m_header->get_type_width();
-
-        int colStart = padding;
-
-        if (x < colStart + freezeWidth)
+        const wxDataViewItem selection = GetSelection();
+        if (!selection.IsOk())
         {
-            return FREEZE_COLUMN;
+            return -1;
         }
-        colStart += freezeWidth + padding;
+        const unsigned int viewRow = m_dataModel->GetRow(selection);
+        return static_cast<int>(m_dataModel->get_source_row(viewRow));
+    }
 
-        if (x < colStart + addressWidth)
+    void SavedAddressesControl::on_selection_changed([[maybe_unused]] wxDataViewEvent& event)
+    {
+        if (m_selectionChangeCallback)
         {
-            return ADDRESS_COLUMN;
+            m_selectionChangeCallback(get_selected_index());
         }
-        colStart += addressWidth + padding;
-
-        if (x < colStart + typeWidth)
-        {
-            return TYPE_COLUMN;
-        }
-
-        return VALUE_COLUMN;
-    }
-
-    void SavedAddressesControl::show_address_edit_dialog(const int lineIndex)
-    {
-        const auto saved = m_viewModel->get_saved_address_at(lineIndex);
-
-        ValueEditDialog dialog(
-            this,
-            wxString::FromUTF8(m_languageService.fetch_translation("mainWindow.dialog.editAddress")),
-            wxString::FromUTF8(m_languageService.fetch_translation("mainWindow.dialog.addressLabel")),
-            wxString::FromUTF8(saved.addressStr)
-        );
-        Gui::ThemeProvider::apply_palette_to_tree(&dialog, m_themeProvider.palette());
-
-        if (dialog.ShowModal() == wxID_OK)
-        {
-            const wxString newAddressStr = dialog.get_value();
-            try
-            {
-                const std::uint64_t newAddress = std::stoull(newAddressStr.ToStdString(), nullptr, 16);
-                m_viewModel->set_saved_address_address(lineIndex, newAddress);
-                Refresh(false);
-            }
-            catch (...)
-            {
-            }
-        }
-    }
-
-    void SavedAddressesControl::show_value_edit_dialog(const int lineIndex)
-    {
-        const auto saved = m_viewModel->get_saved_address_at(lineIndex);
-
-        ValueEditDialog dialog(
-            this,
-            wxString::FromUTF8(m_languageService.fetch_translation("mainWindow.dialog.editValue")),
-            wxString::FromUTF8(m_languageService.fetch_translation("mainWindow.dialog.valueLabel")),
-            wxString::FromUTF8(saved.value)
-        );
-        Gui::ThemeProvider::apply_palette_to_tree(&dialog, m_themeProvider.palette());
-
-        if (dialog.ShowModal() == wxID_OK)
-        {
-            const wxString newValue = dialog.get_value();
-            m_viewModel->set_saved_address_value(lineIndex, newValue.ToStdString());
-            Refresh(false);
-        }
-    }
-
-    void SavedAddressesControl::show_type_combo_popup(const int lineIndex, const int x, const int y)
-    {
-        hide_type_combo();
-
-        m_editingLine = lineIndex;
-        const auto saved = m_viewModel->get_saved_address_at(lineIndex);
-
-        const int typeWidth = m_header->get_type_width();
-
-        m_typeCombo = new wxComboBox(this, wxID_ANY, wxEmptyString,
-                                      wxPoint(x, y), wxSize(typeWidth, m_lineHeight),
-                                      0, nullptr, wxCB_READONLY | wxCB_DROPDOWN);
-
-        const auto valueTypeNames = m_viewModel->get_value_type_names();
-        for (const auto& typeName : valueTypeNames)
-        {
-            m_typeCombo->Append(wxString::FromUTF8(typeName));
-        }
-
-        m_typeCombo->SetSelection(saved.valueTypeIndex);
-
-        m_typeCombo->Bind(wxEVT_COMBOBOX, &SavedAddressesControl::on_type_combo_selection, this);
-        m_typeCombo->Bind(wxEVT_COMBOBOX_CLOSEUP, [this](wxCommandEvent& closeupEvent)
-        {
-            closeupEvent.Skip();
-            CallAfter([this]()
-            {
-                if (m_typeCombo)
-                {
-                    hide_type_combo();
-                    Refresh(false);
-                }
-            });
-        });
-
-        m_typeCombo->SetFocus();
-        CallAfter([this]()
-        {
-            if (m_typeCombo)
-            {
-                m_typeCombo->Popup();
-            }
-        });
-    }
-
-    void SavedAddressesControl::on_type_combo_selection([[maybe_unused]] wxCommandEvent& event)
-    {
-        const int editingLine = m_editingLine;
-        wxComboBox* combo = m_typeCombo;
-
-        if (editingLine >= 0 && combo)
-        {
-            const int newTypeIndex = combo->GetSelection();
-            if (newTypeIndex != wxNOT_FOUND)
-            {
-                CallAfter([this, editingLine, newTypeIndex]()
-                {
-                    m_viewModel->set_saved_address_type(editingLine, newTypeIndex);
-                    hide_type_combo();
-                    Refresh(false);
-                });
-                return;
-            }
-        }
-        hide_type_combo();
-        Refresh(false);
-    }
-
-    void SavedAddressesControl::hide_type_combo()
-    {
-        if (m_typeCombo)
-        {
-            m_typeCombo->Hide();
-            m_typeCombo->Destroy();
-            m_typeCombo = nullptr;
-        }
-        m_editingLine = -1;
-    }
-
-    void SavedAddressesControl::on_paint([[maybe_unused]] wxPaintEvent& event)
-    {
-        wxAutoBufferedPaintDC dc(this);
-        DoPrepareDC(dc);
-        render(dc);
-    }
-
-    void SavedAddressesControl::on_size([[maybe_unused]] wxSizeEvent& event)
-    {
-        update_virtual_size();
-        Refresh(false);
-        event.Skip();
-    }
-
-    void SavedAddressesControl::on_mouse_left_down(const wxMouseEvent& event)
-    {
-        SetFocus();
-        hide_type_combo();
-
-        int scrollX{};
-        int scrollY{};
-        GetViewStart(&scrollX, &scrollY);
-
-        const int y = event.GetY() + scrollY * m_lineHeight;
-        const int lineIndex = get_line_at_y(y);
-
-        if (lineIndex >= 0 && lineIndex < m_itemCount)
-        {
-            const int x = event.GetX() + scrollX * m_header->get_char_width();
-            const int column = get_column_at_x(x);
-
-            if (column == FREEZE_COLUMN && is_click_on_checkbox(x))
-            {
-                const auto saved = m_viewModel->get_saved_address_at(lineIndex);
-                const bool newFrozenState = !saved.frozen;
-
-                m_viewModel->set_saved_address_frozen(lineIndex, newFrozenState);
-
-                if (m_freezeToggleCallback)
-                {
-                    m_freezeToggleCallback(lineIndex, newFrozenState);
-                }
-
-                Refresh(false);
-            }
-            else if (column == TYPE_COLUMN)
-            {
-                m_selectedLine = lineIndex;
-
-                const int padding = m_header->get_column_padding();
-                const int freezeWidth = m_header->get_freeze_width();
-                const int addressWidth = m_header->get_address_width();
-                const int comboX = padding + freezeWidth + padding + addressWidth + padding;
-                const int comboY = get_y_for_line(lineIndex) - scrollY * m_lineHeight;
-
-                show_type_combo_popup(lineIndex, comboX, comboY);
-                Refresh(false);
-            }
-            else
-            {
-                m_selectedLine = lineIndex;
-
-                if (m_selectionChangeCallback)
-                {
-                    m_selectionChangeCallback(m_selectedLine);
-                }
-
-                Refresh(false);
-            }
-        }
-    }
-
-    void SavedAddressesControl::on_mouse_left_dclick(const wxMouseEvent& event)
-    {
-        int scrollX{};
-        int scrollY{};
-        GetViewStart(&scrollX, &scrollY);
-
-        const int y = event.GetY() + scrollY * m_lineHeight;
-        const int lineIndex = get_line_at_y(y);
-
-        if (lineIndex >= 0 && lineIndex < m_itemCount)
-        {
-            const int x = event.GetX() + scrollX * m_header->get_char_width();
-            const int column = get_column_at_x(x);
-
-            m_selectedLine = lineIndex;
-
-            switch (column)
-            {
-                case ADDRESS_COLUMN:
-                    show_address_edit_dialog(lineIndex);
-                    break;
-
-                case VALUE_COLUMN:
-                    show_value_edit_dialog(lineIndex);
-                    break;
-
-                case TYPE_COLUMN:
-                    break;
-
-                case FREEZE_COLUMN:
-                    break;
-
-                default:
-                    break;
-            }
-        }
-    }
-
-    void SavedAddressesControl::on_mouse_right_down(wxMouseEvent& event)
-    {
-        int scrollX{};
-        int scrollY{};
-        GetViewStart(&scrollX, &scrollY);
-
-        const int y = event.GetY() + scrollY * m_lineHeight;
-        const int lineIndex = get_line_at_y(y);
-
-        if (lineIndex >= 0 && lineIndex < m_itemCount)
-        {
-            m_selectedLine = lineIndex;
-            Refresh(false);
-
-            const auto saved = m_viewModel->get_saved_address_at(m_selectedLine);
-
-            wxMenu menu;
-            menu.Append(1001, saved.frozen ?
-                wxString::FromUTF8(m_languageService.fetch_translation("mainWindow.context.unfreeze")) :
-                wxString::FromUTF8(m_languageService.fetch_translation("mainWindow.context.freeze")));
-            menu.AppendSeparator();
-            menu.Append(1002, wxString::FromUTF8(m_languageService.fetch_translation("mainWindow.context.copyAddress")));
-            menu.Append(1003, wxString::FromUTF8(m_languageService.fetch_translation("mainWindow.context.copyValue")));
-            menu.AppendSeparator();
-            menu.Append(1005, wxString::FromUTF8(m_languageService.fetch_translation("mainWindow.context.pointerScan")));
-            menu.Append(1006, wxString::FromUTF8(m_languageService.fetch_translation("mainWindow.context.viewInDisassembly")));
-            menu.Append(1007, wxString::FromUTF8(m_languageService.fetch_translation("mainWindow.context.findAccess")));
-            menu.AppendSeparator();
-            menu.Append(1004, wxString::FromUTF8(m_languageService.fetch_translation("mainWindow.context.delete")));
-
-            const int selection = GetPopupMenuSelectionFromUser(menu, event.GetPosition());
-            switch (selection)
-            {
-                case 1001:
-                    m_viewModel->set_saved_address_frozen(m_selectedLine, !saved.frozen);
-                    if (m_freezeToggleCallback)
-                    {
-                        m_freezeToggleCallback(m_selectedLine, !saved.frozen);
-                    }
-                    Refresh(false);
-                    break;
-
-                case 1002:
-                    if (wxTheClipboard->Open())
-                    {
-                        wxTheClipboard->SetData(new wxTextDataObject(saved.addressStr));
-                        wxTheClipboard->Close();
-                    }
-                    break;
-
-                case 1003:
-                    if (wxTheClipboard->Open())
-                    {
-                        wxTheClipboard->SetData(new wxTextDataObject(saved.value));
-                        wxTheClipboard->Close();
-                    }
-                    break;
-
-                case 1004:
-                    m_viewModel->remove_saved_address(m_selectedLine);
-                    if (m_deleteCallback)
-                    {
-                        m_deleteCallback(m_selectedLine);
-                    }
-                    m_selectedLine = -1;
-                    refresh_list();
-                    break;
-
-                case 1005:
-                    if (m_pointerScanCallback)
-                    {
-                        m_pointerScanCallback(saved.address);
-                    }
-                    break;
-
-                case 1006:
-                    if (m_viewInDisassemblyCallback)
-                    {
-                        m_viewInDisassemblyCallback(saved.address);
-                    }
-                    break;
-
-                case 1007:
-                    if (m_findAccessCallback)
-                    {
-                        const auto sizeFromType = Scanner::get_value_type_size(
-                            static_cast<Scanner::ValueType>(saved.valueTypeIndex));
-                        m_findAccessCallback(saved.address, static_cast<std::uint32_t>(sizeFromType));
-                    }
-                    break;
-
-                default:
-                    break;
-            }
-        }
-    }
-
-    void SavedAddressesControl::on_mouse_wheel(const wxMouseEvent& event)
-    {
-        const int rotation = event.GetWheelRotation();
-        const int delta = event.GetWheelDelta();
-        const int lines = rotation / delta * 3;
-
-        int scrollX{};
-        int scrollY{};
-        GetViewStart(&scrollX, &scrollY);
-        Scroll(scrollX, scrollY - lines);
-
-        sync_header_scroll();
     }
 
     void SavedAddressesControl::on_key_down(wxKeyEvent& event)
     {
-        const int keyCode = event.GetKeyCode();
-
-        switch (keyCode)
+        const int selected = get_selected_index();
+        if (selected < 0)
         {
-            case WXK_UP:
-                if (m_selectedLine > 0)
-                {
-                    --m_selectedLine;
-                    ensure_line_visible(m_selectedLine);
-                    if (m_selectionChangeCallback)
-                    {
-                        m_selectionChangeCallback(m_selectedLine);
-                    }
-                }
-                else if (m_selectedLine == -1 && m_itemCount > 0)
-                {
-                    m_selectedLine = 0;
-                    ensure_line_visible(m_selectedLine);
-                    if (m_selectionChangeCallback)
-                    {
-                        m_selectionChangeCallback(m_selectedLine);
-                    }
-                }
-                break;
-
-            case WXK_DOWN:
-                if (m_selectedLine + 1 < m_itemCount)
-                {
-                    ++m_selectedLine;
-                    ensure_line_visible(m_selectedLine);
-                    if (m_selectionChangeCallback)
-                    {
-                        m_selectionChangeCallback(m_selectedLine);
-                    }
-                }
-                else if (m_selectedLine == -1 && m_itemCount > 0)
-                {
-                    m_selectedLine = 0;
-                    ensure_line_visible(m_selectedLine);
-                    if (m_selectionChangeCallback)
-                    {
-                        m_selectionChangeCallback(m_selectedLine);
-                    }
-                }
-                break;
-
-            case WXK_SPACE:
-                if (m_selectedLine >= 0 && m_selectedLine < m_itemCount)
-                {
-                    const auto saved = m_viewModel->get_saved_address_at(m_selectedLine);
-                    m_viewModel->set_saved_address_frozen(m_selectedLine, !saved.frozen);
-                    if (m_freezeToggleCallback)
-                    {
-                        m_freezeToggleCallback(m_selectedLine, !saved.frozen);
-                    }
-                }
-                break;
-
-            case WXK_DELETE:
-                if (m_selectedLine >= 0 && m_selectedLine < m_itemCount)
-                {
-                    m_viewModel->remove_saved_address(m_selectedLine);
-                    if (m_deleteCallback)
-                    {
-                        m_deleteCallback(m_selectedLine);
-                    }
-                    m_selectedLine = -1;
-                    refresh_list();
-                }
-                break;
-
-            default:
-                event.Skip();
-                return;
-        }
-
-        Refresh(false);
-    }
-
-    void SavedAddressesControl::on_erase_background([[maybe_unused]] wxEraseEvent& event)
-    {
-    }
-
-    void SavedAddressesControl::on_scrollwin(wxScrollWinEvent& event)
-    {
-        m_isScrolling = true;
-
-        sync_header_scroll();
-
-        if (m_scrollStopTimer)
-        {
-            m_scrollStopTimer->Start(150, wxTIMER_ONE_SHOT);
-        }
-
-        event.Skip();
-    }
-
-    void SavedAddressesControl::on_refresh_timer([[maybe_unused]] wxTimerEvent& event)
-    {
-        if (!m_isScrolling)
-        {
-            refresh_visible_items();
-        }
-    }
-
-    void SavedAddressesControl::on_scroll_timer([[maybe_unused]] wxTimerEvent& event)
-    {
-        m_isScrolling = false;
-        refresh_visible_items();
-    }
-
-    void SavedAddressesControl::sync_header_scroll() const
-    {
-        if (m_header)
-        {
-            int scrollX{};
-            int scrollY{};
-            GetViewStart(&scrollX, &scrollY);
-            m_header->set_horizontal_scroll_offset(scrollX * m_header->get_char_width());
-        }
-    }
-
-    void SavedAddressesControl::refresh_visible_items()
-    {
-        m_itemCount = m_viewModel->get_saved_addresses_count();
-
-        if (m_itemCount == 0)
-        {
-            Refresh(false);
+            event.Skip();
             return;
         }
 
-        int scrollX{};
-        int scrollY{};
-        GetViewStart(&scrollX, &scrollY);
-
-        const int clientHeight = GetClientSize().GetHeight();
-        const int startLine = scrollY;
-        const int visibleCount = (clientHeight / m_lineHeight) + 2;
-        const int endLine = std::min(startLine + visibleCount, m_itemCount) - 1;
-
-        if (startLine >= 0 && endLine >= startLine)
+        switch (event.GetKeyCode())
         {
-            m_viewModel->refresh_saved_addresses_range(startLine, endLine);
+        case WXK_SPACE:
+            toggle_freeze_selected();
+            return;
+        case WXK_DELETE:
+            delete_selected();
+            return;
+        default:
+            event.Skip();
         }
-
-        Refresh(false);
     }
 
-    void SavedAddressesControl::render(wxDC& dc)
+    void SavedAddressesControl::toggle_freeze_selected()
     {
-        render_background(dc);
-
-        if (m_itemCount == 0)
+        const wxDataViewItem selection = GetSelection();
+        if (!selection.IsOk())
         {
             return;
         }
-
-        int scrollX{};
-        int scrollY{};
-        GetViewStart(&scrollX, &scrollY);
-
-        const int clientHeight = GetClientSize().GetHeight();
-        const int startLine = scrollY;
-        const int endLine = std::min(
-            startLine + (clientHeight / m_lineHeight) + 2,
-            m_itemCount
-        );
-
-        render_lines(dc, startLine, endLine);
-    }
-
-    void SavedAddressesControl::render_background(wxDC& dc) const
-    {
-        dc.SetBackground(wxBrush(m_colors.background));
-        dc.Clear();
-    }
-
-    void SavedAddressesControl::render_lines(wxDC& dc, const int startLine, const int endLine)
-    {
-        dc.SetFont(m_codeFont);
-
-        for (int i = startLine; i < endLine; ++i)
+        const unsigned int viewRow = m_dataModel->GetRow(selection);
+        const int sourceRow = static_cast<int>(m_dataModel->get_source_row(viewRow));
+        const auto saved = m_viewModel->get_saved_address_at(sourceRow);
+        const bool newFrozen = !saved.frozen;
+        m_viewModel->set_saved_address_frozen(sourceRow, newFrozen);
+        if (m_freezeToggleCallback)
         {
-            const int y = get_y_for_line(i);
-            render_line(dc, i, y);
+            m_freezeToggleCallback(sourceRow, newFrozen);
         }
+        m_dataModel->RowChanged(viewRow);
     }
 
-    void SavedAddressesControl::render_checkbox(wxDC& dc, const int x, const int y, const bool checked, [[maybe_unused]] const bool hovered)
+    void SavedAddressesControl::delete_selected()
     {
-        int flags{};
-        if (checked)
-        {
-            flags |= wxCONTROL_CHECKED;
-        }
-
-        const wxRect checkboxRect(x, y, CHECKBOX_SIZE, CHECKBOX_SIZE);
-        wxRendererNative::Get().DrawCheckBox(this, dc, checkboxRect, flags);
-    }
-
-    void SavedAddressesControl::render_line(wxDC& dc, const int lineIndex, const int y)
-    {
-        const auto saved = m_viewModel->get_saved_address_at(lineIndex);
-
-        const int freezeWidth = m_header->get_freeze_width();
-        const int addressWidth = m_header->get_address_width();
-        const int typeWidth = m_header->get_type_width();
-        const int valueWidth = m_header->get_value_width();
-        const int padding = m_header->get_column_padding();
-
-        const int totalWidth = freezeWidth + addressWidth + typeWidth + valueWidth + padding * 5;
-
-        wxColour bgColor{};
-        const bool isSelected = (lineIndex == m_selectedLine);
-
-        if (isSelected)
-        {
-            bgColor = m_colors.selectedLine;
-        }
-        else if (lineIndex % 2 == 1)
-        {
-            bgColor = m_colors.backgroundAlt;
-        }
-        else
-        {
-            bgColor = m_colors.background;
-        }
-
-        dc.SetPen(*wxTRANSPARENT_PEN);
-        dc.SetBrush(wxBrush(bgColor));
-        dc.DrawRectangle(0, y, std::max(totalWidth, GetVirtualSize().GetWidth()), m_lineHeight);
-
-        int x = padding;
-        const int textY = y + (m_lineHeight - dc.GetCharHeight()) / 2;
-
-        const int checkboxX = x + (freezeWidth - CHECKBOX_SIZE) / 2;
-        const int checkboxY = y + (m_lineHeight - CHECKBOX_SIZE) / 2;
-        render_checkbox(dc, checkboxX, checkboxY, saved.frozen, false);
-
-        x += freezeWidth + padding;
-
-        dc.SetPen(wxPen(m_colors.separator, 1));
-        dc.DrawLine(x - padding / 2, y, x - padding / 2, y + m_lineHeight);
-
-        dc.SetTextForeground(m_colors.address);
-        dc.DrawText(saved.addressStr, x, textY);
-        x += addressWidth + padding;
-
-        dc.SetPen(wxPen(m_colors.separator, 1));
-        dc.DrawLine(x - padding / 2, y, x - padding / 2, y + m_lineHeight);
-
-        dc.SetTextForeground(m_colors.type);
-        dc.DrawText(saved.valueType, x, textY);
-        x += typeWidth + padding;
-
-        dc.SetPen(wxPen(m_colors.separator, 1));
-        dc.DrawLine(x - padding / 2, y, x - padding / 2, y + m_lineHeight);
-
-        dc.SetTextForeground(saved.frozen ? m_colors.frozenValue : m_colors.value);
-        dc.DrawText(saved.value, x, textY);
-    }
-
-    int SavedAddressesControl::get_line_at_y(const int y) const
-    {
-        return y / m_lineHeight;
-    }
-
-    int SavedAddressesControl::get_y_for_line(const int lineIndex) const
-    {
-        return lineIndex * m_lineHeight;
-    }
-
-    int SavedAddressesControl::get_visible_line_count() const
-    {
-        return GetClientSize().GetHeight() / m_lineHeight;
-    }
-
-    void SavedAddressesControl::update_virtual_size()
-    {
-        const int totalHeight = m_itemCount * m_lineHeight;
-
-        const int freezeWidth = m_header->get_freeze_width();
-        const int addressWidth = m_header->get_address_width();
-        const int typeWidth = m_header->get_type_width();
-        const int valueWidth = m_header->get_value_width();
-        const int padding = m_header->get_column_padding();
-
-        const int totalWidth = freezeWidth + addressWidth + typeWidth + valueWidth + padding * 5;
-
-        SetVirtualSize(totalWidth, totalHeight);
-    }
-
-    void SavedAddressesControl::ensure_line_visible(const int lineIndex)
-    {
-        if (lineIndex < 0 || lineIndex >= m_itemCount)
+        const int selected = get_selected_index();
+        if (selected < 0)
         {
             return;
         }
-
-        int scrollX{};
-        int scrollY{};
-        GetViewStart(&scrollX, &scrollY);
-
-        const int visibleLines = get_visible_line_count();
-
-        if (lineIndex < scrollY)
+        m_viewModel->remove_saved_address(selected);
+        if (m_deleteCallback)
         {
-            Scroll(scrollX, lineIndex);
+            m_deleteCallback(selected);
         }
-        else if (lineIndex >= scrollY + visibleLines)
-        {
-            Scroll(scrollX, lineIndex - visibleLines + 1);
-        }
+        refresh_list();
+    }
 
-        sync_header_scroll();
+    void SavedAddressesControl::on_context_menu([[maybe_unused]] wxDataViewEvent& event)
+    {
+        const int selected = get_selected_index();
+        if (selected < 0)
+        {
+            return;
+        }
+        const auto saved = m_viewModel->get_saved_address_at(selected);
+
+        wxMenu menu{};
+        menu.Append(MENU_ID_TOGGLE_FREEZE, saved.frozen
+            ? wxString::FromUTF8(m_languageService.fetch_translation("mainWindow.context.unfreeze"))
+            : wxString::FromUTF8(m_languageService.fetch_translation("mainWindow.context.freeze")));
+        menu.AppendSeparator();
+        menu.Append(MENU_ID_COPY_ADDRESS,
+                    wxString::FromUTF8(m_languageService.fetch_translation("mainWindow.context.copyAddress")));
+        menu.Append(MENU_ID_COPY_VALUE,
+                    wxString::FromUTF8(m_languageService.fetch_translation("mainWindow.context.copyValue")));
+        menu.AppendSeparator();
+        menu.Append(MENU_ID_VIEW_IN_DISASSEMBLY,
+                    wxString::FromUTF8(m_languageService.fetch_translation("mainWindow.context.viewInDisassembly")));
+        menu.Append(MENU_ID_FIND_ACCESS,
+                    wxString::FromUTF8(m_languageService.fetch_translation("mainWindow.context.findAccess")));
+        menu.AppendSeparator();
+        menu.Append(MENU_ID_DELETE,
+                    wxString::FromUTF8(m_languageService.fetch_translation("mainWindow.context.delete")));
+
+        const int selection = GetPopupMenuSelectionFromUser(menu);
+
+        switch (selection)
+        {
+        case MENU_ID_TOGGLE_FREEZE:
+            toggle_freeze_selected();
+            break;
+        case MENU_ID_COPY_ADDRESS:
+            if (wxTheClipboard->Open())
+            {
+                wxTheClipboard->SetData(new wxTextDataObject(wxString::FromUTF8(saved.addressStr)));
+                wxTheClipboard->Close();
+            }
+            break;
+        case MENU_ID_COPY_VALUE:
+            if (wxTheClipboard->Open())
+            {
+                wxTheClipboard->SetData(new wxTextDataObject(wxString::FromUTF8(saved.value)));
+                wxTheClipboard->Close();
+            }
+            break;
+        case MENU_ID_DELETE:
+            delete_selected();
+            break;
+        case MENU_ID_VIEW_IN_DISASSEMBLY:
+            if (m_viewInDisassemblyCallback)
+            {
+                m_viewInDisassemblyCallback(saved.address);
+            }
+            break;
+        case MENU_ID_FIND_ACCESS:
+            if (m_findAccessCallback)
+            {
+                const auto watchSize = m_viewModel->get_saved_address_watch_size(selected);
+                if (watchSize > 0)
+                {
+                    m_findAccessCallback(saved.address, watchSize);
+                }
+            }
+            break;
+        default:
+            break;
+        }
     }
 }

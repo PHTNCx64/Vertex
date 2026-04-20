@@ -81,13 +81,41 @@ namespace Vertex::Scanner
         return m_memoryReader != nullptr;
     }
 
-    StatusCode MemoryScanner::initialize_scan(const ScanConfiguration& configuration, const std::vector<ScanRegion>& memoryRegions)
+    StatusCode MemoryScanner::initialize_scan(const ScanConfiguration& configuration, std::shared_ptr<const TypeSchema> schema, const std::vector<ScanRegion>& memoryRegions)
     {
         std::scoped_lock lifecycleLock(m_scanLifecycleMutex);
         if (!drain_active_scan())
         {
             return StatusCode::STATUS_ERROR_THREAD_IS_BUSY;
         }
+
+        if (!schema)
+        {
+            m_logService.log_error("[Scanner] initialize_scan called with null TypeSchema");
+            return StatusCode::STATUS_ERROR_INVALID_PARAMETER;
+        }
+
+        if (schema->kind == TypeKind::PluginDefined)
+        {
+            if (!schema->sdkType || !schema->sdkType->extractor || schema->valueSize == 0 ||
+                schema->sdkType->scanModeCount == 0 || schema->sdkType->scanModes == nullptr)
+            {
+                m_logService.log_error("[Scanner] PluginDefined schema is malformed");
+                return StatusCode::STATUS_ERROR_INVALID_PARAMETER;
+            }
+            if (configuration.scanMode >= schema->sdkType->scanModeCount)
+            {
+                m_logService.log_error("[Scanner] PluginDefined scanMode index out of range");
+                return StatusCode::STATUS_ERROR_INVALID_PARAMETER;
+            }
+            if (!schema->sdkType->scanModes[configuration.scanMode].comparator)
+            {
+                m_logService.log_error("[Scanner] PluginDefined comparator is null");
+                return StatusCode::STATUS_ERROR_INVALID_PARAMETER;
+            }
+        }
+
+        m_activeSchema = schema;
 
         m_logService.log_info(fmt::format("[Scanner] initialize_scan: {} regions", memoryRegions.size()));
 
@@ -104,6 +132,7 @@ namespace Vertex::Scanner
         }
 
         m_scanAbort.store(false, std::memory_order_seq_cst);
+        m_pluginCallStatus.store(StatusCode::STATUS_OK, std::memory_order_release);
 
         {
             std::scoped_lock undoLock(m_undoHistoryMutex);
@@ -116,7 +145,11 @@ namespace Vertex::Scanner
 
         m_scanConfig = configuration;
 
-        if (is_string_type(m_scanConfig.valueType))
+        if (schema->kind == TypeKind::PluginDefined)
+        {
+            m_scanConfig.dataSize = schema->valueSize;
+        }
+        else if (is_string_type(m_scanConfig.valueType))
         {
             m_scanConfig.dataSize = m_scanConfig.input.size();
         }
@@ -131,7 +164,9 @@ namespace Vertex::Scanner
             return StatusCode::STATUS_ERROR_INVALID_PARAMETER;
         }
 
-        if (!is_string_type(m_scanConfig.valueType) && scan_mode_needs_previous(m_scanConfig.get_numeric_scan_mode()))
+        if (schema->kind != TypeKind::PluginDefined &&
+            !is_string_type(m_scanConfig.valueType) &&
+            scan_mode_needs_previous(m_scanConfig.get_numeric_scan_mode()))
         {
             m_logService.log_error("[Scanner] Previous-dependent scan mode requires a prior scan");
             return StatusCode::STATUS_ERROR_INVALID_PARAMETER;
@@ -182,13 +217,47 @@ namespace Vertex::Scanner
         return status;
     }
 
-    StatusCode MemoryScanner::initialize_next_scan(const ScanConfiguration& configuration)
+    StatusCode MemoryScanner::initialize_next_scan(const ScanConfiguration& configuration, std::shared_ptr<const TypeSchema> schema)
     {
         std::scoped_lock lifecycleLock(m_scanLifecycleMutex);
         if (!drain_active_scan())
         {
             return StatusCode::STATUS_ERROR_THREAD_IS_BUSY;
         }
+
+        if (!schema)
+        {
+            m_logService.log_error("[Scanner] initialize_next_scan called with null TypeSchema");
+            return StatusCode::STATUS_ERROR_INVALID_PARAMETER;
+        }
+
+        if (schema->kind == TypeKind::PluginDefined)
+        {
+            if (!schema->sdkType || !schema->sdkType->extractor || schema->valueSize == 0 ||
+                schema->sdkType->scanModeCount == 0 || schema->sdkType->scanModes == nullptr)
+            {
+                m_logService.log_error("[Scanner] PluginDefined schema is malformed");
+                return StatusCode::STATUS_ERROR_INVALID_PARAMETER;
+            }
+            if (configuration.scanMode >= schema->sdkType->scanModeCount)
+            {
+                m_logService.log_error("[Scanner] PluginDefined scanMode index out of range");
+                return StatusCode::STATUS_ERROR_INVALID_PARAMETER;
+            }
+            if (!schema->sdkType->scanModes[configuration.scanMode].comparator)
+            {
+                m_logService.log_error("[Scanner] PluginDefined comparator is null");
+                return StatusCode::STATUS_ERROR_INVALID_PARAMETER;
+            }
+        }
+
+        if (m_lastScanTypeId != TypeId::Invalid && m_lastScanTypeId != schema->id)
+        {
+            m_logService.log_error("[Scanner] initialize_next_scan: schema id differs from prior scan");
+            return StatusCode::STATUS_ERROR_INVALID_PARAMETER;
+        }
+
+        m_activeSchema = schema;
 
         m_logService.log_info("[Scanner] initialize_next_scan called");
 
@@ -201,6 +270,7 @@ namespace Vertex::Scanner
         }
 
         m_scanAbort.store(false, std::memory_order_seq_cst);
+        m_pluginCallStatus.store(StatusCode::STATUS_OK, std::memory_order_release);
         m_lastProgressNotifyTick.store(0, std::memory_order_relaxed);
 
         save_snapshot_for_undo();
@@ -208,7 +278,6 @@ namespace Vertex::Scanner
         std::shared_ptr<std::vector<WriterRegionMetadata>> previousRegions;
         std::size_t previousDataSize = 0;
         std::size_t previousFirstValueSize = 0;
-        ValueType previousValueType{};
         {
             std::scoped_lock undoLock(m_undoHistoryMutex);
             if (m_undoHistory.empty())
@@ -220,12 +289,6 @@ namespace Vertex::Scanner
             previousResultCount = m_undoHistory.back().resultsCount;
             previousDataSize = m_undoHistory.back().config.dataSize;
             previousFirstValueSize = m_undoHistory.back().config.firstValueSize;
-            previousValueType = m_undoHistory.back().config.valueType;
-        }
-
-        if (configuration.needs_previous_value() && configuration.valueType != previousValueType)
-        {
-            return StatusCode::STATUS_ERROR_INVALID_PARAMETER;
         }
 
         if (previousResultCount == 0)
@@ -259,7 +322,11 @@ namespace Vertex::Scanner
 
         m_scanConfig = configuration;
 
-        if (is_string_type(m_scanConfig.valueType))
+        if (schema->kind == TypeKind::PluginDefined)
+        {
+            m_scanConfig.dataSize = schema->valueSize;
+        }
+        else if (is_string_type(m_scanConfig.valueType))
         {
             m_scanConfig.dataSize = m_scanConfig.input.size();
         }
@@ -319,6 +386,8 @@ namespace Vertex::Scanner
         m_totalChunks.store(totalNextScanChunks, std::memory_order_relaxed);
         m_nextChunkIndex.store(0, std::memory_order_relaxed);
 
+        m_activeReaders.store(static_cast<int>(readerCount) + 1, std::memory_order_release);
+
         for (std::size_t i = 0; i < readerCount; ++i)
         {
             std::packaged_task<StatusCode()> task(
@@ -373,14 +442,15 @@ namespace Vertex::Scanner
                   return workerStatus;
               });
 
-            m_activeReaders.fetch_add(1, std::memory_order_release);
             status = m_dispatcher.enqueue_on_worker(Thread::ThreadChannel::Scanner, i, std::move(task));
 
             if (status != StatusCode::STATUS_OK)
             {
-                const int remainingReaders = m_activeReaders.fetch_sub(1, std::memory_order_acq_rel) - 1;
                 m_scanAbort.store(true, std::memory_order_release);
                 m_logService.log_error(fmt::format("[Scanner] Failed to enqueue next scan worker {} (status: {})", i, static_cast<int>(status)));
+
+                const int slotsToRelease = static_cast<int>(readerCount - i) + 1;
+                const int remainingReaders = m_activeReaders.fetch_sub(slotsToRelease, std::memory_order_acq_rel) - slotsToRelease;
                 if (remainingReaders == 0)
                 {
                     reconcile_result_count();
@@ -409,6 +479,17 @@ namespace Vertex::Scanner
             {
                 m_logService.log_warn(fmt::format("[Scanner] Collect task for thread {} could not be enqueued (status: {})", i, static_cast<int>(status)));
             }
+        }
+
+        if (m_activeReaders.fetch_sub(1, std::memory_order_acq_rel) == 1)
+        {
+            reconcile_result_count();
+            m_resultsReconciled.store(true, std::memory_order_release);
+            {
+                std::scoped_lock notifyLock(m_mainThreadMutex);
+                m_mainThreadWaitCondition.notify_one();
+            }
+            notify_scan_completion();
         }
 
         return StatusCode::STATUS_OK;
@@ -452,6 +533,13 @@ namespace Vertex::Scanner
     StatusCode MemoryScanner::stop_scan()
     {
         m_scanAbort.store(true, std::memory_order_release);
+        {
+            std::scoped_lock lifecycleLock(m_scanLifecycleMutex);
+            if (drain_active_scan())
+            {
+                release_active_schema();
+            }
+        }
         return StatusCode::STATUS_OK;
     }
 
@@ -464,6 +552,8 @@ namespace Vertex::Scanner
             return;
         }
 
+        release_active_schema();
+
         const StatusCode status = m_dispatcher.destroy_worker_pool(Thread::ThreadChannel::Scanner);
         if (status != StatusCode::STATUS_OK)
         {
@@ -472,6 +562,19 @@ namespace Vertex::Scanner
         }
 
         m_workerCount = 0;
+    }
+
+    void MemoryScanner::release_active_schema() noexcept
+    {
+        if (m_activeSchema)
+        {
+            m_lastScanTypeId = m_activeSchema->id;
+        }
+        m_activeSchema.reset();
+        m_resolvedIsPluginDefined = false;
+        m_resolvedPluginExtractor = nullptr;
+        m_resolvedPluginComparator = nullptr;
+        m_resolvedPluginValueSize = 0;
     }
 
     bool MemoryScanner::drain_active_scan()
@@ -563,6 +666,7 @@ namespace Vertex::Scanner
 
     void MemoryScanner::notify_scan_completion()
     {
+        release_active_schema();
         std::scoped_lock lock(m_scanCompletionCallbackMutex);
         if (m_scanCompletionCallback)
         {
@@ -581,7 +685,8 @@ namespace Vertex::Scanner
 
     void MemoryScanner::notify_scan_progress_throttled()
     {
-        constexpr std::uint64_t PROGRESS_NOTIFY_INTERVAL_NS = 50ULL * 1000ULL * 1000ULL;
+        constexpr std::uint64_t PROGRESS_NOTIFY_INTERVAL_NS =
+            static_cast<std::uint64_t>(std::chrono::duration_cast<std::chrono::nanoseconds>(SCAN_PROGRESS_MIN_INTERVAL).count());
         const auto now = std::chrono::steady_clock::now();
         const auto nowTick = static_cast<std::uint64_t>(std::chrono::duration_cast<std::chrono::nanoseconds>(now.time_since_epoch()).count());
 
@@ -604,6 +709,11 @@ namespace Vertex::Scanner
     std::uint64_t MemoryScanner::get_regions_scanned() const noexcept { return m_regionsScanned.load(std::memory_order_relaxed); }
 
     std::uint64_t MemoryScanner::get_total_regions() const noexcept { return m_totalRegions.load(std::memory_order_relaxed); }
+
+    StatusCode MemoryScanner::get_last_plugin_error() const noexcept
+    {
+        return m_pluginCallStatus.load(std::memory_order_acquire);
+    }
 
     std::uint64_t MemoryScanner::get_results_count() const
     {

@@ -16,7 +16,6 @@
 #include <fstream>
 #include <string>
 #include <string_view>
-#include <bits/struct_stat.h>
 
 extern native_handle& get_native_handle();
 extern ProcessArchitecture get_process_architecture();

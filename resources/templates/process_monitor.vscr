@@ -1,15 +1,44 @@
 // Process monitor template.
-// Adjust process APIs and parameters for your target.
+// Shows process list snapshots and basic active-process info.
 void main()
 {
     log_info("Process monitor started.");
 
-    while (true)
+    for (uint round = 1; round <= 3; ++round)
     {
-        // Example flow:
-        // refresh_process_list();
-        // const uint processCount = get_process_count();
-        // ... inspect entries here ...
-        sleep(1000);
+        int status = refresh_process_list();
+        if (status != STATUS_OK)
+        {
+            log_error("refresh_process_list failed: " + status);
+            sleep(1000);
+            continue;
+        }
+
+        const uint count = get_process_count();
+        log_info("Round " + round + ": process count = " + count);
+
+        uint preview = count;
+        if (preview > 5)
+        {
+            preview = 5;
+        }
+        for (uint index = 0; index < preview; ++index)
+        {
+            ProcessInfo p = get_process_at(index);
+            log_info("[" + index + "] pid=" + p.id + " name=" + p.name + " owner=" + p.owner);
+        }
+
+        if (is_process_open())
+        {
+            log_info("Active process: " + get_process_name() + " (pid=" + get_process_id() + ")");
+        }
+        else
+        {
+            log_warn("No active process is open in Vertex.");
+        }
+
+        sleep(1500);
     }
+
+    log_info("Process monitor finished.");
 }

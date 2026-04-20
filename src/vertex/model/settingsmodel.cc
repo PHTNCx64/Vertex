@@ -8,6 +8,7 @@
 #include <vertex/model/settingsmodel.hh>
 #include <ranges>
 #include <algorithm>
+#include <system_error>
 
 namespace Vertex::Model
 {
@@ -340,6 +341,176 @@ namespace Vertex::Model
             m_hasUnsavedChanges = true;
         }
         return result;
+    }
+
+    std::vector<std::filesystem::path> SettingsModel::get_script_paths() const
+    {
+        const auto scriptPathsJson = m_settingsService.get_value("scripting.scriptPaths");
+
+        if (!scriptPathsJson.is_array())
+        {
+            return {};
+        }
+
+        return scriptPathsJson
+            | std::views::filter([](const auto& item) { return item.is_string(); })
+            | std::views::transform([](const auto& item) {
+                return Configuration::Filesystem::resolve_path(std::filesystem::path{item.template get<std::string>()});
+            })
+            | std::ranges::to<std::vector>();
+    }
+
+    StatusCode SettingsModel::add_script_path(const std::filesystem::path& path) const
+    {
+        auto scriptPathsJson = m_settingsService.get_value("scripting.scriptPaths");
+
+        if (!scriptPathsJson.is_array())
+        {
+            scriptPathsJson = nlohmann::json::array();
+        }
+
+        const std::string pathStr = Configuration::Filesystem::make_relative(path).string();
+        const auto exists = std::ranges::any_of(scriptPathsJson, [&pathStr](const auto& item) {
+            return item.is_string() && item.template get<std::string>() == pathStr;
+        });
+
+        if (exists)
+        {
+            return StatusCode::STATUS_ERROR_GENERAL_ALREADY_EXISTS;
+        }
+
+        scriptPathsJson.push_back(pathStr);
+        m_settingsService.set_value("scripting.scriptPaths", scriptPathsJson);
+        m_hasUnsavedChanges = true;
+
+        return StatusCode::STATUS_OK;
+    }
+
+    StatusCode SettingsModel::remove_script_path(const std::filesystem::path& path) const
+    {
+        auto scriptPathsJson = m_settingsService.get_value("scripting.scriptPaths");
+
+        if (!scriptPathsJson.is_array())
+        {
+            return StatusCode::STATUS_ERROR_FS_JSON_TYPE_MISMATCH;
+        }
+
+        const std::string pathStr = Configuration::Filesystem::make_relative(path).string();
+
+        const auto found = std::ranges::any_of(scriptPathsJson, [&pathStr](const auto& item) {
+            return item.is_string() && item.template get<std::string>() == pathStr;
+        });
+
+        if (!found)
+        {
+            return StatusCode::STATUS_ERROR_FS_JSON_KEY_NOT_FOUND;
+        }
+
+        nlohmann::json newPaths = nlohmann::json::array();
+        std::ranges::for_each(
+            scriptPathsJson | std::views::filter([&pathStr](const auto& item) {
+                return item.is_string() && item.template get<std::string>() != pathStr;
+            }),
+            [&newPaths](const auto& item) { newPaths.push_back(item); }
+        );
+
+        m_settingsService.set_value("scripting.scriptPaths", newPaths);
+        m_hasUnsavedChanges = true;
+        return StatusCode::STATUS_OK;
+    }
+
+    std::vector<std::filesystem::path> SettingsModel::get_available_scripts() const
+    {
+        std::vector<std::filesystem::path> scripts{};
+        std::error_code ec{};
+
+        for (const auto& directory : get_script_paths())
+        {
+            if (!std::filesystem::exists(directory, ec) || !std::filesystem::is_directory(directory, ec))
+            {
+                continue;
+            }
+
+            for (const auto& entry : std::filesystem::directory_iterator{directory, ec})
+            {
+                if (ec)
+                {
+                    break;
+                }
+
+                if (!entry.is_regular_file(ec) || ec)
+                {
+                    continue;
+                }
+
+                if (entry.path().extension() != FileTypes::SCRIPTING_EXTENSION)
+                {
+                    continue;
+                }
+
+                scripts.push_back(entry.path());
+            }
+        }
+
+        std::ranges::sort(scripts);
+        return scripts;
+    }
+
+    bool SettingsModel::is_script_auto_start(const std::filesystem::path& scriptPath) const
+    {
+        const auto autoStartJson = m_settingsService.get_value("scripting.autoStartScripts");
+        if (!autoStartJson.is_array())
+        {
+            return false;
+        }
+
+        const std::string pathStr = Configuration::Filesystem::make_relative(scriptPath).string();
+        return std::ranges::any_of(autoStartJson, [&pathStr](const auto& item) {
+            return item.is_string() && item.template get<std::string>() == pathStr;
+        });
+    }
+
+    StatusCode SettingsModel::set_script_auto_start(const std::filesystem::path& scriptPath, const bool enabled) const
+    {
+        auto autoStartJson = m_settingsService.get_value("scripting.autoStartScripts");
+        if (!autoStartJson.is_array())
+        {
+            autoStartJson = nlohmann::json::array();
+        }
+
+        const std::string pathStr = Configuration::Filesystem::make_relative(scriptPath).string();
+        const auto alreadyPresent = std::ranges::any_of(autoStartJson, [&pathStr](const auto& item) {
+            return item.is_string() && item.template get<std::string>() == pathStr;
+        });
+
+        if (enabled && alreadyPresent)
+        {
+            return StatusCode::STATUS_OK;
+        }
+        if (!enabled && !alreadyPresent)
+        {
+            return StatusCode::STATUS_OK;
+        }
+
+        if (enabled)
+        {
+            autoStartJson.push_back(pathStr);
+        }
+        else
+        {
+            nlohmann::json filtered = nlohmann::json::array();
+            std::ranges::for_each(
+                autoStartJson | std::views::filter([&pathStr](const auto& item) {
+                    return item.is_string() && item.template get<std::string>() != pathStr;
+                }),
+                [&filtered](const auto& item) { filtered.push_back(item); }
+            );
+            autoStartJson = std::move(filtered);
+        }
+
+        m_settingsService.set_value("scripting.autoStartScripts", autoStartJson);
+        m_hasUnsavedChanges = true;
+        return StatusCode::STATUS_OK;
     }
 
     int SettingsModel::get_ui_state_int(const std::string_view key, const int defaultValue) const

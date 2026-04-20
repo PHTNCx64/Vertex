@@ -7,6 +7,7 @@
 
 #include <vertexusrrt/native_handle.hh>
 #include <vertexusrrt/disassembler.hh>
+#include <vertexusrrt/watchpoint_throttle.hh>
 
 #if defined(__linux__)
 #include <vertexusrrt/linux/debugger_options.hh>
@@ -21,6 +22,11 @@ Runtime* g_pluginRuntime = nullptr;
 
 extern StatusCode handle_process_opened(const ProcessEventData* eventData);
 extern StatusCode handle_debugger_attached(const ProcessEventData* eventData);
+
+namespace ProcessInternal
+{
+    StatusCode invalidate_handle();
+}
 
 namespace
 {
@@ -58,6 +64,8 @@ extern "C" VERTEX_EXPORT StatusCode VERTEX_API vertex_init(PluginInformation* pl
 #if defined(__linux__)
     debugger_options::register_ui_panel();
 #endif
+
+    debugger::register_watchpoint_throttle_ui();
 
     g_pluginRuntime->vertex_log_info("Vertex User-Mode Runtime initialized.");
 
@@ -104,6 +112,7 @@ extern "C" VERTEX_EXPORT StatusCode VERTEX_API vertex_event(const Event event, c
 
         case VERTEX_PROCESS_CLOSED:
             clear_module_cache();
+            std::ignore = ProcessInternal::invalidate_handle();
             if (g_pluginRuntime)
             {
                 g_pluginRuntime->vertex_log_info("Process closed");

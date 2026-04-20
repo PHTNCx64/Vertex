@@ -209,6 +209,15 @@ set_target_properties(Vertex PROPERTIES
         FOLDER "Applications"
 )
 
+if (UNIX AND NOT APPLE)
+    add_custom_target(setcap
+            COMMAND sudo setcap cap_sys_ptrace,cap_dac_read_search+ep $<TARGET_FILE:Vertex>
+            DEPENDS Vertex
+            COMMENT "Granting ptrace + dac_read_search capabilities (requires sudo)"
+            VERBATIM
+    )
+endif ()
+
 #-----------------------------
 #  Testing
 #-----------------------------
@@ -243,13 +252,16 @@ if (BUILD_TESTING)
     list(FILTER VERTEX_TEST_SOURCES EXCLUDE REGEX ".*/viewmodel/.*")
     list(APPEND VERTEX_TEST_SOURCES
             "${CMAKE_SOURCE_DIR}/src/vertex/viewmodel/settingsviewmodel.cc"
+            "${CMAKE_SOURCE_DIR}/src/vertex/viewmodel/accesstrackerviewmodel.cc"
+            "${CMAKE_SOURCE_DIR}/src/vertex/viewmodel/enrichmentqueue.cc"
+            "${CMAKE_SOURCE_DIR}/src/vertex/viewmodel/mainviewmodel.cc"
+            "${CMAKE_SOURCE_DIR}/src/vertex/model/accesstrackermodel.cc"
             "${CMAKE_SOURCE_DIR}/src/vertex/view/debugger/disassemblycontrol.cc"
             "${CMAKE_SOURCE_DIR}/src/vertex/view/debugger/registerspanel.cc"
     )
     list(FILTER VERTEX_TEST_SOURCES EXCLUDE REGEX ".*/customwidgets/.*")
     list(FILTER VERTEX_TEST_SOURCES EXCLUDE REGEX ".*/gui/.*")
     list(FILTER VERTEX_TEST_SOURCES EXCLUDE REGEX ".*/factory\\.cc$")
-    list(APPEND VERTEX_TEST_SOURCES "${CMAKE_SOURCE_DIR}/src/vertex/gui/theme/themeprovider.cc")
 
     if (NOT WIN32)
         list(FILTER TEST_SOURCES EXCLUDE REGEX ".*/io/io_test\\.cc$")
@@ -315,3 +327,20 @@ add_custom_command(
 
 add_custom_target(CopyLanguageFiles ALL DEPENDS "${LANGUAGE_STAMP}")
 add_dependencies(Vertex CopyLanguageFiles)
+
+file(GLOB SCRIPT_TEMPLATE_FILES CONFIGURE_DEPENDS "${CMAKE_SOURCE_DIR}/resources/templates/*.vscr")
+set(SCRIPT_TEMPLATE_STAMP "${CMAKE_BINARY_DIR}/script_template_copy.stamp")
+
+add_custom_command(
+        OUTPUT "${SCRIPT_TEMPLATE_STAMP}"
+        DEPENDS ${SCRIPT_TEMPLATE_FILES}
+        COMMAND ${CMAKE_COMMAND}
+        -Dsrc="${CMAKE_SOURCE_DIR}/resources/templates"
+        -Ddst="${OUTPUT_DIR}/Scripts"
+        -P "${RESOURCE_COPY_SCRIPT}"
+        COMMAND ${CMAKE_COMMAND} -E touch "${SCRIPT_TEMPLATE_STAMP}"
+        COMMENT "Copying scripting templates to output"
+)
+
+add_custom_target(CopyScriptTemplates ALL DEPENDS "${SCRIPT_TEMPLATE_STAMP}")
+add_dependencies(Vertex CopyScriptTemplates)

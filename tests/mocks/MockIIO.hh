@@ -1,6 +1,10 @@
 //
-// Mock for IIO interface
+// Copyright (C) 2026 PHTNC<>.
+// Licensed under GPLv3.0 with Plugin Interface exceptions.
 //
+
+
+
 
 #pragma once
 
@@ -29,4 +33,4 @@
           MOCK_METHOD(StatusCode, read_at_offset, (const Vertex::IO::File& file, std::size_t offset, void* buffer, std::size_t bufferSize), (override));
           MOCK_METHOD(StatusCode, resize_file, (Vertex::IO::File& file, std::size_t newSize), (override));
       };
-  } // namespace Vertex::Testing::Mocks
+  } 

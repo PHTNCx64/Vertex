@@ -165,8 +165,8 @@ extern "C" {
     VERTEX_EXPORT StatusCode VERTEX_API vertex_debugger_get_watchpoints(WatchpointInfo** watchpoints, uint32_t* count);
     VERTEX_EXPORT StatusCode VERTEX_API vertex_debugger_get_watchpoint_hit_count(uint32_t watchpointId, uint32_t* hitCount);
     VERTEX_EXPORT StatusCode VERTEX_API vertex_debugger_reset_watchpoint_hit_count(uint32_t watchpointId);
-    VERTEX_EXPORT void VERTEX_API vertex_debugger_free_breakpoints(BreakpointInfo* breakpoints);
-    VERTEX_EXPORT void VERTEX_API vertex_debugger_free_watchpoints(WatchpointInfo* watchpoints);
+    VERTEX_EXPORT StatusCode VERTEX_API vertex_debugger_set_watchpoint_throttle_ms(uint32_t throttleMs);
+    VERTEX_EXPORT StatusCode VERTEX_API vertex_debugger_get_watchpoint_throttle_ms(uint32_t* throttleMs);
 
     VERTEX_EXPORT StatusCode VERTEX_API vertex_debugger_get_threads(ThreadList* threadList);
     VERTEX_EXPORT StatusCode VERTEX_API vertex_debugger_get_current_thread(uint32_t* threadId);
@@ -174,7 +174,7 @@ extern "C" {
     VERTEX_EXPORT StatusCode VERTEX_API vertex_debugger_suspend_thread(uint32_t threadId);
     VERTEX_EXPORT StatusCode VERTEX_API vertex_debugger_resume_thread(uint32_t threadId);
     VERTEX_EXPORT StatusCode VERTEX_API vertex_debugger_get_registers(uint32_t threadId, RegisterSet* registers);
-    VERTEX_EXPORT StatusCode VERTEX_API vertex_debugger_get_call_stack(uint32_t threadId, const CallStack* callStack);
+    VERTEX_EXPORT StatusCode VERTEX_API vertex_debugger_get_call_stack(uint32_t threadId, CallStack* callStack);
     VERTEX_EXPORT StatusCode VERTEX_API vertex_debugger_get_exception_info(ExceptionInfo* exception);
     VERTEX_EXPORT StatusCode VERTEX_API vertex_debugger_get_instruction_pointer(uint32_t threadId, uint64_t* address);
     VERTEX_EXPORT StatusCode VERTEX_API vertex_debugger_set_instruction_pointer(uint32_t threadId, uint64_t address);

@@ -5,6 +5,7 @@
 
 #include <vertexusrrt/linux/lldb_backend.hh>
 #include <vertexusrrt/native_handle.hh>
+#include <vertexusrrt/watchpoint_throttle.hh>
 #include <sdk/api.h>
 
 #include <algorithm>
@@ -237,6 +238,12 @@ namespace
                     vertexId = Debugger::find_vertex_watchpoint_id(state, lldbWpId);
                 }
 
+                if (vertexId != 0 && debugger::should_throttle_watchpoint(vertexId))
+                {
+                    state.process.Continue();
+                    return StatusCode::STATUS_DEBUG_TICK_PROCESSED;
+                }
+
                 {
                     std::scoped_lock cbLock{state.callbackMutex};
                     if (state.callbacks.has_value() && state.callbacks->on_watchpoint_hit != nullptr)
@@ -450,6 +457,8 @@ extern "C"
             state.watchpoints.clear();
             state.nextWatchpointId = 1;
         }
+
+        debugger::clear_watchpoint_throttle_state();
 
         if (state.target.IsValid())
         {

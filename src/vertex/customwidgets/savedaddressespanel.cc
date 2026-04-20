@@ -9,12 +9,10 @@ namespace Vertex::CustomWidgets
     SavedAddressesPanel::SavedAddressesPanel(
         wxWindow* parent,
         Language::ILanguage& languageService,
-        Gui::IThemeProvider& themeProvider,
         const std::shared_ptr<ViewModel::MainViewModel>& viewModel
     )
         : wxPanel(parent, wxID_ANY)
         , m_languageService(languageService)
-        , m_themeProvider(themeProvider)
         , m_viewModel(viewModel)
     {
         create_layout();
@@ -23,21 +21,8 @@ namespace Vertex::CustomWidgets
     void SavedAddressesPanel::create_layout()
     {
         m_sizer = new wxBoxSizer(wxVERTICAL);
-
-        m_header = new SavedAddressesHeader(this, m_languageService, m_themeProvider);
-        m_control = new SavedAddressesControl(this, m_languageService, m_themeProvider, m_viewModel, m_header);
-
-        m_header->set_column_resize_callback([this]()
-        {
-            if (m_control)
-            {
-                m_control->on_columns_resized();
-            }
-        });
-
-        m_sizer->Add(m_header, 0, wxEXPAND);
+        m_control = new SavedAddressesControl(this, m_languageService, m_viewModel);
         m_sizer->Add(m_control, 1, wxEXPAND);
-
         SetSizer(m_sizer);
     }
 
@@ -102,14 +87,6 @@ namespace Vertex::CustomWidgets
         if (m_control)
         {
             m_control->set_delete_callback(std::move(callback));
-        }
-    }
-
-    void SavedAddressesPanel::set_pointer_scan_callback(SavedAddressesControl::PointerScanCallback callback) const
-    {
-        if (m_control)
-        {
-            m_control->set_pointer_scan_callback(std::move(callback));
         }
     }
 

@@ -18,7 +18,6 @@
 
 #include <vertex/viewmodel/mainviewmodel.hh>
 #include <vertex/gui/iconmanager/iconmanager.hh>
-#include <vertex/gui/theme/ithemeprovider.hh>
 #include <vertex/language/language.hh>
 #include <vertex/customwidgets/scannedvaluespanel.hh>
 #include <vertex/customwidgets/savedaddressespanel.hh>
@@ -30,12 +29,11 @@ namespace Vertex::View
     class MainView final : public wxFrame
     {
       public:
-        MainView(const wxString& title, std::unique_ptr<ViewModel::MainViewModel> viewModel, Language::ILanguage& languageService, Gui::IIconManager& iconManager, Gui::IThemeProvider& themeProvider);
+        MainView(const wxString& title, std::unique_ptr<ViewModel::MainViewModel> viewModel, Language::ILanguage& languageService, Gui::IIconManager& iconManager);
 
         using DebuggerAttachedCheck = std::function<bool()>;
         using DebuggerAttachAction = std::function<void()>;
 
-        void set_pointer_scan_callback(CustomWidgets::SavedAddressesControl::PointerScanCallback callback) const;
         void set_view_in_disassembly_callback(CustomWidgets::SavedAddressesControl::ViewInDisassemblyCallback callback) const;
         void set_find_access_callback(CustomWidgets::SavedAddressesControl::FindAccessCallback callback) const;
         void set_debugger_callbacks(DebuggerAttachedCheck isAttached, DebuggerAttachAction attach);
@@ -56,6 +54,7 @@ namespace Vertex::View
         void update_view(ViewUpdateFlags flags = ViewUpdateFlags::ALL);
         void set_control_status(ControlStatus controlStatus) const;
         void update_input_visibility_based_on_scan_type(int scanTypeIndex);
+        void apply_type_ui_hints();
         void handle_process_closed() const;
         void restore_ui_state();
 
@@ -65,6 +64,7 @@ namespace Vertex::View
         void on_value_input_changed(wxCommandEvent& event);
         void on_value_input2_changed(wxCommandEvent& event);
         void on_hexadecimal_changed(wxCommandEvent& event);
+        void on_numeric_base_changed(wxCommandEvent& event);
         void on_value_type_changed(wxCommandEvent& event);
         void on_scan_type_changed(wxCommandEvent& event);
         void on_endianness_type_changed(wxCommandEvent& event);
@@ -86,7 +86,7 @@ namespace Vertex::View
 
         void show_about_dialog();
 
-        void refresh_toolbar_icons();
+        void refresh_toolbar_icons() const;
 
         wxPanel* m_mainPanel{};
         wxBoxSizer* m_mainBoxSizer{};
@@ -113,6 +113,7 @@ namespace Vertex::View
 
         wxStaticText* m_valueInputText{};
         wxTextCtrl* m_valueInputTextControl{};
+        wxTextCtrl* m_valueInputMultilineControl{};
         wxBoxSizer* m_valueInputSizer{};
         wxBoxSizer* m_valueInputControlsSizer{};
         wxStaticText* m_valueInputText2{};
@@ -120,6 +121,7 @@ namespace Vertex::View
 
         wxBoxSizer* m_hexadecimalValueSizer{};
         wxCheckBox* m_hexadecimalValueCheckBox{};
+        wxComboBox* m_numericBaseComboBox{};
 
         wxBoxSizer* m_valueTypeSizer{};
         wxStaticText* m_valueTypeText{};
@@ -154,7 +156,6 @@ namespace Vertex::View
         std::unique_ptr<ViewModel::MainViewModel> m_viewModel{};
         Language::ILanguage& m_languageService;
         Gui::IIconManager& m_iconManager;
-        Gui::IThemeProvider& m_themeProvider;
 
         DebuggerAttachedCheck m_isDebuggerAttached{};
         DebuggerAttachAction m_attachDebugger{};

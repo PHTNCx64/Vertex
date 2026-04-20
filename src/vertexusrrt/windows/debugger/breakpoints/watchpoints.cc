@@ -6,6 +6,7 @@
 #include <vertexusrrt/native_handle.hh>
 #include <vertexusrrt/debugger_internal.hh>
 #include <vertexusrrt/debugloopcontext.hh>
+#include <vertexusrrt/watchpoint_throttle.hh>
 
 #include <vector>
 
@@ -112,6 +113,8 @@ namespace debugger
             free_hw_register_for_watchpoint(registerIndex);
             manager.watchpoints.erase(it);
         }
+
+        clear_watchpoint_throttle_entry(watchpointId);
 
         std::ignore = clear_hw_register_on_all_threads(registerIndex);
 

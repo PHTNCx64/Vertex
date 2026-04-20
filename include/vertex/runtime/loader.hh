@@ -11,6 +11,7 @@
 #include <vertex/runtime/plugin.hh>
 #include <vertex/configuration/ipluginconfig.hh>
 #include <vertex/configuration/isettings.hh>
+#include <vertex/scanner/iscannerruntimeservice.hh>
 #include <vertex/thread/ithreaddispatcher.hh>
 
 namespace Vertex::Runtime
@@ -18,7 +19,7 @@ namespace Vertex::Runtime
     class Loader final : public ILoader
     {
     public:
-        Loader(Configuration::ISettings& settingsService, Configuration::IPluginConfig& pluginConfigService, Log::ILog& loggerService, Thread::IThreadDispatcher& threadDispatcher); // NOLINT
+        Loader(Configuration::ISettings& settingsService, Configuration::IPluginConfig& pluginConfigService, Log::ILog& loggerService, Thread::IThreadDispatcher& threadDispatcher, Scanner::IScannerRuntimeService& scannerService); // NOLINT
         ~Loader() override;
 
         StatusCode load_plugins(std::filesystem::path& path) override;
@@ -44,8 +45,8 @@ namespace Vertex::Runtime
     private:
         [[nodiscard]] std::string status_code_to_string(StatusCode code) const;
 
-        StatusCode initialize_plugin(Plugin& plugin) const;
-        StatusCode restore_persisted_config(Plugin& plugin);
+        StatusCode initialize_plugin(Plugin& plugin, std::size_t pluginIndex) const;
+        StatusCode restore_persisted_config(const Plugin& plugin);
 
         std::vector<Plugin> m_plugins{};
         std::optional<std::reference_wrapper<Plugin>> m_activePlugin;
@@ -53,6 +54,7 @@ namespace Vertex::Runtime
         Configuration::IPluginConfig& m_pluginConfigService;
         Log::ILog& m_loggerService;
         Thread::IThreadDispatcher& m_threadDispatcher;
+        Scanner::IScannerRuntimeService& m_scannerService;
         Registry m_registry;
         UIRegistry m_uiRegistry;
         bool m_activePluginInitialized{};

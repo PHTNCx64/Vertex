@@ -10,12 +10,14 @@ set(SOURCES
     main.cc
     arch_registers.cc
     disassembler.cc
+    watchpoint_throttle.cc
     ${CMAKE_SOURCE_DIR}/include/vertexusrrt/arch_registers.hh
     ${CMAKE_SOURCE_DIR}/include/vertexusrrt/debugloopcontext.hh
     ${CMAKE_SOURCE_DIR}/include/vertexusrrt/disassembler.hh
     ${CMAKE_SOURCE_DIR}/include/vertexusrrt/native_handle.hh
     ${CMAKE_SOURCE_DIR}/include/vertexusrrt/process_internal.hh
     ${CMAKE_SOURCE_DIR}/include/vertexusrrt/memory_internal.hh
+    ${CMAKE_SOURCE_DIR}/include/vertexusrrt/watchpoint_throttle.hh
     ${CMAKE_SOURCE_DIR}/include/sdk/memory.h
     ${CMAKE_SOURCE_DIR}/include/sdk/api.h
 )
@@ -134,6 +136,17 @@ elseif(UNIX)
         linux/debugger/lldb/lldb_breakpoints.cc
         linux/debugger/lldb/lldb_state.cc
         linux/debugger/lldb/lldb_watchpoints.cc
+        linux/thread/thread_helpers.cc
+        linux/thread/get_threads.cc
+        linux/thread/get_current_thread.cc
+        linux/thread/suspend_thread.cc
+        linux/thread/resume_thread.cc
+        linux/thread/get_registers.cc
+        linux/thread/get_call_stack.cc
+        linux/thread/get_exception_info.cc
+        linux/thread/read_register.cc
+        linux/thread/write_register.cc
+        linux/thread/priority_value_to_string.cc
     )
 endif()
 

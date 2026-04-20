@@ -1,11 +1,69 @@
 // UI tool template.
+// Current API does not expose control event callbacks yet, so this polls state.
 void main()
 {
-    log_info("UI tool started.");
+    Frame@ frame = ui_create_frame("Vertex Script UI Demo", 520, 360);
+    Panel@ panel = frame.create_panel();
 
-    // Example flow:
-    // auto@ frame = ui_create_frame("Template Tool", 480, 320);
-    // auto@ layout = ui_create_box_sizer(UI_VERTICAL);
-    // frame.set_sizer(layout);
-    // frame.show();
+    const int pad = panel.from_dip(6);
+
+    Label@ title = panel.add_label("Script UI Demo");
+    Label@ status = panel.add_label("Type in the input field to emit logs.");
+    TextInput@ input = panel.add_text_input("Hello from AngelScript");
+    CheckBox@ verbose = panel.add_checkbox("Verbose logging");
+    ComboBox@ level = panel.add_combobox();
+    level.add_item("Info");
+    level.add_item("Warning");
+    level.add_item("Error");
+    level.set_selection(0);
+    Button@ closeHint = panel.add_button("Close this window from the title bar");
+    closeHint.enable(false);
+
+    BoxSizer@ layout = ui_create_box_sizer(UI_VERTICAL);
+    layout.add(title, 0, UI_ALL | UI_EXPAND, pad);
+    layout.add(input, 0, UI_LEFT | UI_RIGHT | UI_EXPAND, pad);
+    layout.add(verbose, 0, UI_LEFT | UI_RIGHT, pad);
+    layout.add(level, 0, UI_LEFT | UI_RIGHT | UI_EXPAND, pad);
+    layout.add(closeHint, 0, UI_ALL | UI_EXPAND, pad);
+    layout.add_stretch(1);
+    layout.add(status, 0, UI_ALL | UI_EXPAND, pad);
+    panel.set_sizer(layout);
+
+    frame.show();
+    log_info("UI template started.");
+
+    string lastValue;
+    while (frame.is_open())
+    {
+        const string currentValue = input.get_value();
+        if (currentValue != lastValue && !currentValue.is_empty())
+        {
+            string message = currentValue;
+            if (verbose.is_checked())
+            {
+                message = "[verbose] " + message;
+            }
+
+            const int selected = level.get_selection();
+            if (selected == 1)
+            {
+                log_warn(message);
+            }
+            else if (selected == 2)
+            {
+                log_error(message);
+            }
+            else
+            {
+                log_info(message);
+            }
+
+            status.set_text("Last message: " + currentValue);
+            lastValue = currentValue;
+        }
+
+        sleep(150);
+    }
+
+    log_info("UI template finished.");
 }

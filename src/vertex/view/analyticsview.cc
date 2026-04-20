@@ -4,9 +4,9 @@
 //
 #include <vertex/utility.hh>
 #include <vertex/view/analyticsview.hh>
-#include <vertex/gui/theme/themeprovider.hh>
 #include <wx/sizer.h>
 #include <wx/app.h>
+#include <wx/settings.h>
 #include <wx/button.h>
 #include <wx/filedlg.h>
 #include <wx/msgdlg.h>
@@ -48,10 +48,9 @@ namespace Vertex::View
         constexpr unsigned char DEFAULT_LIGHT_B = 0;
     }
 
-    AnalyticsView::AnalyticsView(Language::ILanguage& languageService, std::unique_ptr<ViewModel::AnalyticsViewModel> viewModel, Gui::IThemeProvider& themeProvider)
+    AnalyticsView::AnalyticsView(Language::ILanguage& languageService, std::unique_ptr<ViewModel::AnalyticsViewModel> viewModel)
         : wxDialog(wxTheApp->GetTopWindow(), wxID_ANY, wxString::FromUTF8(languageService.fetch_translation("analyticsWindow.title")), wxDefaultPosition, wxSize(StandardWidgetValues::STANDARD_X_DIP, StandardWidgetValues::STANDARD_Y_DIP), wxDEFAULT_DIALOG_STYLE | wxRESIZE_BORDER),
           m_languageService(languageService),
-          m_themeProvider(themeProvider),
           m_viewModel(std::move(viewModel))
     {
         create_controls();
@@ -95,15 +94,6 @@ namespace Vertex::View
 
     void AnalyticsView::bind_events()
     {
-        Bind(wxEVT_SYS_COLOUR_CHANGED, [this](wxSysColourChangedEvent& event)
-        {
-            m_themeProvider.refresh();
-            Gui::ThemeProvider::apply_palette_to_tree(this, m_themeProvider.palette());
-            refresh_logs();
-            Refresh();
-            event.Skip();
-        });
-
         m_clearButton->Bind(wxEVT_BUTTON, &AnalyticsView::on_clear_clicked, this);
         m_saveButton->Bind(wxEVT_BUTTON, &AnalyticsView::on_save_clicked, this);
 
@@ -201,10 +191,7 @@ namespace Vertex::View
         m_logTextCtrl->Clear();
 
         m_cachedEntries = m_viewModel->get_log_entries();
-        const auto& palette = m_themeProvider.palette();
-        m_logTextCtrl->SetBackgroundColour(palette.background);
-        m_logTextCtrl->SetForegroundColour(palette.text);
-        const bool isDarkMode = m_themeProvider.is_dark();
+        const bool isDarkMode = wxSystemSettings::GetAppearance().IsDark();
 
         for (const auto& entry : m_cachedEntries)
         {
@@ -226,7 +213,7 @@ namespace Vertex::View
 
         if (entries.size() > m_cachedEntries.size())
         {
-            const bool isDarkMode = m_themeProvider.is_dark();
+            const bool isDarkMode = wxSystemSettings::GetAppearance().IsDark();
             m_logTextCtrl->Freeze();
 
             for (std::size_t i = m_cachedEntries.size(); i < entries.size(); ++i)

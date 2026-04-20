@@ -21,10 +21,23 @@ endif()
 set(VCPKG_OVERLAY_TRIPLETS "${CMAKE_CURRENT_SOURCE_DIR}/triplets")
 set(VCPKG_OVERLAY_PORTS "${CMAKE_CURRENT_SOURCE_DIR}/overlay-ports")
 
-project(VertexWorkspace VERSION 1.0.0 LANGUAGES C CXX)
+project(VertexWorkspace VERSION 0.0.1 LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
+
+# ---------------------------------------------------------------------------
+# Linker: prefer mold on Linux targets when available (ELF only)
+# ---------------------------------------------------------------------------
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    find_program(MOLD_EXECUTABLE mold)
+    if(MOLD_EXECUTABLE)
+        set(CMAKE_LINKER_TYPE MOLD)
+        message(STATUS "Using mold linker: ${MOLD_EXECUTABLE}")
+    else()
+        message(STATUS "mold not found, using default linker")
+    endif()
+endif()
 
 # Shared output layout:
 #   executables -> <build>/bin
@@ -43,6 +56,7 @@ option(BUILD_VERTEX "Build the Vertex GUI application" ON)
 option(BUILD_VERTEXUSRRT "Build vertexusrrt plugin" ON)
 option(BUILD_VERTEXDECI3RT "Build vertexdeci3rt plugin" OFF)
 option(BUILD_LIBTEST "Build libtest plugin" ON)
+option(BUILD_TESTGAME "Build healthgame CLI test target" ON)
 option(BUILD_TESTING "Build unit tests" ON)
 option(BUILD_ONLY_RUNTIME "Build runtime plugins only" OFF)
 option(VERTEX_BUNDLE_LLDB "Bundle liblldb and its transitive LLVM deps next to vertexusrrt (Linux only)" OFF)
@@ -52,6 +66,7 @@ if(BUILD_ALL)
     set(BUILD_VERTEXUSRRT ON CACHE BOOL "Build vertexusrrt plugin" FORCE)
     set(BUILD_VERTEXDECI3RT ON CACHE BOOL "Build vertexdeci3rt plugin" FORCE)
     set(BUILD_LIBTEST ON CACHE BOOL "Build libtest plugin" FORCE)
+    set(BUILD_TESTGAME ON CACHE BOOL "Build healthgame CLI test target" FORCE)
     set(BUILD_TESTING ON CACHE BOOL "Build unit tests" FORCE)
 endif()
 
@@ -65,7 +80,12 @@ message(STATUS "  vertex:        ${BUILD_VERTEX}")
 message(STATUS "  vertexusrrt:   ${BUILD_VERTEXUSRRT}")
 message(STATUS "  vertexdeci3rt: ${BUILD_VERTEXDECI3RT}")
 message(STATUS "  libtest:       ${BUILD_LIBTEST}")
+message(STATUS "  testgame:      ${BUILD_TESTGAME}")
 message(STATUS "  tests:         ${BUILD_TESTING}")
+
+if(BUILD_TESTING)
+    enable_testing()
+endif()
 
 # ---------------------------------------------------------------------------
 # Subdirectories
@@ -84,6 +104,10 @@ endif()
 
 if(BUILD_LIBTEST)
     add_subdirectory(src/libtest)
+endif()
+
+if(BUILD_TESTGAME)
+    add_subdirectory(src/testgame)
 endif()
 
 # ---------------------------------------------------------------------------

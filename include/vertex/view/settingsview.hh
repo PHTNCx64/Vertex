@@ -19,7 +19,6 @@
 #include <vertex/language/language.hh>
 #include <vertex/viewmodel/settingsviewmodel.hh>
 #include <vertex/event/eventbus.hh>
-#include <vertex/gui/theme/ithemeprovider.hh>
 
 namespace Vertex::View
 {
@@ -31,7 +30,7 @@ namespace Vertex::View
     {
       public:
         SettingsView(Language::ILanguage& languageService, std::unique_ptr<ViewModel::SettingsViewModel> viewModel,
-                     Gui::IThemeProvider& themeProvider, PluginConfigViewFactory pluginConfigFactory = {});
+                     PluginConfigViewFactory pluginConfigFactory = {});
 
       private:
         void vertex_event_callback(Event::EventId eventId, const Event::VertexEvent& event);
@@ -46,10 +45,12 @@ namespace Vertex::View
         void create_plugin_tab_controls();
         void create_language_tab_controls();
         void create_memory_scanner_tab_controls();
+        void create_scripts_tab_controls();
         void layout_general_tab() const;
         void layout_plugin_tab();
         void layout_language_tab() const;
         void layout_memory_scanner_tab() const;
+        void layout_scripts_tab();
 
         void update_plugin_config_tab();
         void refresh_plugin_list() const;
@@ -77,11 +78,22 @@ namespace Vertex::View
         void on_language_path_selected(wxListEvent& event);
         void on_language_path_deselected(wxListEvent& event);
 
+        void refresh_script_list();
+        void refresh_script_paths_list();
+        void on_script_checked(wxListEvent& event);
+        void on_script_unchecked(wxListEvent& event);
+        void on_refresh_scripts_clicked(wxCommandEvent& event);
+        void on_add_script_path_clicked(wxCommandEvent& event);
+        void on_remove_script_path_clicked(wxCommandEvent& event);
+        void on_script_path_selected(wxListEvent& event);
+        void on_script_path_deselected(wxListEvent& event);
+
         wxNotebook* m_tabNotebook{};
         wxPanel* m_generalPanel{};
         wxPanel* m_pluginPanel{};
         wxPanel* m_languagePanel{};
         wxPanel* m_memoryScannerPanel{};
+        wxPanel* m_scriptsPanel{};
 
         wxButton* m_okButton{};
         wxButton* m_cancelButton{};
@@ -155,11 +167,22 @@ namespace Vertex::View
 
         std::vector<std::filesystem::path> m_pluginPaths{};
         std::vector<std::filesystem::path> m_languagePaths{};
+        std::vector<std::filesystem::path> m_scriptPaths{};
+        std::vector<std::filesystem::path> m_availableScripts{};
         std::unordered_map<std::string, std::filesystem::path> m_availableLanguages{};
+
+        wxListCtrl* m_scriptListCtrl{};
+        wxButton* m_refreshScriptsButton{};
+        wxListCtrl* m_scriptPathsListCtrl{};
+        wxButton* m_addScriptPathButton{};
+        wxButton* m_removeScriptPathButton{};
+        wxStaticBox* m_scriptPathsStaticBox{};
+        wxStaticBoxSizer* m_scriptPathsGroup{};
+        wxBoxSizer* m_scriptPathsButtonSizer{};
+        wxBoxSizer* m_scriptsMainSizer{};
 
         std::unique_ptr<ViewModel::SettingsViewModel> m_viewModel{};
         Language::ILanguage& m_languageService;
-        Gui::IThemeProvider& m_themeProvider;
 
         wxPanel* m_pluginConfigPanel{};
         PluginConfigView* m_pluginConfigView{};

@@ -111,6 +111,36 @@ namespace Vertex::Event
         std::uint64_t m_newValue {};
     };
 
+    enum class NavigationTarget : std::uint8_t
+    {
+        Disassembly,
+        Memory,
+        HexEditor
+    };
+
+    class DebuggerNavigateEvent final : public VertexEvent
+    {
+    public:
+        DebuggerNavigateEvent(const std::uint64_t address, const NavigationTarget target) noexcept
+            : VertexEvent(DEBUGGER_NAVIGATE_EVENT),
+              m_address(address), m_target(target)
+        {}
+
+        [[nodiscard]] std::uint64_t get_address() const noexcept
+        {
+            return m_address;
+        }
+
+        [[nodiscard]] NavigationTarget get_target() const noexcept
+        {
+            return m_target;
+        }
+
+    private:
+        std::uint64_t m_address {};
+        NavigationTarget m_target {NavigationTarget::Disassembly};
+    };
+
     class DebuggerModuleLoadedEvent final : public VertexEvent
     {
     public:

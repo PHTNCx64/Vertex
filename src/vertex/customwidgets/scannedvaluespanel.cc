@@ -4,17 +4,17 @@
 //
 #include <vertex/customwidgets/scannedvaluespanel.hh>
 
+#include <utility>
+
 namespace Vertex::CustomWidgets
 {
     ScannedValuesPanel::ScannedValuesPanel(
         wxWindow* parent,
         Language::ILanguage& languageService,
-        Gui::IThemeProvider& themeProvider,
         const std::shared_ptr<ViewModel::MainViewModel>& viewModel
     )
         : wxPanel(parent, wxID_ANY)
         , m_languageService(languageService)
-        , m_themeProvider(themeProvider)
         , m_viewModel(viewModel)
     {
         create_layout();
@@ -23,21 +23,8 @@ namespace Vertex::CustomWidgets
     void ScannedValuesPanel::create_layout()
     {
         m_sizer = new wxBoxSizer(wxVERTICAL);
-
-        m_header = new ScannedValuesHeader(this, m_languageService, m_themeProvider);
-        m_control = new ScannedValuesControl(this, m_languageService, m_themeProvider, m_viewModel, m_header);
-
-        m_header->set_column_resize_callback([this]()
-        {
-            if (m_control)
-            {
-                m_control->on_columns_resized();
-            }
-        });
-
-        m_sizer->Add(m_header, 0, wxEXPAND);
+        m_control = new ScannedValuesControl(this, m_languageService, m_viewModel);
         m_sizer->Add(m_control, 1, wxEXPAND);
-
         SetSizer(m_sizer);
     }
 
@@ -86,6 +73,14 @@ namespace Vertex::CustomWidgets
         if (m_control)
         {
             m_control->set_add_to_table_callback(std::move(callback));
+        }
+    }
+
+    void ScannedValuesPanel::set_find_access_callback(ScannedValuesControl::FindAccessCallback callback) const
+    {
+        if (m_control)
+        {
+            m_control->set_find_access_callback(std::move(callback));
         }
     }
 

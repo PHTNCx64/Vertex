@@ -4,7 +4,6 @@
 //
 #include <vertex/view/debugger/registerspanel.hh>
 #include <vertex/utility.hh>
-#include <vertex/gui/theme/themeprovider.hh>
 #include <wx/textdlg.h>
 #include <wx/colour.h>
 #include <fmt/format.h>
@@ -12,10 +11,9 @@
 
 namespace Vertex::View::Debugger
 {
-    RegistersPanel::RegistersPanel(wxWindow* parent, Language::ILanguage& languageService, Gui::IThemeProvider& themeProvider)
+    RegistersPanel::RegistersPanel(wxWindow* parent, Language::ILanguage& languageService)
         : wxPanel(parent, wxID_ANY)
         , m_languageService(languageService)
-        , m_themeProvider(themeProvider)
     {
         create_controls();
         layout_controls();
@@ -75,8 +73,6 @@ namespace Vertex::View::Debugger
         {
             m_registerList->InsertItem(idx, wxString::Format("-- %s --", category.displayName));
             m_registerList->SetItem(idx, 1, EMPTY_STRING);
-            m_registerList->SetItemBackgroundColour(idx, m_themeProvider.palette().panel);
-            m_registerList->SetItemTextColour(idx, m_themeProvider.palette().textHeader);
             ++idx;
 
             std::vector<Runtime::RegisterInfo> categoryRegs;
@@ -213,15 +209,7 @@ namespace Vertex::View::Debugger
                 }
 
                 m_registerList->SetItem(idx, 1, format_register_value(value, regDef.bitWidth));
-
-                if (modified)
-                {
-                    m_registerList->SetItemTextColour(idx, m_themeProvider.palette().error);
-                }
-                else
-                {
-                    m_registerList->SetItemTextColour(idx, m_themeProvider.palette().text);
-                }
+                (void)modified;
             }
         }
         else
@@ -267,7 +255,6 @@ namespace Vertex::View::Debugger
                 {
                     const long idx = m_registerList->InsertItem(static_cast<long>(i), rows[i].name);
                     m_registerList->SetItem(idx, 1, rows[i].value);
-                    m_registerList->SetItemTextColour(idx, rows[i].modified ? m_themeProvider.palette().error : m_themeProvider.palette().text);
                 }
 
                 m_registerList->Thaw();
@@ -281,12 +268,6 @@ namespace Vertex::View::Debugger
                     if (m_registerList->GetItemText(idx, 1) != newValue)
                     {
                         m_registerList->SetItem(idx, 1, newValue);
-                    }
-
-                    const wxColour textColour = rows[i].modified ? m_themeProvider.palette().error : m_themeProvider.palette().text;
-                    if (m_registerList->GetItemTextColour(idx) != textColour)
-                    {
-                        m_registerList->SetItemTextColour(idx, textColour);
                     }
                 }
             }
@@ -358,31 +339,6 @@ namespace Vertex::View::Debugger
         }
     }
 
-    void RegistersPanel::refresh_theme() const
-    {
-        const auto& pal = m_themeProvider.palette();
-        m_registerList->SetBackgroundColour(pal.background);
-        m_registerList->SetForegroundColour(pal.text);
-
-        const long count = m_registerList->GetItemCount();
-        for (long i = 0; i < count; ++i)
-        {
-            const wxString itemText = m_registerList->GetItemText(i, 0);
-            if (itemText.StartsWith("--"))
-            {
-                m_registerList->SetItemBackgroundColour(i, pal.panel);
-                m_registerList->SetItemTextColour(i, pal.textHeader);
-            }
-            else
-            {
-                m_registerList->SetItemBackgroundColour(i, pal.background);
-                m_registerList->SetItemTextColour(i, pal.text);
-            }
-        }
-
-        m_registerList->Refresh();
-    }
-
     void RegistersPanel::on_item_activated(const wxListEvent& event)
     {
         const long idx = event.GetIndex();
@@ -404,7 +360,6 @@ namespace Vertex::View::Debugger
             wxString::FromUTF8(fmt::format("{}: {}", m_languageService.fetch_translation("debugger.registers.enterNewValue"), regName.ToStdString())),
             wxString::FromUTF8(m_languageService.fetch_translation("debugger.registers.setRegisterValue")),
             currentValue);
-        Gui::ThemeProvider::apply_palette_to_tree(&dialog, m_themeProvider.palette());
 
         if (dialog.ShowModal() == wxID_OK && m_setRegisterCallback)
         {

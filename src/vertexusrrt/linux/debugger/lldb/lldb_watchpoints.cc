@@ -4,6 +4,7 @@
 //
 
 #include <vertexusrrt/linux/lldb_backend.hh>
+#include <vertexusrrt/watchpoint_throttle.hh>
 #include <sdk/api.h>
 
 extern "C"
@@ -69,6 +70,7 @@ extern "C"
 
         state.target.DeleteWatchpoint(it->second.lldbId);
         state.watchpoints.erase(it);
+        debugger::clear_watchpoint_throttle_entry(watchpointId);
         return StatusCode::STATUS_OK;
     }
 
@@ -83,7 +85,7 @@ extern "C"
 
         std::scoped_lock lock{state.breakpointMutex};
 
-        auto it = state.watchpoints.find(watchpointId);
+        const auto it = state.watchpoints.find(watchpointId);
         if (it == state.watchpoints.end())
         {
             return StatusCode::STATUS_ERROR_BREAKPOINT_NOT_FOUND;

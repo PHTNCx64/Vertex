@@ -15,6 +15,7 @@
 #include <vertex/view/debugger/threadspanel.hh>
 #include <vertex/view/debugger/watchpanel.hh>
 #include <vertex/view/debugger/consolepanel.hh>
+#include <vertex/event/types/debuggerevent.hh>
 #include <vertex/event/types/viewupdateevent.hh>
 #include <vertex/utility.hh>
 
@@ -46,8 +47,7 @@ namespace Vertex::View
         const wxString& title,
         std::unique_ptr<ViewModel::DebuggerViewModel> viewModel,
         Language::ILanguage& languageService,
-        Gui::IIconManager& iconManager,
-        Gui::IThemeProvider& themeProvider
+        Gui::IIconManager& iconManager
     )
         : wxFrame(nullptr, wxID_ANY, title,
                   wxDefaultPosition,
@@ -55,7 +55,6 @@ namespace Vertex::View
         , m_viewModel(std::move(viewModel))
         , m_languageService(languageService)
         , m_iconManager(iconManager)
-        , m_themeProvider(themeProvider)
     {
         wxMemoryInputStream logoStream{Vertex::Gui::logo_ico, Vertex::Gui::logo_ico_size};
         const wxIconBundle iconBundle{logoStream, wxBITMAP_TYPE_ICO};
@@ -236,17 +235,17 @@ namespace Vertex::View
 
     void DebuggerView::create_panels()
     {
-        m_disassemblyPanel = new Debugger::DisassemblyPanel(this, m_languageService, m_iconManager, m_themeProvider);
+        m_disassemblyPanel = new Debugger::DisassemblyPanel(this, m_languageService, m_iconManager);
         m_breakpointsPanel = new Debugger::BreakpointsPanel(this, m_languageService);
         m_watchpointsPanel = new Debugger::WatchpointsPanel(this, m_languageService);
-        m_registersPanel = new Debugger::RegistersPanel(this, m_languageService, m_themeProvider);
+        m_registersPanel = new Debugger::RegistersPanel(this, m_languageService);
         m_stackPanel = new Debugger::StackPanel(this, m_languageService);
         m_memoryPanel = new Debugger::MemoryPanel(this, m_languageService);
         m_hexEditorPanel = new Debugger::HexEditorPanel(this, m_languageService);
         m_importExportPanel = new Debugger::ImportExportPanel(this, m_languageService);
-        m_threadsPanel = new Debugger::ThreadsPanel(this, m_languageService, m_themeProvider);
+        m_threadsPanel = new Debugger::ThreadsPanel(this, m_languageService);
         m_watchPanel = new Debugger::WatchPanel(this, m_languageService);
-        m_consolePanel = new Debugger::ConsolePanel(this, m_languageService, m_themeProvider);
+        m_consolePanel = new Debugger::ConsolePanel(this, m_languageService);
     }
 
     void DebuggerView::layout_controls()
@@ -862,6 +861,21 @@ namespace Vertex::View
             CallAfter([this]()
             {
                 std::ignore = toggle_view();
+            });
+        }
+        else if (eventId == Event::DEBUGGER_NAVIGATE_EVENT)
+        {
+            const auto& navEvent = static_cast<const Event::DebuggerNavigateEvent&>(event);
+            if (navEvent.get_target() != Event::NavigationTarget::Disassembly)
+            {
+                return;
+            }
+            const std::uint64_t address = navEvent.get_address();
+            CallAfter([this, address]()
+            {
+                ensure_disassembly_visible();
+                navigate_to_address(address);
+                update_view(ViewUpdateFlags::DEBUGGER_DISASSEMBLY);
             });
         }
         else if (eventId == Event::VIEW_UPDATE_EVENT)

@@ -10,6 +10,7 @@
 #include <fmt/format.h>
 
 #include <vertex/event/eventid.hh>
+#include <vertex/event/types/debuggerevent.hh>
 #include <vertex/event/types/processcloseevent.hh>
 #include <vertex/event/types/viewevent.hh>
 #include <vertex/event/types/viewupdateevent.hh>
@@ -146,6 +147,15 @@ namespace Vertex::ViewModel
                                                        {
                                                            on_process_closed();
                                                        });
+
+        m_eventBus.subscribe<Event::DebuggerNavigateEvent>(m_viewModelName, Event::DEBUGGER_NAVIGATE_EVENT,
+                                                          [this](const Event::DebuggerNavigateEvent& evt)
+                                                          {
+                                                              if (m_eventCallback)
+                                                              {
+                                                                  m_eventCallback(Event::DEBUGGER_NAVIGATE_EVENT, evt);
+                                                              }
+                                                          });
     }
 
     void DebuggerViewModel::unsubscribe_from_events() const { m_eventBus.unsubscribe_all(m_viewModelName); }

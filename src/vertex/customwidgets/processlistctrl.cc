@@ -7,27 +7,24 @@
 namespace Vertex::CustomWidgets
 {
     ProcessListControl::ProcessListControl(wxWindow* parent, Language::ILanguage& languageService, const std::shared_ptr<ViewModel::ProcessListViewModel>& viewModel)
-        : wxDataViewCtrl(parent, wxID_ANY, wxDefaultPosition, wxDefaultSize, wxDV_ROW_LINES | wxDV_SINGLE)
+        : VertexDataViewCtrl(parent, wxID_ANY, wxDV_ROW_LINES | wxDV_SINGLE)
         , m_languageService(languageService)
         , m_viewModel(viewModel)
         , m_dataModel(new ProcessListDataModel(viewModel))
     {
-        wxDataViewCtrl::AssociateModel(m_dataModel.get());
+        AssociateModel(m_dataModel.get());
 
-        AppendTextColumn(
+        append_text_column(
             wxString::FromUTF8(m_languageService.fetch_translation("processListView.columns.processId")),
-            0, wxDATAVIEW_CELL_INERT, FromDIP(COLUMN_WIDTH_DEFAULT),
-            wxALIGN_NOT, wxDATAVIEW_COL_SORTABLE | wxDATAVIEW_COL_RESIZABLE);
+            0, COLUMN_WIDTH_DEFAULT);
 
-        AppendTextColumn(
+        append_text_column(
             wxString::FromUTF8(m_languageService.fetch_translation("processListView.columns.processName")),
-            1, wxDATAVIEW_CELL_INERT, FromDIP(COLUMN_WIDTH_DEFAULT),
-            wxALIGN_NOT, wxDATAVIEW_COL_SORTABLE | wxDATAVIEW_COL_RESIZABLE);
+            1, COLUMN_WIDTH_DEFAULT);
 
-        AppendTextColumn(
+        append_text_column(
             wxString::FromUTF8(m_languageService.fetch_translation("processListView.columns.processOwner")),
-            2, wxDATAVIEW_CELL_INERT, FromDIP(COLUMN_WIDTH_DEFAULT),
-            wxALIGN_NOT, wxDATAVIEW_COL_SORTABLE | wxDATAVIEW_COL_RESIZABLE);
+            2, COLUMN_WIDTH_DEFAULT);
     }
 
     ProcessListControl::~ProcessListControl() = default;

@@ -10,12 +10,10 @@ namespace Vertex::View::Debugger
 {
     DisassemblyPanel::DisassemblyPanel(wxWindow* parent,
                                         Language::ILanguage& languageService,
-                                        Gui::IIconManager& iconManager,
-                                        Gui::IThemeProvider& themeProvider)
+                                        Gui::IIconManager& iconManager)
         : wxPanel(parent, wxID_ANY)
         , m_languageService(languageService)
         , m_iconManager(iconManager)
-        , m_themeProvider(themeProvider)
     {
         create_controls();
         layout_controls();
@@ -30,8 +28,8 @@ namespace Vertex::View::Debugger
         m_addressInput = new wxTextCtrl(this, wxID_ANY, "0x", wxDefaultPosition, wxSize(FromDIP(150), -1), wxTE_PROCESS_ENTER);
         m_goButton = new wxButton(this, wxID_ANY, wxString::FromUTF8(m_languageService.fetch_translation("debugger.ui.go")));
 
-        m_disassemblyHeader = new DisassemblyHeader(this, m_languageService, m_themeProvider);
-        m_disassemblyControl = new DisassemblyControl(this, m_languageService, m_themeProvider, m_disassemblyHeader);
+        m_disassemblyHeader = new DisassemblyHeader(this, m_languageService);
+        m_disassemblyControl = new DisassemblyControl(this, m_languageService, m_disassemblyHeader);
     }
 
     void DisassemblyPanel::layout_controls()
@@ -163,18 +161,6 @@ namespace Vertex::View::Debugger
         if (input.ToULongLong(&address, 16) && m_navigateCallback)
         {
             m_navigateCallback(address);
-        }
-    }
-
-    void DisassemblyPanel::refresh_theme()
-    {
-        if (m_disassemblyHeader)
-        {
-            m_disassemblyHeader->refresh_theme();
-        }
-        if (m_disassemblyControl)
-        {
-            m_disassemblyControl->refresh_theme();
         }
     }
 

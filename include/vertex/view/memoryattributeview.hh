@@ -14,7 +14,6 @@
 
 #include <vertex/viewmodel/memoryattributeviewmodel.hh>
 #include <vertex/language/ilanguage.hh>
-#include <vertex/gui/theme/ithemeprovider.hh>
 #include <vertex/event/eventid.hh>
 #include <vertex/event/vertexevent.hh>
 
@@ -23,7 +22,7 @@ namespace Vertex::View
     class MemoryAttributeView final : public wxDialog
     {
       public:
-        MemoryAttributeView(std::unique_ptr<ViewModel::MemoryAttributeViewModel> viewModel, Language::ILanguage& languageService, Gui::IThemeProvider& themeProvider);
+        MemoryAttributeView(std::unique_ptr<ViewModel::MemoryAttributeViewModel> viewModel, Language::ILanguage& languageService);
 
         ~MemoryAttributeView() override = default;
 
@@ -44,7 +43,6 @@ namespace Vertex::View
         std::unique_ptr<ViewModel::MemoryAttributeViewModel> m_viewModel;
 
         Language::ILanguage& m_languageService;
-        Gui::IThemeProvider& m_themeProvider;
 
         wxStaticBox* m_protectionBox{};
         wxStaticBox* m_stateBox{};

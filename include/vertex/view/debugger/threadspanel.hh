@@ -12,7 +12,6 @@
 #include <functional>
 #include <vertex/debugger/debuggertypes.hh>
 #include <vertex/language/language.hh>
-#include <vertex/gui/theme/ithemeprovider.hh>
 
 namespace Vertex::View::Debugger
 {
@@ -23,7 +22,7 @@ namespace Vertex::View::Debugger
         using SuspendThreadCallback = std::function<void(std::uint32_t threadId)>;
         using ResumeThreadCallback = std::function<void(std::uint32_t threadId)>;
 
-        ThreadsPanel(wxWindow* parent, Language::ILanguage& languageService, Gui::IThemeProvider& themeProvider);
+        ThreadsPanel(wxWindow* parent, Language::ILanguage& languageService);
 
         void update_threads(const std::vector<::Vertex::Debugger::ThreadInfo>& threads);
         void set_current_thread(std::uint32_t threadId);
@@ -32,8 +31,6 @@ namespace Vertex::View::Debugger
         void set_select_callback(SelectThreadCallback callback);
         void set_suspend_callback(SuspendThreadCallback callback);
         void set_resume_callback(ResumeThreadCallback callback);
-
-        void refresh_theme() const;
 
     private:
         void create_controls();
@@ -56,6 +53,5 @@ namespace Vertex::View::Debugger
         ResumeThreadCallback m_resumeCallback{};
 
         Language::ILanguage& m_languageService;
-        Gui::IThemeProvider& m_themeProvider;
     };
 }

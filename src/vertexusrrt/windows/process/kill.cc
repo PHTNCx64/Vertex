@@ -10,11 +10,6 @@
 
 extern native_handle& get_native_handle();
 
-namespace ProcessInternal
-{
-    StatusCode invalidate_handle();
-}
-
 extern "C"
 {
     VERTEX_EXPORT StatusCode VERTEX_API vertex_process_kill()
@@ -27,7 +22,7 @@ extern "C"
 
         if (TerminateProcess(handle, STATUS_OK))
         {
-            return ProcessInternal::invalidate_handle();
+            return StatusCode::STATUS_OK;
         }
         return StatusCode::STATUS_ERROR_PROCESS_INVALID;
     }

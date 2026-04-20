@@ -10,7 +10,7 @@
 #include <vertex/event/types/scriptoutputevent.hh>
 #include <vertex/event/types/scriptdiagnosticevent.hh>
 #include <vertex/utility.hh>
-#include <vertex/gui/theme/themeprovider.hh>
+#include <wx/settings.h>
 
 #include <wx/filedlg.h>
 #include <wx/msgdlg.h>
@@ -215,6 +215,21 @@ namespace Vertex::View
             }
 
             return {};
+        }
+
+        void expand_script_browser_item(wxTreeCtrl& tree, const wxTreeItemId& item)
+        {
+            if (!item.IsOk())
+            {
+                return;
+            }
+
+            if (tree.HasFlag(wxTR_HIDE_ROOT) && item == tree.GetRootItem())
+            {
+                return;
+            }
+
+            tree.Expand(item);
         }
 
         [[nodiscard]] bool is_identifier_char(const int character)
@@ -685,6 +700,8 @@ namespace Vertex::View
         ID_SCRIPT_TEMPLATE_PROCESS_MONITOR,
         ID_SCRIPT_TEMPLATE_MEMORY_PATCHER,
         ID_SCRIPT_TEMPLATE_UI_TOOL,
+        ID_SCRIPT_TEMPLATE_BULK_MEMORY_READ,
+        ID_SCRIPT_TEMPLATE_PROCESS_MODULES_SNAPSHOT,
         ID_SCRIPT_STOP_CONTEXT,
         ID_SCRIPT_SUSPEND_CONTEXT,
         ID_SCRIPT_RESUME_CONTEXT,
@@ -697,74 +714,41 @@ namespace Vertex::View
     {
         int commandId{};
         std::string_view translationKey{};
+        std::string_view fallbackLabel{};
         std::string_view fileName{};
-        std::string_view fallbackContent{};
     };
 
     constexpr std::array SCRIPT_TEMPLATES{
         ScriptTemplateDefinition{
             .commandId = ID_SCRIPT_TEMPLATE_BASIC,
             .translationKey = "scriptingView.ui.templateBasic",
-            .fileName = "basic.vscr",
-            .fallbackContent =
-                "// Basic Vertex script template.\n"
-                "void main()\n"
-                "{\n"
-                "    log_info(\"Script started.\");\n"
-                "}\n"},
+            .fallbackLabel = "Basic",
+            .fileName = "basic.vscr"},
         ScriptTemplateDefinition{
             .commandId = ID_SCRIPT_TEMPLATE_PROCESS_MONITOR,
             .translationKey = "scriptingView.ui.templateProcessMonitor",
-            .fileName = "process_monitor.vscr",
-            .fallbackContent =
-                "// Process monitor template.\n"
-                "// Adjust process APIs and parameters for your target.\n"
-                "void main()\n"
-                "{\n"
-                "    log_info(\"Process monitor started.\");\n"
-                "\n"
-                "    while (true)\n"
-                "    {\n"
-                "        // Example flow:\n"
-                "        // refresh_process_list();\n"
-                "        // const uint processCount = get_process_count();\n"
-                "        // ... inspect entries here ...\n"
-                "        sleep(1000);\n"
-                "    }\n"
-                "}\n"},
+            .fallbackLabel = "Process Monitor",
+            .fileName = "process_monitor.vscr"},
         ScriptTemplateDefinition{
             .commandId = ID_SCRIPT_TEMPLATE_MEMORY_PATCHER,
             .translationKey = "scriptingView.ui.templateMemoryPatcher",
-            .fileName = "memory_patcher.vscr",
-            .fallbackContent =
-                "// Memory patcher template.\n"
-                "// Replace placeholder addresses and values before running.\n"
-                "void main()\n"
-                "{\n"
-                "    log_info(\"Memory patcher started.\");\n"
-                "\n"
-                "    // Example flow:\n"
-                "    // uint64 targetAddress = 0x0;\n"
-                "    // string bytes;\n"
-                "    // read_memory(targetAddress, 8, bytes);\n"
-                "    // write_memory(targetAddress, bytes);\n"
-                "}\n"},
+            .fallbackLabel = "Memory API",
+            .fileName = "memory_patcher.vscr"},
         ScriptTemplateDefinition{
             .commandId = ID_SCRIPT_TEMPLATE_UI_TOOL,
             .translationKey = "scriptingView.ui.templateUITool",
-            .fileName = "ui_tool.vscr",
-            .fallbackContent =
-                "// UI tool template.\n"
-                "void main()\n"
-                "{\n"
-                "    log_info(\"UI tool started.\");\n"
-                "\n"
-                "    // Example flow:\n"
-                "    // auto@ frame = ui_create_frame(\"Template Tool\", 480, 320);\n"
-                "    // auto@ layout = ui_create_box_sizer(UI_VERTICAL);\n"
-                "    // frame.set_sizer(layout);\n"
-                "    // frame.show();\n"
-                "}\n"}};
+            .fallbackLabel = "UI Tool",
+            .fileName = "ui_tool.vscr"},
+        ScriptTemplateDefinition{
+            .commandId = ID_SCRIPT_TEMPLATE_BULK_MEMORY_READ,
+            .translationKey = "scriptingView.ui.templateBulkMemoryRead",
+            .fallbackLabel = "Bulk Memory Read",
+            .fileName = "bulk_memory_read.vscr"},
+        ScriptTemplateDefinition{
+            .commandId = ID_SCRIPT_TEMPLATE_PROCESS_MODULES_SNAPSHOT,
+            .translationKey = "scriptingView.ui.templateProcessModulesSnapshot",
+            .fallbackLabel = "Module Snapshot",
+            .fileName = "process_modules_snapshot.vscr"}};
 
     [[nodiscard]] const ScriptTemplateDefinition* script_template_definition(const int commandId)
     {
@@ -776,10 +760,22 @@ namespace Vertex::View
         return it != SCRIPT_TEMPLATES.end() ? &(*it) : nullptr;
     }
 
+    [[nodiscard]] std::string script_template_label(
+        Language::ILanguage& languageService,
+        const ScriptTemplateDefinition& templateDefinition)
+    {
+        auto translated = languageService.fetch_translation(templateDefinition.translationKey);
+        if (!translated.empty() && translated != "[NO_TRANSLATION_PROVIDED]")
+        {
+            return translated;
+        }
+
+        return std::string{templateDefinition.fallbackLabel};
+    }
+
     ScriptingView::ScriptingView(Language::ILanguage& languageService,
                                   std::unique_ptr<ViewModel::ScriptingViewModel> viewModel,
-                                  Gui::IIconManager& iconManager,
-                                  Gui::IThemeProvider& themeProvider)
+                                  Gui::IIconManager& iconManager)
         : wxDialog(wxTheApp->GetTopWindow(), wxID_ANY,
                     wxString::FromUTF8(languageService.fetch_translation("scriptingView.ui.title")),
                     wxDefaultPosition, wxSize(ScriptingViewValues::EDITOR_WIDTH, ScriptingViewValues::EDITOR_HEIGHT),
@@ -787,8 +783,7 @@ namespace Vertex::View
           m_refreshTimer{this},
           m_viewModel{std::move(viewModel)},
           m_languageService{languageService},
-          m_iconManager{iconManager},
-          m_themeProvider{themeProvider}
+          m_iconManager{iconManager}
     {
         m_viewModel->set_event_callback(
             [this](const Event::EventId eventId, const Event::VertexEvent& event)
@@ -801,7 +796,6 @@ namespace Vertex::View
         initialize_autocomplete();
         initialize_call_tips();
         configure_editor();
-        apply_theme();
         layout_controls();
         bind_events();
         m_refreshTimer.Start(StandardWidgetValues::TIMER_INTERVAL_MS);
@@ -902,7 +896,7 @@ namespace Vertex::View
             m_scriptBrowserPanel, wxID_ANY, wxDefaultPosition, wxDefaultSize,
             wxTR_HAS_BUTTONS | wxTR_LINES_AT_ROOT | wxTR_HIDE_ROOT | wxTR_SINGLE);
 
-        const auto theme = m_themeProvider.current_theme();
+        const auto theme = m_iconManager.get_current_theme();
         const auto iconSize = FromDIP(StandardWidgetValues::ICON_SIZE);
 
         m_toolbar = new wxToolBar(
@@ -1131,140 +1125,6 @@ namespace Vertex::View
 
     void ScriptingView::apply_theme() const
     {
-        if (!m_codeEditor || !m_outputPanel || !m_minimap)
-        {
-            return;
-        }
-
-        const auto& p = m_themeProvider.palette();
-
-        m_codeEditor->StyleSetForeground(wxSTC_STYLE_DEFAULT, p.text);
-        m_codeEditor->StyleSetBackground(wxSTC_STYLE_DEFAULT, p.background);
-        m_codeEditor->StyleClearAll();
-
-        m_codeEditor->StyleSetForeground(wxSTC_C_DEFAULT, p.text);
-        m_codeEditor->StyleSetBackground(wxSTC_C_DEFAULT, p.background);
-
-        m_codeEditor->StyleSetForeground(wxSTC_C_COMMENT, p.syntaxComment);
-        m_codeEditor->StyleSetBackground(wxSTC_C_COMMENT, p.background);
-
-        m_codeEditor->StyleSetForeground(wxSTC_C_COMMENTLINE, p.syntaxComment);
-        m_codeEditor->StyleSetBackground(wxSTC_C_COMMENTLINE, p.background);
-
-        m_codeEditor->StyleSetForeground(wxSTC_C_COMMENTDOC, p.syntaxComment);
-        m_codeEditor->StyleSetBackground(wxSTC_C_COMMENTDOC, p.background);
-
-        m_codeEditor->StyleSetForeground(wxSTC_C_NUMBER, p.syntaxImmediate);
-        m_codeEditor->StyleSetBackground(wxSTC_C_NUMBER, p.background);
-
-        m_codeEditor->StyleSetForeground(wxSTC_C_WORD, p.syntaxKeyword);
-        m_codeEditor->StyleSetBackground(wxSTC_C_WORD, p.background);
-        m_codeEditor->StyleSetBold(wxSTC_C_WORD, true);
-
-        m_codeEditor->StyleSetForeground(wxSTC_C_WORD2, p.syntaxFlowCall);
-        m_codeEditor->StyleSetBackground(wxSTC_C_WORD2, p.background);
-
-        m_codeEditor->StyleSetForeground(wxSTC_C_STRING, p.syntaxOperand);
-        m_codeEditor->StyleSetBackground(wxSTC_C_STRING, p.background);
-
-        m_codeEditor->StyleSetForeground(wxSTC_C_CHARACTER, p.syntaxOperand);
-        m_codeEditor->StyleSetBackground(wxSTC_C_CHARACTER, p.background);
-
-        m_codeEditor->StyleSetForeground(wxSTC_C_OPERATOR, p.text);
-        m_codeEditor->StyleSetBackground(wxSTC_C_OPERATOR, p.background);
-
-        m_codeEditor->StyleSetForeground(wxSTC_C_IDENTIFIER, p.text);
-        m_codeEditor->StyleSetBackground(wxSTC_C_IDENTIFIER, p.background);
-
-        m_codeEditor->StyleSetForeground(wxSTC_C_PREPROCESSOR, p.syntaxType);
-        m_codeEditor->StyleSetBackground(wxSTC_C_PREPROCESSOR, p.background);
-
-        m_codeEditor->StyleSetForeground(wxSTC_C_COMMENTLINEDOC, p.syntaxComment);
-        m_codeEditor->StyleSetBackground(wxSTC_C_COMMENTLINEDOC, p.background);
-
-        m_codeEditor->StyleSetForeground(wxSTC_STYLE_LINENUMBER, p.textSecondary);
-        m_codeEditor->StyleSetBackground(wxSTC_STYLE_LINENUMBER, p.gutterBackground);
-
-        m_codeEditor->SetCaretForeground(p.text);
-        m_codeEditor->SetCaretLineBackground(p.currentLine);
-        m_codeEditor->SetSelBackground(true, p.selection);
-        m_codeEditor->SetEdgeColour(p.border);
-
-        m_codeEditor->StyleSetForeground(wxSTC_STYLE_INDENTGUIDE, p.border);
-        m_codeEditor->StyleSetBackground(wxSTC_STYLE_INDENTGUIDE, p.background);
-
-        m_codeEditor->StyleSetForeground(wxSTC_STYLE_BRACELIGHT, p.accent);
-        m_codeEditor->StyleSetBackground(wxSTC_STYLE_BRACELIGHT, p.backgroundAlt);
-        m_codeEditor->StyleSetForeground(wxSTC_STYLE_BRACEBAD, p.error);
-        m_codeEditor->StyleSetBackground(wxSTC_STYLE_BRACEBAD, p.backgroundAlt);
-
-        m_codeEditor->MarkerSetForeground(wxSTC_MARKNUM_FOLDEROPEN, p.gutterBorder);
-        m_codeEditor->MarkerSetBackground(wxSTC_MARKNUM_FOLDEROPEN, p.gutterBackground);
-        m_codeEditor->MarkerSetForeground(wxSTC_MARKNUM_FOLDER, p.gutterBorder);
-        m_codeEditor->MarkerSetBackground(wxSTC_MARKNUM_FOLDER, p.gutterBackground);
-        m_codeEditor->MarkerSetForeground(wxSTC_MARKNUM_FOLDERSUB, p.gutterBorder);
-        m_codeEditor->MarkerSetBackground(wxSTC_MARKNUM_FOLDERSUB, p.gutterBackground);
-        m_codeEditor->MarkerSetForeground(wxSTC_MARKNUM_FOLDERTAIL, p.gutterBorder);
-        m_codeEditor->MarkerSetBackground(wxSTC_MARKNUM_FOLDERTAIL, p.gutterBackground);
-        m_codeEditor->MarkerSetForeground(wxSTC_MARKNUM_FOLDEREND, p.gutterBorder);
-        m_codeEditor->MarkerSetBackground(wxSTC_MARKNUM_FOLDEREND, p.gutterBackground);
-        m_codeEditor->MarkerSetForeground(wxSTC_MARKNUM_FOLDEROPENMID, p.gutterBorder);
-        m_codeEditor->MarkerSetBackground(wxSTC_MARKNUM_FOLDEROPENMID, p.gutterBackground);
-        m_codeEditor->MarkerSetForeground(wxSTC_MARKNUM_FOLDERMIDTAIL, p.gutterBorder);
-        m_codeEditor->MarkerSetBackground(wxSTC_MARKNUM_FOLDERMIDTAIL, p.gutterBackground);
-        m_codeEditor->MarkerSetForeground(ScriptingViewValues::DIAGNOSTIC_MARKER_ERROR, p.markerBreakpoint);
-        m_codeEditor->MarkerSetBackground(ScriptingViewValues::DIAGNOSTIC_MARKER_ERROR, p.markerBreakpoint);
-        m_codeEditor->MarkerSetForeground(ScriptingViewValues::DIAGNOSTIC_MARKER_WARNING, p.markerBreakpointPending);
-        m_codeEditor->MarkerSetBackground(ScriptingViewValues::DIAGNOSTIC_MARKER_WARNING, p.markerBreakpointPending);
-        m_codeEditor->MarkerSetForeground(ScriptingViewValues::SCRIPT_BREAKPOINT_MARKER, p.markerBreakpoint);
-        m_codeEditor->MarkerSetBackground(ScriptingViewValues::SCRIPT_BREAKPOINT_MARKER, p.markerBreakpoint);
-
-        m_outputPanel->StyleSetForeground(wxSTC_STYLE_DEFAULT, p.logInfo);
-        m_outputPanel->StyleSetBackground(wxSTC_STYLE_DEFAULT, p.backgroundAlt);
-        m_outputPanel->StyleClearAll();
-        m_outputPanel->StyleSetForeground(ScriptingViewValues::OUTPUT_STYLE_INFO, p.logInfo);
-        m_outputPanel->StyleSetBackground(ScriptingViewValues::OUTPUT_STYLE_INFO, p.backgroundAlt);
-        m_outputPanel->StyleSetForeground(ScriptingViewValues::OUTPUT_STYLE_WARNING, p.logWarning);
-        m_outputPanel->StyleSetBackground(ScriptingViewValues::OUTPUT_STYLE_WARNING, p.backgroundAlt);
-        m_outputPanel->StyleSetForeground(ScriptingViewValues::OUTPUT_STYLE_ERROR, p.logError);
-        m_outputPanel->StyleSetBackground(ScriptingViewValues::OUTPUT_STYLE_ERROR, p.backgroundAlt);
-        m_outputPanel->SetCaretForeground(p.logInfo);
-
-        m_minimap->StyleSetForeground(wxSTC_STYLE_DEFAULT, p.textSecondary);
-        m_minimap->StyleSetBackground(wxSTC_STYLE_DEFAULT, p.backgroundAlt);
-        m_minimap->StyleClearAll();
-        m_minimap->StyleSetForeground(wxSTC_STYLE_LINENUMBER, p.textSecondary);
-        m_minimap->StyleSetBackground(wxSTC_STYLE_LINENUMBER, p.backgroundAlt);
-        m_minimap->SetCaretForeground(p.textSecondary);
-
-        if (m_variableInspector)
-        {
-            m_variableInspector->SetForegroundColour(p.text);
-            m_variableInspector->SetBackgroundColour(p.backgroundAlt);
-        }
-
-        if (m_toolbar)
-        {
-            const auto theme = m_themeProvider.current_theme();
-            const auto iconSize = FromDIP(StandardWidgetValues::ICON_SIZE);
-
-            m_toolbar->SetToolNormalBitmap(ID_SCRIPT_NEW_TAB, m_iconManager.get_icon("new_window", iconSize, theme));
-            m_toolbar->SetToolNormalBitmap(ID_SCRIPT_OPEN, m_iconManager.get_icon("search", iconSize, theme));
-            m_toolbar->SetToolNormalBitmap(ID_SCRIPT_SAVE, m_iconManager.get_icon("code", iconSize, theme));
-            m_toolbar->SetToolNormalBitmap(ID_SCRIPT_CLOSE_TAB, m_iconManager.get_icon("close", iconSize, theme));
-            m_toolbar->SetToolNormalBitmap(ID_SCRIPT_FIND, m_iconManager.get_icon("search", iconSize, theme));
-            m_toolbar->SetToolNormalBitmap(ID_SCRIPT_REPLACE, m_iconManager.get_icon("restart", iconSize, theme));
-            m_toolbar->SetToolNormalBitmap(ID_SCRIPT_GOTO_LINE, m_iconManager.get_icon("arrow_down", iconSize, theme));
-            m_toolbar->SetToolNormalBitmap(ID_SCRIPT_EXECUTE, m_iconManager.get_icon("play", iconSize, theme));
-            m_toolbar->SetToolNormalBitmap(ID_SCRIPT_STOP_CONTEXT, m_iconManager.get_icon("stop", iconSize, theme));
-            m_toolbar->SetToolNormalBitmap(ID_SCRIPT_SUSPEND_CONTEXT, m_iconManager.get_icon("pause", iconSize, theme));
-            m_toolbar->SetToolNormalBitmap(ID_SCRIPT_RESUME_CONTEXT, m_iconManager.get_icon("play", iconSize, theme));
-            m_toolbar->SetToolNormalBitmap(ID_SCRIPT_CLEAR, m_iconManager.get_icon("close", iconSize, theme));
-            m_toolbar->SetToolNormalBitmap(ID_SCRIPT_CLEAR_OUTPUT, m_iconManager.get_icon("terminal", iconSize, theme));
-            m_toolbar->SetBackgroundColour(p.backgroundAlt);
-            m_toolbar->SetForegroundColour(p.text);
-            m_toolbar->Realize();
-        }
     }
 
     void ScriptingView::layout_controls()
@@ -1333,10 +1193,10 @@ namespace Vertex::View
         Bind(wxEVT_MENU, &ScriptingView::on_find_clicked, this, ID_SCRIPT_FIND);
         Bind(wxEVT_MENU, &ScriptingView::on_replace_clicked, this, ID_SCRIPT_REPLACE);
         Bind(wxEVT_MENU, &ScriptingView::on_go_to_line_clicked, this, ID_SCRIPT_GOTO_LINE);
-        Bind(wxEVT_MENU, &ScriptingView::on_new_from_template, this, ID_SCRIPT_TEMPLATE_BASIC);
-        Bind(wxEVT_MENU, &ScriptingView::on_new_from_template, this, ID_SCRIPT_TEMPLATE_PROCESS_MONITOR);
-        Bind(wxEVT_MENU, &ScriptingView::on_new_from_template, this, ID_SCRIPT_TEMPLATE_MEMORY_PATCHER);
-        Bind(wxEVT_MENU, &ScriptingView::on_new_from_template, this, ID_SCRIPT_TEMPLATE_UI_TOOL);
+        for (const auto& templateDefinition : SCRIPT_TEMPLATES)
+        {
+            Bind(wxEVT_MENU, &ScriptingView::on_new_from_template, this, templateDefinition.commandId);
+        }
         Bind(wxEVT_MENU, &ScriptingView::on_stop_context_clicked, this, ID_SCRIPT_STOP_CONTEXT);
         Bind(wxEVT_MENU, &ScriptingView::on_suspend_context_clicked, this, ID_SCRIPT_SUSPEND_CONTEXT);
         Bind(wxEVT_MENU, &ScriptingView::on_resume_context_clicked, this, ID_SCRIPT_RESUME_CONTEXT);
@@ -1390,14 +1250,6 @@ namespace Vertex::View
             event.Veto();
         });
 
-        Bind(wxEVT_SYS_COLOUR_CHANGED, [this](wxSysColourChangedEvent& event)
-        {
-            m_themeProvider.refresh();
-            apply_theme();
-            Gui::ThemeProvider::apply_palette_to_tree(this, m_themeProvider.palette());
-            Refresh();
-            event.Skip();
-        });
     }
 
     void ScriptingView::bind_editor_events(wxStyledTextCtrl* const editor)
@@ -1585,8 +1437,31 @@ namespace Vertex::View
 
     std::filesystem::path ScriptingView::resolve_template_path(const std::string_view templateFileName) const
     {
+        if (templateFileName.empty())
+        {
+            return {};
+        }
+
         const auto templatePath = std::filesystem::path{std::string{templateFileName}};
         std::error_code errorCode{};
+
+        const auto scriptDirectory = m_viewModel->get_default_script_directory();
+        if (!scriptDirectory.empty())
+        {
+            const std::array scriptCandidates{
+                scriptDirectory / templatePath,
+                scriptDirectory / "templates" / templatePath};
+
+            for (const auto& candidatePath : scriptCandidates)
+            {
+                if (std::filesystem::exists(candidatePath, errorCode) && !errorCode)
+                {
+                    return candidatePath;
+                }
+                errorCode.clear();
+            }
+        }
+
         const auto currentPath = std::filesystem::current_path(errorCode);
         if (errorCode)
         {
@@ -1601,6 +1476,7 @@ namespace Vertex::View
             {
                 return candidatePath;
             }
+            errorCode.clear();
 
             const auto parentPath = searchRoot.parent_path();
             if (parentPath == searchRoot || parentPath.empty())
@@ -1610,7 +1486,7 @@ namespace Vertex::View
             searchRoot = parentPath;
         }
 
-        return currentPath / "resources" / "templates" / templatePath;
+        return {};
     }
 
     void ScriptingView::create_tab_from_template(const int commandId)
@@ -1621,22 +1497,27 @@ namespace Vertex::View
             return;
         }
 
-        std::string content{};
         const auto templatePath = resolve_template_path(templateDefinition->fileName);
-        if (!templatePath.empty())
+        if (templatePath.empty())
         {
-            if (auto loadedTemplate = m_viewModel->load_script(templatePath); loadedTemplate.has_value())
-            {
-                content = std::move(loadedTemplate.value());
-            }
+            wxMessageBox(
+                wxString::FromUTF8(m_languageService.fetch_translation("scriptingView.ui.loadFailed")),
+                wxString::FromUTF8(m_languageService.fetch_translation("general.error")),
+                wxOK | wxICON_ERROR, this);
+            return;
         }
 
-        if (content.empty())
+        auto loadedTemplate = m_viewModel->load_script(templatePath);
+        if (!loadedTemplate.has_value())
         {
-            content = std::string{templateDefinition->fallbackContent};
+            wxMessageBox(
+                wxString::FromUTF8(m_languageService.fetch_translation("scriptingView.ui.loadFailed")),
+                wxString::FromUTF8(m_languageService.fetch_translation("general.error")),
+                wxOK | wxICON_ERROR, this);
+            return;
         }
 
-        create_editor_tab(content, {}, true);
+        create_editor_tab(loadedTemplate.value(), {}, true);
     }
 
     void ScriptingView::load_recent_scripts()
@@ -1787,14 +1668,14 @@ namespace Vertex::View
             new ScriptBrowserItemData(rootDirectory, true));
 
         append_script_browser_children(rootItem, rootDirectory);
-        m_scriptBrowser->Expand(rootItem);
+        expand_script_browser_item(*m_scriptBrowser, rootItem);
 
         for (const auto& expandedPath : expandedPaths)
         {
             const auto expandedItem = find_script_browser_item(*m_scriptBrowser, rootItem, expandedPath);
             if (expandedItem.IsOk())
             {
-                m_scriptBrowser->Expand(expandedItem);
+                expand_script_browser_item(*m_scriptBrowser, expandedItem);
             }
         }
 
@@ -2436,7 +2317,7 @@ namespace Vertex::View
         {
             templateMenu->Append(
                 templateDefinition.commandId,
-                wxString::FromUTF8(m_languageService.fetch_translation(templateDefinition.translationKey)));
+                wxString::FromUTF8(script_template_label(m_languageService, templateDefinition)));
         }
 
         menu.AppendSubMenu(
@@ -3778,7 +3659,7 @@ namespace Vertex::View
             case Scripting::ScriptState::Error:
                 return {200, 50, 50};
             case Scripting::ScriptState::Ready:
-                return m_themeProvider.palette().text;
+                return wxSystemSettings::GetColour(wxSYS_COLOUR_WINDOWTEXT);
         }
 
         std::unreachable();

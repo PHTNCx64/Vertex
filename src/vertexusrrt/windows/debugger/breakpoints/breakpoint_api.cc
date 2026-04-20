@@ -228,16 +228,6 @@ extern "C"
         return STATUS_OK;
     }
 
-    VERTEX_EXPORT void VERTEX_API vertex_debugger_free_breakpoints(BreakpointInfo* breakpoints)
-    {
-        std::free(breakpoints);
-    }
-
-    VERTEX_EXPORT void VERTEX_API vertex_debugger_free_watchpoints(WatchpointInfo* watchpoints)
-    {
-        std::free(watchpoints);
-    }
-
     VERTEX_EXPORT StatusCode VERTEX_API vertex_debugger_set_breakpoint_condition(const std::uint32_t breakpointId,
                                                                                   const BreakpointCondition* condition)
     {

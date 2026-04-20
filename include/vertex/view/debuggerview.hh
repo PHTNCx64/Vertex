@@ -20,7 +20,6 @@
 #include <vertex/viewmodel/debuggerviewmodel.hh>
 #include <vertex/language/language.hh>
 #include <vertex/gui/iconmanager/iconmanager.hh>
-#include <vertex/gui/theme/ithemeprovider.hh>
 #include <vertex/event/eventid.hh>
 #include <vertex/event/vertexevent.hh>
 
@@ -48,8 +47,7 @@ namespace Vertex::View
             const wxString& title,
             std::unique_ptr<ViewModel::DebuggerViewModel> viewModel,
             Language::ILanguage& languageService,
-            Gui::IIconManager& iconManager,
-            Gui::IThemeProvider& themeProvider
+            Gui::IIconManager& iconManager
         );
 
         ~DebuggerView() override;
@@ -167,7 +165,6 @@ namespace Vertex::View
         std::unique_ptr<ViewModel::DebuggerViewModel> m_viewModel{};
         Language::ILanguage& m_languageService;
         Gui::IIconManager& m_iconManager;
-        Gui::IThemeProvider& m_themeProvider;
 
         ViewUpdateFlags m_pendingUpdateFlags{ViewUpdateFlags::NONE};
         bool m_hasPendingUpdate{};

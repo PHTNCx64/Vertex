@@ -10,21 +10,19 @@
 
 extern native_handle& get_native_handle();
 
-namespace ProcessInternal
-{
-    StatusCode invalidate_handle();
-}
-
 extern "C"
 {
     VERTEX_EXPORT StatusCode VERTEX_API vertex_process_close()
     {
-        const native_handle& handle = get_native_handle();
+        native_handle& handle = get_native_handle();
         if (handle == INVALID_HANDLE_VALUE)
         {
             return StatusCode::STATUS_ERROR_PROCESS_NOT_FOUND;
         }
 
-        return ProcessInternal::invalidate_handle();
+        CloseHandle(handle);
+        handle = INVALID_HANDLE_VALUE;
+
+        return StatusCode::STATUS_OK;
     }
 }

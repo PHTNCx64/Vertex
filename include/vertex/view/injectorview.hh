@@ -14,14 +14,13 @@
 #include <vertex/language/language.hh>
 #include <vertex/viewmodel/injectorviewmodel.hh>
 #include <vertex/event/eventbus.hh>
-#include <vertex/gui/theme/ithemeprovider.hh>
 
 namespace Vertex::View
 {
     class InjectorView final : public wxDialog
     {
     public:
-        InjectorView(Language::ILanguage& languageService, std::unique_ptr<ViewModel::InjectorViewModel> viewModel, Gui::IThemeProvider& themeProvider);
+        InjectorView(Language::ILanguage& languageService, std::unique_ptr<ViewModel::InjectorViewModel> viewModel);
 
     private:
         void vertex_event_callback(Event::EventId eventId, const Event::VertexEvent& event);
@@ -45,6 +44,5 @@ namespace Vertex::View
 
         std::unique_ptr<ViewModel::InjectorViewModel> m_viewModel{};
         Language::ILanguage& m_languageService;
-        Gui::IThemeProvider& m_themeProvider;
     };
 }

@@ -5,25 +5,149 @@
 #include <fmt/format.h>
 #include <vertex/model/mainmodel.hh>
 
+#include <vertex/scanner/plugin_value_format.hh>
+
 #include <vertex/scanner/valueconverter.hh>
 #include <vertex/scanner/pluginmemoryreader.hh>
 #include <vertex/runtime/caller.hh>
+#include <vertex/runtime/command.hh>
+#include <vertex/scanner/scanner_command.hh>
 #include <vertex/thread/threadchannel.hh>
 #include <sdk/memory.h>
+#include <array>
 #include <ranges>
 #include <algorithm>
 #include <limits>
 #include <string_view>
 
+namespace
+{
+    [[nodiscard]] constexpr std::uint32_t numeric_system_to_mask(const NumericSystem system) noexcept
+    {
+        switch (system)
+        {
+            case VERTEX_BINARY:      return VERTEX_NUMERIC_SYSTEM_MASK_BINARY;
+            case VERTEX_OCTAL:       return VERTEX_NUMERIC_SYSTEM_MASK_OCTAL;
+            case VERTEX_DECIMAL:     return VERTEX_NUMERIC_SYSTEM_MASK_DECIMAL;
+            case VERTEX_HEXADECIMAL: return VERTEX_NUMERIC_SYSTEM_MASK_HEXADECIMAL;
+            default:                 return 0u;
+        }
+    }
+
+    [[nodiscard]] StatusCode convert_with_fallback(const Vertex::Scanner::TypeSchema& schema,
+                                                    const NumericSystem primary,
+                                                    const std::string& input,
+                                                    std::vector<std::uint8_t>& output)
+    {
+        const StatusCode primaryStatus = Vertex::Scanner::convert_plugin_input(schema, primary, input, output);
+        if (primaryStatus == StatusCode::STATUS_OK)
+        {
+            return StatusCode::STATUS_OK;
+        }
+
+        const std::uint32_t mask = (schema.sdkType && schema.sdkType->uiHints)
+            ? schema.sdkType->uiHints->numericSystemsMask
+            : 0u;
+
+        if (mask == 0u)
+        {
+            const NumericSystem legacyFallback = (primary == VERTEX_HEXADECIMAL) ? VERTEX_DECIMAL : VERTEX_HEXADECIMAL;
+            const StatusCode fallbackStatus = Vertex::Scanner::convert_plugin_input(schema, legacyFallback, input, output);
+            if (fallbackStatus == StatusCode::STATUS_OK)
+            {
+                return StatusCode::STATUS_OK;
+            }
+            return primaryStatus;
+        }
+
+        static constexpr std::array<NumericSystem, 4> PREFERENCE{VERTEX_HEXADECIMAL, VERTEX_DECIMAL, VERTEX_OCTAL, VERTEX_BINARY};
+        for (const NumericSystem candidate : PREFERENCE)
+        {
+            if (candidate == primary)
+            {
+                continue;
+            }
+            if ((mask & numeric_system_to_mask(candidate)) == 0u)
+            {
+                continue;
+            }
+            const StatusCode status = Vertex::Scanner::convert_plugin_input(schema, candidate, input, output);
+            if (status == StatusCode::STATUS_OK)
+            {
+                return StatusCode::STATUS_OK;
+            }
+        }
+
+        return primaryStatus;
+    }
+}
+
 namespace Vertex::Model
 {
-    MainModel::MainModel(Configuration::ISettings& settingsService, Scanner::IMemoryScanner& memoryService, Runtime::ILoader& loaderService, Log::ILog& loggerService, Thread::IThreadDispatcher& dispatcher)
+    MainModel::MainModel(Configuration::ISettings& settingsService, Scanner::IMemoryScanner& memoryService, Scanner::IScannerRuntimeService& scannerService, Runtime::ILoader& loaderService, Log::ILog& loggerService, Thread::IThreadDispatcher& dispatcher)
         : m_settingsService{settingsService},
           m_memoryService{memoryService},
+          m_scannerService{scannerService},
           m_loaderService{loaderService},
           m_loggerService{loggerService},
           m_dispatcher{dispatcher}
     {
+    }
+
+    std::vector<Scanner::TypeSchema> MainModel::list_scanner_types() const
+    {
+        return m_scannerService.list_types();
+    }
+
+    std::optional<Scanner::TypeSchema> MainModel::find_scanner_type(Scanner::TypeId id) const
+    {
+        return m_scannerService.find_type(id);
+    }
+
+    StatusCode MainModel::validate_input(const Scanner::TypeId typeId, const bool hexadecimal, const std::string_view input, std::vector<std::uint8_t>& output) const
+    {
+        const auto schema = m_scannerService.find_type(typeId);
+        if (!schema)
+        {
+            return StatusCode::STATUS_ERROR_GENERAL_NOT_FOUND;
+        }
+
+        if (schema->kind == Scanner::TypeKind::PluginDefined)
+        {
+            const std::string inputStr{input};
+
+            NumericSystem primary = hexadecimal ? VERTEX_HEXADECIMAL : VERTEX_DECIMAL;
+            if (schema->sdkType && schema->sdkType->uiHints)
+            {
+                const auto& hints = *schema->sdkType->uiHints;
+                if (hints.defaultNumericSystem != VERTEX_NONE && !hexadecimal)
+                {
+                    primary = hints.defaultNumericSystem;
+                }
+            }
+
+            return convert_with_fallback(*schema, primary, inputStr, output);
+        }
+
+        const auto rawId = static_cast<std::uint32_t>(typeId);
+        if (rawId == 0 || rawId >= Scanner::FIRST_CUSTOM_TYPE_ID)
+        {
+            return StatusCode::STATUS_ERROR_INVALID_PARAMETER;
+        }
+        const auto valueType = static_cast<Scanner::ValueType>(rawId - 1);
+        return validate_input(valueType, hexadecimal, input, output);
+    }
+
+    StatusCode MainModel::validate_input(const Scanner::TypeId typeId, const ::NumericSystem numericBase, const std::string_view input, std::vector<std::uint8_t>& output) const
+    {
+        const auto schema = m_scannerService.find_type(typeId);
+        if (!schema || schema->kind != Scanner::TypeKind::PluginDefined)
+        {
+            return StatusCode::STATUS_ERROR_INVALID_PARAMETER;
+        }
+
+        const std::string inputStr{input};
+        return convert_with_fallback(*schema, numericBase, inputStr, output);
     }
 
     StatusCode MainModel::validate_input(const Scanner::ValueType type, const bool hexadecimal, const std::string_view input, std::vector<std::uint8_t>& output) const
@@ -462,6 +586,52 @@ namespace Vertex::Model
 
     Theme MainModel::get_theme() const { return static_cast<Theme>(m_settingsService.get_int("general.theme")); }
 
+    StatusCode MainModel::close_process() const
+    {
+        if (m_loaderService.has_plugin_loaded() != StatusCode::STATUS_OK)
+        {
+            m_loggerService.log_error(fmt::format("{}: {}", MODEL_NAME, "There is no active plugin set!"));
+            return StatusCode::STATUS_ERROR_PLUGIN_NOT_ACTIVE;
+        }
+
+        auto pluginRef = m_loaderService.get_active_plugin().value();
+        auto& plugin = pluginRef.get();
+
+        if (!plugin.is_loaded())
+        {
+            m_loggerService.log_error(fmt::format("{}: {}", MODEL_NAME, "The active plugin is not loaded!"));
+            return StatusCode::STATUS_ERROR_PLUGIN_NOT_LOADED;
+        }
+
+        std::packaged_task<StatusCode()> task(
+          [this]() -> StatusCode
+          {
+              auto pluginRef = m_loaderService.get_active_plugin().value();
+              auto& plugin = pluginRef.get();
+
+              const auto closeResult = Runtime::safe_call(plugin.internal_vertex_process_close);
+              const auto closeStatus = Runtime::get_status(closeResult);
+              if (closeStatus != StatusCode::STATUS_OK &&
+                  closeStatus != StatusCode::STATUS_ERROR_FUNCTION_NOT_FOUND &&
+                  closeStatus != StatusCode::STATUS_ERROR_PROCESS_NOT_FOUND)
+              {
+                  m_loggerService.log_warn(fmt::format("{}: internal_vertex_process_close returned non-OK status", MODEL_NAME));
+              }
+
+              std::ignore = m_loaderService.dispatch_event(VERTEX_PROCESS_CLOSED, nullptr);
+
+              return StatusCode::STATUS_OK;
+          });
+
+        auto dispatchResult = m_dispatcher.dispatch(Thread::ThreadChannel::ProcessList, std::move(task));
+        if (!dispatchResult.has_value())
+        {
+            return dispatchResult.error();
+        }
+
+        return dispatchResult.value().get();
+    }
+
     StatusCode MainModel::kill_process() const
     {
         if (m_loaderService.has_plugin_loaded() != StatusCode::STATUS_OK)
@@ -484,14 +654,16 @@ namespace Vertex::Model
           {
               auto pluginRef = m_loaderService.get_active_plugin().value();
               auto& plugin = pluginRef.get();
-              const auto result = Runtime::safe_call(plugin.internal_vertex_process_kill);
-              const auto status = Runtime::get_status(result);
-              if (status == StatusCode::STATUS_ERROR_FUNCTION_NOT_FOUND)
+
+              const auto killResult = Runtime::safe_call(plugin.internal_vertex_process_kill);
+              const auto killStatus = Runtime::get_status(killResult);
+              if (killStatus == StatusCode::STATUS_ERROR_FUNCTION_NOT_FOUND)
               {
-                  m_loggerService.log_error(fmt::format("{}: {}", MODEL_NAME, "internal_vertex_is_process_valid is not implemented by plugin!"));
+                  m_loggerService.log_error(fmt::format("{}: {}", MODEL_NAME, "internal_vertex_process_kill is not implemented by plugin!"));
                   return StatusCode::STATUS_ERROR_PLUGIN_FUNCTION_NOT_IMPLEMENTED;
               }
-              return status;
+
+              return killStatus;
           });
 
         auto dispatchResult = m_dispatcher.dispatch(Thread::ThreadChannel::ProcessList, std::move(task));
@@ -500,7 +672,11 @@ namespace Vertex::Model
             return dispatchResult.error();
         }
 
-        return dispatchResult.value().get();
+        const auto killStatus = dispatchResult.value().get();
+
+        std::ignore = close_process();
+
+        return killStatus;
     }
 
     bool MainModel::is_scan_complete() const { return m_memoryService.is_scan_complete(); }
@@ -555,6 +731,160 @@ namespace Vertex::Model
         }
     }
 
+    StatusCode MainModel::initialize_scan(Scanner::TypeId typeId,
+                                          std::uint32_t scanMode,
+                                          bool hexDisplay,
+                                          bool alignmentEnabled,
+                                          std::size_t alignmentValue,
+                                          Scanner::Endianness endianness,
+                                          const std::vector<std::uint8_t>& input,
+                                          const std::vector<std::uint8_t>& input2) const
+    {
+        const auto schema = m_scannerService.find_type(typeId);
+        if (!schema)
+        {
+            m_loggerService.log_error(fmt::format("{}: initialize_scan unknown TypeId={}", MODEL_NAME, static_cast<std::uint32_t>(typeId)));
+            return StatusCode::STATUS_ERROR_GENERAL_NOT_FOUND;
+        }
+
+        std::vector<MemoryRegion> regions{};
+        const auto queryStatus = query_memory_regions(regions);
+        if (queryStatus != StatusCode::STATUS_OK)
+        {
+            m_loggerService.log_error(fmt::format("{}: Failed to query memory regions", MODEL_NAME));
+            return queryStatus;
+        }
+
+        auto scanRegions = regions |
+                           std::views::transform(
+                             [](const auto& region)
+                             {
+                                 return Scanner::ScanRegion{.baseAddress = region.baseAddress, .size = region.regionSize};
+                             }) |
+                           std::ranges::to<std::vector>();
+
+        Scanner::ScanConfiguration config{};
+        config.typeId = typeId;
+        if (schema->kind != Scanner::TypeKind::PluginDefined)
+        {
+            const auto rawId = static_cast<std::uint32_t>(typeId);
+            const auto valueType = static_cast<Scanner::ValueType>(rawId - 1);
+            config.valueType = valueType;
+            config.dataSize = Scanner::get_value_type_size(valueType);
+            if (Scanner::is_string_type(valueType) && !input.empty())
+            {
+                config.dataSize = input.size();
+            }
+        }
+        else
+        {
+            config.valueType = Scanner::ValueType::COUNT;
+            config.dataSize = schema->valueSize;
+            if (schema->sdkType && scanMode < schema->sdkType->scanModeCount)
+            {
+                const auto& mode = schema->sdkType->scanModes[scanMode];
+                config.pluginNeedsInput = mode.needsInput != 0;
+                config.pluginNeedsPrevious = mode.needsPrevious != 0;
+            }
+            else
+            {
+                config.pluginNeedsInput = false;
+                config.pluginNeedsPrevious = false;
+            }
+        }
+        config.scanMode = scanMode;
+        config.input = input;
+        config.input2 = input2;
+        config.alignmentRequired = alignmentEnabled;
+        config.alignment = alignmentEnabled ? alignmentValue : 1;
+        config.hexDisplay = hexDisplay;
+        config.endianness = endianness;
+
+        ensure_memory_reader_setup();
+
+        const auto commandId = m_scannerService.send_command(
+            Scanner::service::CmdStartScan{.config = config, .regions = std::move(scanRegions)});
+        if (commandId == Runtime::INVALID_COMMAND_ID)
+        {
+            return StatusCode::STATUS_SHUTDOWN;
+        }
+        const auto immediate = m_scannerService.await_result(commandId, std::chrono::milliseconds{0});
+        if (immediate.code != StatusCode::STATUS_TIMEOUT)
+        {
+            return immediate.code;
+        }
+        return StatusCode::STATUS_OK;
+    }
+
+    StatusCode MainModel::initialize_next_scan(Scanner::TypeId typeId,
+                                               std::uint32_t scanMode,
+                                               bool hexDisplay,
+                                               bool alignmentEnabled,
+                                               std::size_t alignmentValue,
+                                               Scanner::Endianness endianness,
+                                               const std::vector<std::uint8_t>& input,
+                                               const std::vector<std::uint8_t>& input2) const
+    {
+        const auto schema = m_scannerService.find_type(typeId);
+        if (!schema)
+        {
+            m_loggerService.log_error(fmt::format("{}: initialize_next_scan unknown TypeId={}", MODEL_NAME, static_cast<std::uint32_t>(typeId)));
+            return StatusCode::STATUS_ERROR_GENERAL_NOT_FOUND;
+        }
+
+        Scanner::ScanConfiguration config{};
+        config.typeId = typeId;
+        if (schema->kind != Scanner::TypeKind::PluginDefined)
+        {
+            const auto rawId = static_cast<std::uint32_t>(typeId);
+            const auto valueType = static_cast<Scanner::ValueType>(rawId - 1);
+            config.valueType = valueType;
+            config.dataSize = Scanner::get_value_type_size(valueType);
+            if (Scanner::is_string_type(valueType) && !input.empty())
+            {
+                config.dataSize = input.size();
+            }
+        }
+        else
+        {
+            config.valueType = Scanner::ValueType::COUNT;
+            config.dataSize = schema->valueSize;
+            if (schema->sdkType && scanMode < schema->sdkType->scanModeCount)
+            {
+                const auto& mode = schema->sdkType->scanModes[scanMode];
+                config.pluginNeedsInput = mode.needsInput != 0;
+                config.pluginNeedsPrevious = mode.needsPrevious != 0;
+            }
+            else
+            {
+                config.pluginNeedsInput = false;
+                config.pluginNeedsPrevious = false;
+            }
+        }
+        config.scanMode = scanMode;
+        config.input = input;
+        config.input2 = input2;
+        config.alignmentRequired = alignmentEnabled;
+        config.alignment = alignmentEnabled ? alignmentValue : 1;
+        config.hexDisplay = hexDisplay;
+        config.endianness = endianness;
+
+        ensure_memory_reader_setup();
+
+        const auto commandId = m_scannerService.send_command(
+            Scanner::service::CmdNextScan{.config = config});
+        if (commandId == Runtime::INVALID_COMMAND_ID)
+        {
+            return StatusCode::STATUS_SHUTDOWN;
+        }
+        const auto immediate = m_scannerService.await_result(commandId, std::chrono::milliseconds{0});
+        if (immediate.code != StatusCode::STATUS_TIMEOUT)
+        {
+            return immediate.code;
+        }
+        return StatusCode::STATUS_OK;
+    }
+
     StatusCode MainModel::initialize_scan(Scanner::ValueType valueType,
                                           std::uint8_t scanMode,
                                           bool hexDisplay,
@@ -581,6 +911,7 @@ namespace Vertex::Model
                            std::ranges::to<std::vector>();
 
         Scanner::ScanConfiguration config{};
+        config.typeId = Scanner::builtin_type_id(valueType);
         config.valueType = valueType;
         config.scanMode = scanMode;
         config.input = input;
@@ -596,11 +927,20 @@ namespace Vertex::Model
             config.dataSize = input.size();
         }
 
-        m_memoryService.set_scan_abort_state(false);
-
         ensure_memory_reader_setup();
 
-        return m_memoryService.initialize_scan(config, scanRegions);
+        const auto commandId = m_scannerService.send_command(
+            Scanner::service::CmdStartScan{.config = config, .regions = std::move(scanRegions)});
+        if (commandId == Runtime::INVALID_COMMAND_ID)
+        {
+            return StatusCode::STATUS_SHUTDOWN;
+        }
+        const auto immediate = m_scannerService.await_result(commandId, std::chrono::milliseconds{0});
+        if (immediate.code != StatusCode::STATUS_TIMEOUT)
+        {
+            return immediate.code;
+        }
+        return StatusCode::STATUS_OK;
     }
 
     StatusCode MainModel::initialize_next_scan(Scanner::ValueType valueType,
@@ -613,6 +953,7 @@ namespace Vertex::Model
                                                const std::vector<std::uint8_t>& input2) const
     {
         Scanner::ScanConfiguration config{};
+        config.typeId = Scanner::builtin_type_id(valueType);
         config.valueType = valueType;
         config.scanMode = scanMode;
         config.input = input;
@@ -630,26 +971,59 @@ namespace Vertex::Model
 
         ensure_memory_reader_setup();
 
-        return m_memoryService.initialize_next_scan(config);
+        const auto commandId = m_scannerService.send_command(
+            Scanner::service::CmdNextScan{.config = config});
+        if (commandId == Runtime::INVALID_COMMAND_ID)
+        {
+            return StatusCode::STATUS_SHUTDOWN;
+        }
+        const auto immediate = m_scannerService.await_result(commandId, std::chrono::milliseconds{0});
+        if (immediate.code != StatusCode::STATUS_TIMEOUT)
+        {
+            return immediate.code;
+        }
+        return StatusCode::STATUS_OK;
     }
 
-    StatusCode MainModel::undo_scan() const { return m_memoryService.undo_scan(); }
+    StatusCode MainModel::undo_scan() const
+    {
+        const auto commandId = m_scannerService.send_command(Scanner::service::CmdUndoScan{});
+        if (commandId == Runtime::INVALID_COMMAND_ID)
+        {
+            return StatusCode::STATUS_SHUTDOWN;
+        }
+        const auto result = m_scannerService.await_result(commandId, std::chrono::milliseconds{0});
+        if (result.code != StatusCode::STATUS_TIMEOUT)
+        {
+            return result.code;
+        }
+        return StatusCode::STATUS_OK;
+    }
 
-    StatusCode MainModel::stop_scan() const { return m_memoryService.stop_scan(); }
-
-    void MainModel::set_scan_completion_callback(std::move_only_function<void()> callback) const { m_memoryService.set_scan_completion_callback(std::move(callback)); }
-
-    void MainModel::set_scan_progress_callback(std::move_only_function<void()> callback) const { m_memoryService.set_scan_progress_callback(std::move(callback)); }
+    StatusCode MainModel::stop_scan() const
+    {
+        const auto commandId = m_scannerService.send_command(Scanner::service::CmdStopScan{});
+        if (commandId == Runtime::INVALID_COMMAND_ID)
+        {
+            return StatusCode::STATUS_SHUTDOWN;
+        }
+        const auto result = m_scannerService.await_result(commandId, std::chrono::milliseconds{0});
+        if (result.code != StatusCode::STATUS_TIMEOUT)
+        {
+            return result.code;
+        }
+        return StatusCode::STATUS_OK;
+    }
 
     void MainModel::finalize_scan() const { m_memoryService.finalize_scan(); }
 
-    bool MainModel::can_undo_scan() const { return m_memoryService.can_undo(); }
+    bool MainModel::can_undo_scan() const { return m_scannerService.can_undo(); }
 
     std::uint64_t MainModel::get_scan_progress_current() const { return m_memoryService.get_regions_scanned(); }
 
     std::uint64_t MainModel::get_scan_progress_total() const { return m_memoryService.get_total_regions(); }
 
-    std::uint64_t MainModel::get_scan_results_count() const { return m_memoryService.get_results_count(); }
+    std::uint64_t MainModel::get_scan_results_count() const { return m_scannerService.results_count(); }
 
     StatusCode MainModel::get_scan_results(std::vector<Scanner::IMemoryScanner::ScanResultEntry>& results, const std::size_t maxResults) const
     {
@@ -658,7 +1032,7 @@ namespace Vertex::Model
 
     StatusCode MainModel::get_scan_results_range(std::vector<Scanner::IMemoryScanner::ScanResultEntry>& results, const std::size_t startIndex, const std::size_t count) const
     {
-        return m_memoryService.get_scan_results_range(results, startIndex, count);
+        return m_scannerService.snapshot_results(results, startIndex, count);
     }
 
     StatusCode MainModel::get_file_executable_extensions(std::vector<std::string>& extensions) const

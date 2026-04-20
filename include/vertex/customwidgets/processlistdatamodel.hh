@@ -8,15 +8,17 @@
 #include <cstdint>
 #include <string>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 #include <wx/dataview.h>
 
+#include <vertex/customwidgets/base/ifilterabledataviewmodel.hh>
 #include <vertex/viewmodel/processlistviewmodel.hh>
 
 namespace Vertex::CustomWidgets
 {
-    class ProcessListDataModel final : public wxDataViewModel
+    class ProcessListDataModel final : public wxDataViewModel, public Base::IFilterableDataViewModel
     {
     public:
         explicit ProcessListDataModel(std::shared_ptr<ViewModel::ProcessListViewModel> viewModel);
@@ -31,6 +33,9 @@ namespace Vertex::CustomWidgets
         unsigned int GetChildren(const wxDataViewItem& parent, wxDataViewItemArray& array) const override;
         [[nodiscard]] bool HasDefaultCompare() const override;
         int Compare(const wxDataViewItem& item1, const wxDataViewItem& item2, unsigned int column, bool ascending) const override;
+
+        void set_filter_text(const wxString& filterText) override;
+        [[nodiscard]] bool passes_filter(const wxDataViewItem& item) const override;
 
         void rebuild();
 
@@ -57,7 +62,15 @@ namespace Vertex::CustomWidgets
         [[nodiscard]] Snapshot take_snapshot() const;
         void apply_diff(Snapshot&& newSnapshot);
 
+        void rebuild_visible_set();
+        bool mark_visible_recursive(std::uint32_t pid);
+        [[nodiscard]] bool node_self_matches(const CachedNode& node) const;
+        [[nodiscard]] bool is_visible(std::uint32_t pid) const noexcept;
+
         std::shared_ptr<ViewModel::ProcessListViewModel> m_viewModel;
         Snapshot m_snapshot{};
+
+        wxString m_filterTextLower{};
+        std::unordered_set<std::uint32_t> m_visibleSet{};
     };
 }

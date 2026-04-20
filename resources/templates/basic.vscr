@@ -1,5 +1,17 @@
-// Basic Vertex script template.
+// Basic "hello + runtime info" template.
+// Good first script to verify the scripting runtime works.
 void main()
 {
-    log_info("Script started.");
+    log_info("Basic template started.");
+    log_info("App: " + get_name() + " " + get_version());
+    log_info("Vendor: " + get_vendor());
+    log_info("Host OS: " + get_host_os());
+
+    for (uint tick = 1; tick <= 5; ++tick)
+    {
+        log_info("Tick " + tick);
+        sleep(250);
+    }
+
+    log_info("Basic template finished.");
 }

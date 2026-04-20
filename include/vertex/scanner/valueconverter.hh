@@ -106,6 +106,11 @@ namespace Vertex::Scanner
                 return std::nullopt;
             }
 
+            if (static_cast<std::uint32_t>(type) >= static_cast<std::uint32_t>(ValueType::COUNT))
+            {
+                return std::nullopt;
+            }
+
             switch (type)
             {
                 case ValueType::Int8:
@@ -162,6 +167,11 @@ namespace Vertex::Scanner
             Endianness endianness)
         {
             if (!data || size == 0)
+            {
+                return "";
+            }
+
+            if (static_cast<std::uint32_t>(type) >= static_cast<std::uint32_t>(ValueType::COUNT))
             {
                 return "";
             }

@@ -126,6 +126,22 @@ typedef struct VertexScanMode
     uint8_t reserved[2];
 } ScanMode;
 
+#define VERTEX_NUMERIC_SYSTEM_MASK_BINARY      0x01u
+#define VERTEX_NUMERIC_SYSTEM_MASK_OCTAL       0x02u
+#define VERTEX_NUMERIC_SYSTEM_MASK_DECIMAL     0x04u
+#define VERTEX_NUMERIC_SYSTEM_MASK_HEXADECIMAL 0x08u
+
+typedef struct VertexDataTypeUIHints
+{
+    uint32_t numericSystemsMask;
+    NumericSystem defaultNumericSystem;
+    uint8_t supportsEndianness; // bool
+    uint8_t inputIsMultiline;   // bool
+    uint16_t maxInputLength;
+    const char* inputPlaceholder;
+    uint8_t reserved[8];
+} DataTypeUIHints;
+
 typedef struct VertexDataType
 {
     const char* typeName;
@@ -135,6 +151,7 @@ typedef struct VertexDataType
     VertexFormatter_t formatter;
     ScanMode* scanModes;
     size_t scanModeCount;
+    const DataTypeUIHints* uiHints;
 } DataType;
 
 #ifdef __cplusplus

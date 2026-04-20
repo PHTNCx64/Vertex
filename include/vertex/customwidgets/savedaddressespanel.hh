@@ -8,9 +8,8 @@
 #include <wx/sizer.h>
 
 #include <vertex/customwidgets/savedaddressescontrol.hh>
-#include <vertex/viewmodel/mainviewmodel.hh>
 #include <vertex/language/language.hh>
-#include <vertex/gui/theme/ithemeprovider.hh>
+#include <vertex/viewmodel/mainviewmodel.hh>
 
 namespace Vertex::CustomWidgets
 {
@@ -20,7 +19,6 @@ namespace Vertex::CustomWidgets
         explicit SavedAddressesPanel(
             wxWindow* parent,
             Language::ILanguage& languageService,
-            Gui::IThemeProvider& themeProvider,
             const std::shared_ptr<ViewModel::MainViewModel>& viewModel
         );
         ~SavedAddressesPanel() override = default;
@@ -34,7 +32,6 @@ namespace Vertex::CustomWidgets
         void set_freeze_toggle_callback(SavedAddressesControl::FreezeToggleCallback callback) const;
         void set_value_edit_callback(SavedAddressesControl::ValueEditCallback callback) const;
         void set_delete_callback(SavedAddressesControl::DeleteCallback callback) const;
-        void set_pointer_scan_callback(SavedAddressesControl::PointerScanCallback callback) const;
         void set_view_in_disassembly_callback(SavedAddressesControl::ViewInDisassemblyCallback callback) const;
         void set_find_access_callback(SavedAddressesControl::FindAccessCallback callback) const;
 
@@ -45,20 +42,13 @@ namespace Vertex::CustomWidgets
             return m_control;
         }
 
-        [[nodiscard]] SavedAddressesHeader* get_header() const
-        {
-            return m_header;
-        }
-
     private:
         void create_layout();
 
-        SavedAddressesHeader* m_header{};
         SavedAddressesControl* m_control{};
         wxBoxSizer* m_sizer{};
 
         Language::ILanguage& m_languageService;
-        Gui::IThemeProvider& m_themeProvider;
         std::shared_ptr<ViewModel::MainViewModel> m_viewModel{};
     };
 }

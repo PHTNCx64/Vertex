@@ -141,7 +141,9 @@
       "analytics": "Analitika",
       "analyticsDescription": "Hap dritaren e analitikës",
       "injector": "Injektori",
-      "injectorDescription": "Hap dritaren e injektorit"
+      "injectorDescription": "Hap dritaren e injektorit",
+      "code": "Redaktori i Skripteve",
+      "codeDescription": "Hap redaktorin e skripteve"
     },
     "buttons": {
       "initialScan": "Skanimi Fillestar",
@@ -764,6 +766,42 @@
       "stateSleeping": "Duke Fjetur",
       "stateFinished": "Përfunduar",
       "stateError": "Gabim"
+    }
+  },
+  "accessTracker": {
+    "title": "Ndjekësi i Aksesit",
+    "tracking": "Ndjekje",
+    "stop": "Ndalo",
+    "clear": "Pastro",
+    "close": "Mbyll",
+    "columnInstruction": "Instruksioni",
+    "columnModule": "Moduli",
+    "columnFunction": "Funksioni",
+    "columnMnemonic": "Mnemonika",
+    "columnHits": "Goditje",
+    "columnAccess": "Akses",
+    "columnSize": "Madhësia",
+    "columnRegisters": "Regjistrat",
+    "columnCaller": "Thirrësi",
+    "statusIdle": "Në pritje",
+    "statusStarting": "Po fillon…",
+    "statusActive": "Aktiv",
+    "statusStopping": "Po ndalon…",
+    "statusStartFailed": "Fillimi dështoi",
+    "statusStopFailed": "Ndalja dështoi",
+    "context": {
+      "viewInDisassembly": "Shikoje në Disassembly",
+      "showCallStack": "Shfaq Stekun e Thirrjeve",
+      "copyInstructionAddress": "Kopjo Adresën e Instruksionit",
+      "copyRegisters": "Kopjo Regjistrat"
+    },
+    "callStackDialog": {
+      "title": "Steku i Thirrjeve",
+      "columnIndex": "#",
+      "columnReturnAddress": "Adresa e Kthimit",
+      "columnModule": "Moduli",
+      "columnFunction": "Funksioni",
+      "goToFrame": "Shko te Korniza"
     }
   }
 }

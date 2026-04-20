@@ -10,18 +10,16 @@
 #include <vertex/view/aboutview.hh>
 #include <vertex/view/newprocessdialog.hh>
 #include <vertex/customwidgets/addaddressdialog.hh>
-#include <vertex/gui/theme/themeprovider.hh>
 
 #include <wx/spinctrl.h>
 
 namespace Vertex::View
 {
-    MainView::MainView(const wxString& title, std::unique_ptr<ViewModel::MainViewModel> viewModel, Language::ILanguage& languageService, Gui::IIconManager& iconManager, Gui::IThemeProvider& themeProvider)
+    MainView::MainView(const wxString& title, std::unique_ptr<ViewModel::MainViewModel> viewModel, Language::ILanguage& languageService, Gui::IIconManager& iconManager)
         : wxFrame(nullptr, wxID_ANY, title, wxDefaultPosition, wxSize(StandardWidgetValues::STANDARD_X_DIP, StandardWidgetValues::STANDARD_Y_DIP)),
           m_viewModel{std::move(viewModel)},
           m_languageService{languageService},
-          m_iconManager{iconManager},
-          m_themeProvider{themeProvider}
+          m_iconManager{iconManager}
     {
         wxTheApp->SetTopWindow(this);
         m_auiManager.SetManagedWindow(this);
@@ -100,7 +98,7 @@ namespace Vertex::View
         m_buttonSizer = new wxBoxSizer(wxHORIZONTAL);
         m_scanProgressBar = new wxGauge(m_mainPanel, wxID_ANY, StandardWidgetValues::GAUGE_MAX_VALUE, wxDefaultPosition, wxSize(-1, FromDIP(StandardWidgetValues::GAUGE_HEIGHT)), wxGA_HORIZONTAL);
         m_scannedValuesAmountText = new wxStaticText(m_mainPanel, wxID_ANY, wxString::FromUTF8(m_languageService.fetch_translation("mainWindow.ui.valuesFound")));
-        m_scannedValuesPanel = new CustomWidgets::ScannedValuesPanel(m_mainPanel, m_languageService, m_themeProvider,
+        m_scannedValuesPanel = new CustomWidgets::ScannedValuesPanel(m_mainPanel, m_languageService,
                                                                      std::shared_ptr<ViewModel::MainViewModel>(m_viewModel.get(),
                                                                                                                [](auto*)
                                                                                                                {
@@ -112,11 +110,17 @@ namespace Vertex::View
         m_valueInputText = new wxStaticText(m_scanOptionsStaticBox, wxID_ANY, wxString::FromUTF8(m_languageService.fetch_translation("mainWindow.ui.betweenValue")));
         m_valueInputControlsSizer = new wxBoxSizer(wxHORIZONTAL);
         m_valueInputTextControl = new wxTextCtrl(m_scanOptionsStaticBox, wxID_ANY, wxEmptyString);
+        m_valueInputMultilineControl = new wxTextCtrl(m_scanOptionsStaticBox, wxID_ANY, wxEmptyString,
+                                                       wxDefaultPosition, wxSize(-1, 80), wxTE_MULTILINE);
+        m_valueInputMultilineControl->Show(false);
         m_valueInputText2 = new wxStaticText(m_scanOptionsStaticBox, wxID_ANY, wxString::FromUTF8(m_languageService.fetch_translation("mainWindow.ui.andValue")));
         m_valueInputTextControl2 = new wxTextCtrl(m_scanOptionsStaticBox, wxID_ANY, wxEmptyString);
         m_valueInputTextControl2->Show(false);
         m_valueInputText2->Show(false);
         m_hexadecimalValueCheckBox = new wxCheckBox(m_scanOptionsStaticBox, wxID_ANY, wxString::FromUTF8(m_languageService.fetch_translation("mainWindow.ui.hexadecimal")));
+        m_numericBaseComboBox = new wxComboBox(m_scanOptionsStaticBox, wxID_ANY, wxEmptyString, wxDefaultPosition, wxDefaultSize,
+                                                0, nullptr, wxCB_READONLY);
+        m_numericBaseComboBox->Show(false);
         m_hexadecimalValueSizer = new wxBoxSizer(wxHORIZONTAL);
         m_valueTypeSizer = new wxBoxSizer(wxVERTICAL);
         m_valueTypeText = new wxStaticText(m_scanOptionsStaticBox, wxID_ANY, wxString::FromUTF8(m_languageService.fetch_translation("mainWindow.ui.valueType")));
@@ -143,7 +147,7 @@ namespace Vertex::View
         m_memoryRegionSettingsSizer = new wxBoxSizer(wxHORIZONTAL);
         m_memoryRegionSettingsButton = new wxButton(m_scanOptionsStaticBox, wxID_ANY, wxString::FromUTF8(m_languageService.fetch_translation("mainWindow.ui.memoryRegionSettings")));
         m_addAddressManuallyButton = new wxButton(m_mainPanel, wxID_ANY, wxString::FromUTF8(m_languageService.fetch_translation("mainWindow.ui.addAddressManually")));
-        m_savedAddressesPanel = new CustomWidgets::SavedAddressesPanel(m_mainPanel, m_languageService, m_themeProvider,
+        m_savedAddressesPanel = new CustomWidgets::SavedAddressesPanel(m_mainPanel, m_languageService,
                                                                        std::shared_ptr<ViewModel::MainViewModel>(m_viewModel.get(),
                                                                                                                  [](auto*)
                                                                                                                  {
@@ -161,7 +165,6 @@ namespace Vertex::View
               }
               m_viewModel->add_saved_address(address);
               m_savedAddressesPanel->refresh_list();
-              m_savedAddressesPanel->start_auto_refresh();
           });
     }
 
@@ -199,8 +202,10 @@ namespace Vertex::View
         m_valueInputControlsSizer->Add(m_valueInputTextControl2, StandardWidgetValues::STANDARD_PROPORTION, wxALIGN_CENTER_VERTICAL);
         m_valueInputSizer->Add(m_valueInputText, StandardWidgetValues::NO_PROPORTION, wxBOTTOM, StandardWidgetValues::STANDARD_BORDER);
         m_valueInputSizer->Add(m_valueInputControlsSizer, StandardWidgetValues::NO_PROPORTION, wxEXPAND);
+        m_valueInputSizer->Add(m_valueInputMultilineControl, StandardWidgetValues::NO_PROPORTION, wxEXPAND | wxTOP, StandardWidgetValues::STANDARD_BORDER);
         m_scanOptionsSizer->Add(m_valueInputSizer, StandardWidgetValues::NO_PROPORTION, wxEXPAND | wxLEFT | wxRIGHT | wxTOP, StandardWidgetValues::STANDARD_BORDER);
         m_hexadecimalValueSizer->Add(m_hexadecimalValueCheckBox, StandardWidgetValues::NO_PROPORTION, StandardWidgetValues::NO_PROPORTION);
+        m_hexadecimalValueSizer->Add(m_numericBaseComboBox, StandardWidgetValues::STANDARD_PROPORTION, wxEXPAND | wxLEFT, StandardWidgetValues::STANDARD_BORDER);
         m_scanOptionsSizer->Add(m_hexadecimalValueSizer, StandardWidgetValues::NO_PROPORTION, wxEXPAND | wxLEFT | wxRIGHT | wxTOP, StandardWidgetValues::STANDARD_BORDER);
         m_valueTypeSizer->Add(m_valueTypeText, StandardWidgetValues::NO_PROPORTION, wxBOTTOM, StandardWidgetValues::STANDARD_BORDER);
         m_valueTypeSizer->Add(m_valueTypeComboBox, StandardWidgetValues::NO_PROPORTION, wxEXPAND);
@@ -291,8 +296,10 @@ namespace Vertex::View
         m_addAddressManuallyButton->Bind(wxEVT_BUTTON, &MainView::on_add_address_manually_clicked, this);
         m_memoryRegionSettingsButton->Bind(wxEVT_BUTTON, &MainView::on_memory_region_settings_clicked, this);
         m_valueInputTextControl->Bind(wxEVT_TEXT, &MainView::on_value_input_changed, this);
+        m_valueInputMultilineControl->Bind(wxEVT_TEXT, &MainView::on_value_input_changed, this);
         m_valueInputTextControl2->Bind(wxEVT_TEXT, &MainView::on_value_input2_changed, this);
         m_hexadecimalValueCheckBox->Bind(wxEVT_CHECKBOX, &MainView::on_hexadecimal_changed, this);
+        m_numericBaseComboBox->Bind(wxEVT_COMBOBOX, &MainView::on_numeric_base_changed, this);
         m_valueTypeComboBox->Bind(wxEVT_COMBOBOX, &MainView::on_value_type_changed, this);
         m_scanTypeComboBox->Bind(wxEVT_COMBOBOX, &MainView::on_scan_type_changed, this);
         m_endiannessTypeComboBox->Bind(wxEVT_COMBOBOX, &MainView::on_endianness_type_changed, this);
@@ -368,7 +375,6 @@ namespace Vertex::View
               m_viewModel->get_file_executable_extensions(extensions);
 
               NewProcessDialog dialog(this, m_languageService, std::move(extensions));
-              Gui::ThemeProvider::apply_palette_to_tree(&dialog, m_themeProvider.palette());
               if (dialog.ShowModal() != wxID_OK)
               {
                   return;
@@ -446,24 +452,9 @@ namespace Vertex::View
           StandardMenuIds::MainViewIds::ID_HELP_ABOUT);
 
         Bind(wxEVT_SYS_COLOUR_CHANGED,
-             [this]([[maybe_unused]] wxSysColourChangedEvent& event)
+             [this](wxSysColourChangedEvent& event)
              {
-                 m_themeProvider.refresh();
-                 Gui::ThemeProvider::apply_palette_to_tree(this, m_themeProvider.palette());
-
-                 if (m_scannedValuesPanel)
-                 {
-                     m_scannedValuesPanel->get_header()->refresh_theme();
-                     m_scannedValuesPanel->get_control()->refresh_theme();
-                 }
-                 if (m_savedAddressesPanel)
-                 {
-                     m_savedAddressesPanel->get_header()->refresh_theme();
-                     m_savedAddressesPanel->get_control()->refresh_theme();
-                 }
-
                  refresh_toolbar_icons();
-                 Gui::ThemeProvider::apply_palette_to_aui(m_auiManager, m_themeProvider.palette());
                  Refresh();
                  event.Skip();
              });
@@ -477,6 +468,7 @@ namespace Vertex::View
             if (m_viewModel->is_process_opened())
             {
                 set_control_status(ControlStatus::PROCESS_OPENED);
+                apply_type_ui_hints();
                 m_processValidityCheck->Start(StandardWidgetValues::TIMER_INTERVAL_MS);
                 m_savedAddressesPanel->start_auto_refresh();
             }
@@ -538,6 +530,7 @@ namespace Vertex::View
                 m_viewModel->set_value_type_index(2);
             }
 
+            apply_type_ui_hints();
             update_view(ViewUpdateFlags::SCAN_MODES);
         }
 
@@ -616,28 +609,193 @@ namespace Vertex::View
     {
         const auto valueType = m_viewModel->get_current_value_type();
 
-        if (Scanner::is_string_type(valueType))
-        {
-            m_valueInputText->SetLabel(wxString::FromUTF8(m_languageService.fetch_translation("mainWindow.ui.value")));
-            m_valueInputTextControl->Show(true);
-            m_valueInputText2->Show(false);
-            m_valueInputTextControl2->Show(false);
-            m_mainPanel->Layout();
-            return;
-        }
-
-        const auto actualMode = m_viewModel->get_actual_numeric_scan_mode();
-        const bool needsInput = Scanner::scan_mode_needs_input(actualMode);
-        const bool isInBetween = (actualMode == Scanner::NumericScanMode::Between);
+        const auto* hints = m_viewModel->get_current_type_ui_hints();
+        const bool wantMultiline = hints && hints->inputIsMultiline != 0;
+        const bool needsInput = m_viewModel->needs_input_value();
+        const bool isInBetween = m_viewModel->is_value_input2_visible();
 
         const auto labelKey = isInBetween ? "mainWindow.ui.betweenValue" : "mainWindow.ui.value";
         m_valueInputText->SetLabel(wxString::FromUTF8(m_languageService.fetch_translation(labelKey)));
 
-        m_valueInputTextControl->Show(needsInput);
+        m_valueInputTextControl->Show(needsInput && !wantMultiline);
+        m_valueInputMultilineControl->Show(needsInput && wantMultiline);
         m_valueInputText2->Show(isInBetween);
         m_valueInputTextControl2->Show(isInBetween);
 
+        if (Scanner::is_string_type(valueType))
+        {
+            m_valueInputText->SetLabel(wxString::FromUTF8(m_languageService.fetch_translation("mainWindow.ui.value")));
+        }
+
         m_mainPanel->Layout();
+    }
+
+    static std::uint32_t mask_bit_for_numeric_system(::NumericSystem system)
+    {
+        switch (system)
+        {
+            case VERTEX_BINARY:      return VERTEX_NUMERIC_SYSTEM_MASK_BINARY;
+            case VERTEX_OCTAL:       return VERTEX_NUMERIC_SYSTEM_MASK_OCTAL;
+            case VERTEX_DECIMAL:     return VERTEX_NUMERIC_SYSTEM_MASK_DECIMAL;
+            case VERTEX_HEXADECIMAL: return VERTEX_NUMERIC_SYSTEM_MASK_HEXADECIMAL;
+            default:                 return 0u;
+        }
+    }
+
+    void MainView::apply_type_ui_hints()
+    {
+        const bool endiannessAllowed = m_viewModel->current_type_supports_endianness();
+        if (endiannessAllowed)
+        {
+            m_endiannessTypeComboBox->Enable();
+        }
+        else
+        {
+            m_endiannessTypeComboBox->Disable();
+        }
+
+        const auto* hints = m_viewModel->get_current_type_ui_hints();
+
+        const bool wantMultiline = hints && hints->inputIsMultiline != 0;
+        m_valueInputTextControl->Show(!wantMultiline);
+        m_valueInputMultilineControl->Show(wantMultiline);
+
+        const std::uint32_t mask = hints ? hints->numericSystemsMask : 0u;
+        const bool useBaseCombo = mask != 0 && __builtin_popcount(mask) > 1;
+
+        m_numericBaseComboBox->Clear();
+        if (useBaseCombo)
+        {
+            int selectedIdx = -1;
+            const auto addOption = [&](std::uint32_t bit, const char* label, ::NumericSystem system)
+            {
+                if ((mask & bit) == 0)
+                {
+                    return;
+                }
+                const int idx = m_numericBaseComboBox->Append(wxString::FromUTF8(label));
+                m_numericBaseComboBox->SetClientData(idx, reinterpret_cast<void*>(static_cast<std::uintptr_t>(system)));
+                if (hints->defaultNumericSystem == system)
+                {
+                    selectedIdx = idx;
+                }
+                if (selectedIdx < 0)
+                {
+                    selectedIdx = idx;
+                }
+            };
+            addOption(VERTEX_NUMERIC_SYSTEM_MASK_BINARY,      "Binary",      VERTEX_BINARY);
+            addOption(VERTEX_NUMERIC_SYSTEM_MASK_OCTAL,       "Octal",       VERTEX_OCTAL);
+            addOption(VERTEX_NUMERIC_SYSTEM_MASK_DECIMAL,     "Decimal",     VERTEX_DECIMAL);
+            addOption(VERTEX_NUMERIC_SYSTEM_MASK_HEXADECIMAL, "Hexadecimal", VERTEX_HEXADECIMAL);
+
+            if (selectedIdx >= 0)
+            {
+                m_numericBaseComboBox->SetSelection(selectedIdx);
+                const auto system = static_cast<::NumericSystem>(reinterpret_cast<std::uintptr_t>(m_numericBaseComboBox->GetClientData(selectedIdx)));
+                m_viewModel->set_plugin_numeric_base(system);
+            }
+
+            m_numericBaseComboBox->Show(true);
+            m_hexadecimalValueCheckBox->Show(false);
+        }
+        else
+        {
+            m_numericBaseComboBox->Show(false);
+            m_hexadecimalValueCheckBox->Show(true);
+        }
+
+        if (hints)
+        {
+            if (hints->inputPlaceholder)
+            {
+                m_valueInputTextControl->SetHint(wxString::FromUTF8(hints->inputPlaceholder));
+                m_valueInputMultilineControl->SetHint(wxString::FromUTF8(hints->inputPlaceholder));
+            }
+            else
+            {
+                m_valueInputTextControl->SetHint(wxEmptyString);
+                m_valueInputMultilineControl->SetHint(wxEmptyString);
+            }
+
+            if (hints->maxInputLength > 0)
+            {
+                m_valueInputTextControl->SetMaxLength(hints->maxInputLength);
+                m_valueInputMultilineControl->SetMaxLength(hints->maxInputLength);
+            }
+            else
+            {
+                m_valueInputTextControl->SetMaxLength(0);
+                m_valueInputMultilineControl->SetMaxLength(0);
+            }
+
+            if (!useBaseCombo && mask != 0 && (mask & VERTEX_NUMERIC_SYSTEM_MASK_HEXADECIMAL) == 0)
+            {
+                m_hexadecimalValueCheckBox->SetValue(false);
+                m_hexadecimalValueCheckBox->Disable();
+            }
+            else if (!useBaseCombo)
+            {
+                m_hexadecimalValueCheckBox->Enable();
+            }
+
+            const auto defaultBit = mask_bit_for_numeric_system(hints->defaultNumericSystem);
+            const bool defaultInMask = (mask == 0u) || ((mask & defaultBit) != 0u);
+            if (useBaseCombo && hints->defaultNumericSystem != VERTEX_NONE && defaultInMask)
+            {
+                m_viewModel->set_plugin_numeric_base(hints->defaultNumericSystem);
+            }
+            else if (!useBaseCombo)
+            {
+                ::NumericSystem resolved = VERTEX_DECIMAL;
+                if (hints->defaultNumericSystem != VERTEX_NONE && defaultInMask)
+                {
+                    resolved = hints->defaultNumericSystem;
+                }
+                else if (mask == VERTEX_NUMERIC_SYSTEM_MASK_BINARY)
+                {
+                    resolved = VERTEX_BINARY;
+                }
+                else if (mask == VERTEX_NUMERIC_SYSTEM_MASK_OCTAL)
+                {
+                    resolved = VERTEX_OCTAL;
+                }
+                else if (mask == VERTEX_NUMERIC_SYSTEM_MASK_HEXADECIMAL)
+                {
+                    resolved = VERTEX_HEXADECIMAL;
+                }
+                else if (mask == VERTEX_NUMERIC_SYSTEM_MASK_DECIMAL)
+                {
+                    resolved = VERTEX_DECIMAL;
+                }
+                else
+                {
+                    resolved = m_hexadecimalValueCheckBox->GetValue() ? VERTEX_HEXADECIMAL : VERTEX_DECIMAL;
+                }
+                m_viewModel->set_plugin_numeric_base(resolved);
+            }
+        }
+        else
+        {
+            m_valueInputTextControl->SetHint(wxEmptyString);
+            m_valueInputMultilineControl->SetHint(wxEmptyString);
+            m_valueInputTextControl->SetMaxLength(0);
+            m_valueInputMultilineControl->SetMaxLength(0);
+            m_hexadecimalValueCheckBox->Enable();
+        }
+
+        if (m_valueInputSizer)
+        {
+            m_valueInputSizer->Layout();
+        }
+        if (m_hexadecimalValueSizer)
+        {
+            m_hexadecimalValueSizer->Layout();
+        }
+        if (m_scanOptionsSizer)
+        {
+            m_scanOptionsSizer->Layout();
+        }
     }
 
     void MainView::set_control_status(const ControlStatus controlStatus) const
@@ -649,8 +807,10 @@ namespace Vertex::View
             m_nextScanButton->Disable();
             m_undoScanButton->Disable();
             m_valueInputTextControl->Disable();
+            m_valueInputMultilineControl->Disable();
             m_valueInputTextControl2->Disable();
             m_hexadecimalValueCheckBox->Disable();
+            m_numericBaseComboBox->Disable();
             m_valueTypeComboBox->Disable();
             m_scanTypeComboBox->Disable();
             m_endiannessTypeComboBox->Disable();
@@ -666,8 +826,10 @@ namespace Vertex::View
             m_nextScanButton->Disable();
             m_undoScanButton->Disable();
             m_valueInputTextControl->Enable();
+            m_valueInputMultilineControl->Enable();
             m_valueInputTextControl2->Enable();
             m_hexadecimalValueCheckBox->Enable();
+            m_numericBaseComboBox->Enable();
             m_valueTypeComboBox->Enable();
             m_scanTypeComboBox->Enable();
             m_endiannessTypeComboBox->Enable();
@@ -685,13 +847,11 @@ namespace Vertex::View
         {
             m_viewModel->reset_scan();
             m_initialScanButton->SetLabel(wxString::FromUTF8(m_languageService.fetch_translation("mainWindow.buttons.initialScan")));
-            m_scannedValuesPanel->stop_auto_refresh();
             m_scannedValuesPanel->clear_list();
             update_view(ViewUpdateFlags::SCAN_MODES | ViewUpdateFlags::BUTTON_STATES | ViewUpdateFlags::SCANNED_VALUES);
             return;
         }
 
-        m_scannedValuesPanel->stop_auto_refresh();
         m_scannedValuesPanel->clear_list();
         m_scanProgressBar->SetRange(StandardWidgetValues::GAUGE_MAX_VALUE);
         m_scanProgressBar->SetValue(0);
@@ -706,7 +866,6 @@ namespace Vertex::View
 
     void MainView::on_next_scan_clicked([[maybe_unused]] wxCommandEvent& event)
     {
-        m_scannedValuesPanel->stop_auto_refresh();
         m_scannedValuesPanel->clear_list();
         m_scanProgressBar->SetRange(StandardWidgetValues::GAUGE_MAX_VALUE);
         m_scanProgressBar->SetValue(0);
@@ -715,15 +874,36 @@ namespace Vertex::View
 
     void MainView::on_undo_scan_clicked([[maybe_unused]] wxCommandEvent& event) { m_viewModel->undo_scan(); }
 
-    void MainView::on_value_input_changed([[maybe_unused]] wxCommandEvent& event) { m_viewModel->set_value_input(m_valueInputTextControl->GetValue().ToStdString()); }
+    void MainView::on_value_input_changed([[maybe_unused]] wxCommandEvent& event)
+    {
+        wxTextCtrl* active = m_valueInputMultilineControl->IsShown() ? m_valueInputMultilineControl : m_valueInputTextControl;
+        m_viewModel->set_value_input(active->GetValue().ToStdString());
+    }
 
     void MainView::on_value_input2_changed([[maybe_unused]] wxCommandEvent& event) { m_viewModel->set_value_input2(m_valueInputTextControl2->GetValue().ToStdString()); }
 
-    void MainView::on_hexadecimal_changed([[maybe_unused]] wxCommandEvent& event) { m_viewModel->set_hexadecimal(m_hexadecimalValueCheckBox->GetValue()); }
+    void MainView::on_hexadecimal_changed([[maybe_unused]] wxCommandEvent& event)
+    {
+        const bool hex = m_hexadecimalValueCheckBox->GetValue();
+        m_viewModel->set_hexadecimal(hex);
+        m_viewModel->set_plugin_numeric_base(hex ? VERTEX_HEXADECIMAL : VERTEX_DECIMAL);
+    }
+
+    void MainView::on_numeric_base_changed([[maybe_unused]] wxCommandEvent& event)
+    {
+        const auto selection = m_numericBaseComboBox->GetSelection();
+        if (selection < 0)
+        {
+            return;
+        }
+        const auto value = static_cast<std::uintptr_t>(reinterpret_cast<std::uintptr_t>(m_numericBaseComboBox->GetClientData(selection)));
+        m_viewModel->set_plugin_numeric_base(static_cast<::NumericSystem>(value));
+    }
 
     void MainView::on_value_type_changed([[maybe_unused]] wxCommandEvent& event)
     {
         m_viewModel->set_value_type_index(m_valueTypeComboBox->GetSelection());
+        apply_type_ui_hints();
         update_view(ViewUpdateFlags::SCAN_MODES);
     }
 
@@ -769,7 +949,6 @@ namespace Vertex::View
 
         m_viewModel->add_saved_address(address, typeIndex);
         m_savedAddressesPanel->refresh_list();
-        m_savedAddressesPanel->start_auto_refresh();
     }
 
     void MainView::on_memory_region_settings_clicked([[maybe_unused]] wxCommandEvent& event) { m_viewModel->open_memory_region_settings(); }
@@ -809,8 +988,9 @@ namespace Vertex::View
 
         m_viewModel->finalize_scan_results();
         m_viewModel->update_scan_progress();
-        update_view(ViewUpdateFlags::SCAN_PROGRESS | ViewUpdateFlags::SCANNED_VALUES | ViewUpdateFlags::BUTTON_STATES);
+        m_scannedValuesPanel->refresh_list();
         m_scannedValuesPanel->start_auto_refresh();
+        update_view(ViewUpdateFlags::SCAN_PROGRESS | ViewUpdateFlags::SCANNED_VALUES | ViewUpdateFlags::BUTTON_STATES);
     }
 
     void MainView::on_close([[maybe_unused]] wxCloseEvent& event)
@@ -819,8 +999,6 @@ namespace Vertex::View
         {
             m_processValidityCheck->Stop();
         }
-        m_savedAddressesPanel->stop_auto_refresh();
-        m_scannedValuesPanel->stop_auto_refresh();
 
         m_auiManager.UnInit();
         m_viewModel->exit_application();
@@ -828,9 +1006,9 @@ namespace Vertex::View
         Destroy();
     }
 
-    void MainView::refresh_toolbar_icons()
+    void MainView::refresh_toolbar_icons() const
     {
-        const Theme theme = m_themeProvider.current_theme();
+        const Theme theme = m_viewModel->get_theme();
         const int iconSize = FromDIP(StandardWidgetValues::ICON_SIZE);
         m_auiToolBar->SetToolBitmap(StandardMenuIds::MainViewIds::ID_PROCESS_LIST, m_iconManager.get_icon("search", iconSize, theme));
         m_auiToolBar->SetToolBitmap(StandardMenuIds::MainViewIds::ID_KILL_PROCESS, m_iconManager.get_icon("close", iconSize, theme));
@@ -848,21 +1026,17 @@ namespace Vertex::View
         AboutInfo aboutInfo{};
         aboutInfo.description = m_languageService.fetch_translation("aboutWindow.description");
 
-        aboutInfo.add_developer("PHTNC<>", m_languageService.fetch_translation("aboutWindow.roles.leadDeveloper"))
-          .add_tester("Dragon", m_languageService.fetch_translation("aboutWindow.roles.testerWindows"))
-          .add_special_thanks("wxWidgets Team", m_languageService.fetch_translation("aboutWindow.thanks.uiFramework"))
-          .add_special_thanks("You", m_languageService.fetch_translation("aboutWindow.thanks.community"));
+        aboutInfo.add_developer("PHTNC<>", "Original Author and Lead Developer")
+          .add_tester("Dragon", "Tester for Windows and Linux")
+          .add_special_thanks("wxWidgets Team", "UI Framework.")
+          .add_special_thanks("kakakol", "Tester for Windows, Community Management")
+          .add_contributor("Ruined", "Dutch translation")
+          .add_contributor("emily.wtf", "Russian translation")
+          .add_contributor("Anonymous Friend", "Turkish translation")
+          .add_contributor("FinalBiologic", "Croatian translation");
 
-        AboutView aboutDialog(this, m_languageService, m_themeProvider, aboutInfo);
+        AboutView aboutDialog(this, m_languageService, aboutInfo);
         aboutDialog.ShowModal();
-    }
-
-    void MainView::set_pointer_scan_callback(CustomWidgets::SavedAddressesControl::PointerScanCallback callback) const
-    {
-        if (m_savedAddressesPanel)
-        {
-            m_savedAddressesPanel->set_pointer_scan_callback(std::move(callback));
-        }
     }
 
     void MainView::set_view_in_disassembly_callback(CustomWidgets::SavedAddressesControl::ViewInDisassemblyCallback callback) const
@@ -877,7 +1051,11 @@ namespace Vertex::View
     {
         if (m_savedAddressesPanel)
         {
-            m_savedAddressesPanel->set_find_access_callback(std::move(callback));
+            m_savedAddressesPanel->set_find_access_callback(callback);
+        }
+        if (m_scannedValuesPanel)
+        {
+            m_scannedValuesPanel->set_find_access_callback(std::move(callback));
         }
     }
 

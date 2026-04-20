@@ -8,6 +8,7 @@
 #include <vertex/runtime/loader.hh>
 #include <vertex/runtime/caller.hh>
 #include <vertex/runtime/function_registry.hh>
+#include <vertex/scanner/scanner_interop.hh>
 #include <vertex/utility.hh>
 #include <vertex/configuration/filesystem.hh>
 #include <plugin_function_registration.hh>
@@ -21,9 +22,10 @@
 namespace Vertex::Runtime
 {
 
-    Loader::Loader(Configuration::ISettings& settingsService, Configuration::IPluginConfig& pluginConfigService, Log::ILog& loggerService, Thread::IThreadDispatcher& threadDispatcher)
-        : m_settingsService(settingsService), m_pluginConfigService(pluginConfigService), m_loggerService(loggerService), m_threadDispatcher(threadDispatcher)
+    Loader::Loader(Configuration::ISettings& settingsService, Configuration::IPluginConfig& pluginConfigService, Log::ILog& loggerService, Thread::IThreadDispatcher& threadDispatcher, Scanner::IScannerRuntimeService& scannerService)
+        : m_settingsService(settingsService), m_pluginConfigService(pluginConfigService), m_loggerService(loggerService), m_threadDispatcher(threadDispatcher), m_scannerService(scannerService)
     {
+        Scanner::interop::set_scanner_service(&m_scannerService);
         m_loggerService.log_info("Initializing plugin loader...");
 
         auto pluginPaths = m_settingsService.get_settings()["plugins"]["pluginPaths"];
@@ -215,7 +217,7 @@ namespace Vertex::Runtime
             else
             {
                 m_loggerService.log_info("[Plugin Load] Leaving discovered plugin entry (unloaded) after failure");
-                m_plugins[pluginIndex].unload();
+                m_plugins[pluginIndex].release_library();
             }
             return status;
         };
@@ -223,11 +225,11 @@ namespace Vertex::Runtime
         m_loggerService.log_info(fmt::format("[Plugin Load] Loading library: {}", canonicalPath.string()));
         try
         {
-            Library library{canonicalPath};
+            const Library library{canonicalPath};
             m_loggerService.log_info(fmt::format("[Plugin Load] Library loaded successfully, handle: 0x{:X}",
                 reinterpret_cast<uintptr_t>(library.handle())));
 
-            plugin.set_library(std::move(library));
+            plugin.set_library(library);
         }
         catch (const LibraryError& e)
         {
@@ -240,8 +242,8 @@ namespace Vertex::Runtime
         plugin.m_runtime.vertex_log_error = vertex_log_error;
         plugin.m_runtime.vertex_log_warn = vertex_log_warn;
 
-        plugin.m_runtime.vertex_register_datatype = nullptr;
-        plugin.m_runtime.vertex_unregister_datatype = nullptr;
+        plugin.m_runtime.vertex_register_datatype = vertex_register_datatype;
+        plugin.m_runtime.vertex_unregister_datatype = vertex_unregister_datatype;
 
         vertex_registry_set_instance(&m_registry);
         plugin.m_runtime.vertex_register_architecture = vertex_register_architecture;
@@ -310,7 +312,19 @@ namespace Vertex::Runtime
         }
 
         m_loggerService.log_info(fmt::format("Unloading plugin: {}", plugin.get_filename()));
-        plugin.unload();
+
+        const auto invalidatedCount = m_scannerService.invalidate_plugin_types(pluginIndex);
+        if (invalidatedCount > 0)
+        {
+            m_loggerService.log_info(fmt::format("[Plugin Unload] Invalidated {} scanner datatypes for plugin index {}", invalidatedCount, pluginIndex));
+        }
+
+        {
+            Scanner::interop::PluginRegistrationGuard guard{pluginIndex,
+                                                             plugin.library_keepalive(),
+                                                             Scanner::interop::RegistrationMode::Shutdown};
+            plugin.release_library();
+        }
         return StatusCode::STATUS_OK;
     }
 
@@ -537,7 +551,8 @@ namespace Vertex::Runtime
         m_activePlugin = plugin;
         m_activePluginInitialized = false;
 
-        const StatusCode initStatus = initialize_plugin(plugin);
+        const auto pluginIndex = static_cast<std::size_t>(&plugin - m_plugins.data());
+        const StatusCode initStatus = initialize_plugin(plugin, pluginIndex);
         if (initStatus != StatusCode::STATUS_OK)
         {
             m_loggerService.log_error(fmt::format("Failed to initialize plugin: {} (status={})",
@@ -569,9 +584,11 @@ namespace Vertex::Runtime
             m_loggerService.log_info("[Plugin Init] Single-threaded mode detected, dispatching vertex_init to single thread...");
 
             auto& pluginRef = plugin;
+            const auto keepaliveForGuard = plugin.library_keepalive();
             std::packaged_task<StatusCode()> singleThreadInit{
-                [&pluginRef]() -> StatusCode
+                [&pluginRef, pluginIndex, keepaliveForGuard]() -> StatusCode
                 {
+                    Scanner::interop::PluginRegistrationGuard guard{pluginIndex, keepaliveForGuard};
                     const auto result = Runtime::safe_call(
                         pluginRef.internal_vertex_init,
                         &pluginRef.get_plugin_info(),
@@ -613,7 +630,7 @@ namespace Vertex::Runtime
         return StatusCode::STATUS_OK;
     }
 
-    StatusCode Loader::restore_persisted_config(Plugin& plugin)
+    StatusCode Loader::restore_persisted_config(const Plugin& plugin)
     {
         const auto pluginFilename = plugin.get_filename();
         const auto loadResult = m_pluginConfigService.load_config(pluginFilename);
@@ -763,10 +780,11 @@ namespace Vertex::Runtime
         return overallStatus;
     }
 
-    StatusCode Loader::initialize_plugin(Plugin& plugin) const
+    StatusCode Loader::initialize_plugin(Plugin& plugin, std::size_t pluginIndex) const
     {
         m_loggerService.log_info(fmt::format("[Plugin Init] Calling vertex_init for: {}", plugin.get_path().filename().string()));
 
+        Scanner::interop::PluginRegistrationGuard guard{pluginIndex, plugin.library_keepalive()};
         const auto initResult = Runtime::safe_call(plugin.internal_vertex_init, &plugin.get_plugin_info(), &plugin.m_runtime, false);
 
         const auto initStatus = Runtime::get_status(initResult);

@@ -20,7 +20,6 @@
 
 #include <vertex/debugger/debuggertypes.hh>
 #include <vertex/language/language.hh>
-#include <vertex/gui/theme/ithemeprovider.hh>
 
 namespace Vertex::View::Debugger
 {
@@ -55,15 +54,13 @@ namespace Vertex::View::Debugger
 
         explicit DisassemblyHeader(
             wxWindow* parent,
-            Language::ILanguage& languageService,
-            Gui::IThemeProvider& themeProvider
+            Language::ILanguage& languageService
         );
 
         void set_horizontal_scroll_offset(int offset);
         void set_column_resize_callback(ColumnResizeCallback callback);
         void set_column_reorder_callback(ColumnReorderCallback callback);
         void set_left_offset(int offset);
-        void refresh_theme();
 
         [[nodiscard]] int get_header_height() const { return m_headerHeight; }
         [[nodiscard]] int get_char_width() const { return m_charWidth; }
@@ -125,17 +122,18 @@ namespace Vertex::View::Debugger
 
         ColumnResizeCallback m_columnResizeCallback{};
         ColumnReorderCallback m_columnReorderCallback{};
-        Gui::IThemeProvider& m_themeProvider;
 
         struct Colors
         {
-            wxColour headerBackground{0x2D, 0x2D, 0x2D};
-            wxColour headerBorder{0x3E, 0x3E, 0x3E};
-            wxColour headerText{0xCC, 0xCC, 0xCC};
-            wxColour separatorHover{0x56, 0x9C, 0xD6};
-            wxColour dragIndicator{0x56, 0x9C, 0xD6};
-            wxColour draggedColumn{0x3A, 0x3D, 0x41};
+            wxColour headerBackground{};
+            wxColour headerBorder{};
+            wxColour headerText{};
+            wxColour separatorHover{};
+            wxColour dragIndicator{};
+            wxColour draggedColumn{};
         } m_colors;
+
+        void load_system_colors();
     };
 
     class DisassemblyControl final : public wxScrolledWindow
@@ -154,11 +152,10 @@ namespace Vertex::View::Debugger
         using XrefQueryCallback = std::function<void(std::uint64_t address,
             ::Vertex::Debugger::XrefDirection direction, XrefResultHandler onResult)>;
 
-        explicit DisassemblyControl(wxWindow* parent, Language::ILanguage& languageService, Gui::IThemeProvider& themeProvider, DisassemblyHeader* header = nullptr);
+        explicit DisassemblyControl(wxWindow* parent, Language::ILanguage& languageService, DisassemblyHeader* header = nullptr);
         ~DisassemblyControl() override = default;
 
         void set_header(DisassemblyHeader* header);
-        void refresh_theme();
         [[nodiscard]] DisassemblyHeader* get_header() const { return m_header; }
 
         void on_columns_changed();
@@ -275,6 +272,8 @@ namespace Vertex::View::Debugger
         static constexpr int MENU_ID_EDIT_CONDITION = 1010;
         static constexpr int MENU_ID_SHOW_IN_MEMORY = 1011;
 
+        void load_system_colors();
+
         struct Colors
         {
             wxColour background{0x1E, 0x1E, 0x1E};
@@ -357,6 +356,5 @@ namespace Vertex::View::Debugger
 
         DisassemblyHeader* m_header{};
         Language::ILanguage& m_languageService;
-        Gui::IThemeProvider& m_themeProvider;
     };
 } // namespace Vertex::View::Debugger

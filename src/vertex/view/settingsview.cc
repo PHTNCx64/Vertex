@@ -7,7 +7,6 @@
 
 #include <vertex/utility.hh>
 #include <vertex/event/types/viewevent.hh>
-#include <vertex/gui/theme/themeprovider.hh>
 #include <wx/app.h>
 
 #include <wx/spinctrl.h>
@@ -22,7 +21,7 @@
 namespace Vertex::View
 {
     SettingsView::SettingsView(Language::ILanguage& languageService, std::unique_ptr<ViewModel::SettingsViewModel> viewModel,
-                               Gui::IThemeProvider& themeProvider, PluginConfigViewFactory pluginConfigFactory)
+                               PluginConfigViewFactory pluginConfigFactory)
         : wxDialog(wxTheApp->GetTopWindow(),
                    wxID_ANY,
                    wxString::FromUTF8(languageService.fetch_translation("settingsWindow.title")),
@@ -32,7 +31,6 @@ namespace Vertex::View
                    wxDEFAULT_DIALOG_STYLE | wxRESIZE_BORDER | wxMINIMIZE_BOX | wxMAXIMIZE_BOX | wxCLOSE_BOX),
           m_viewModel(std::move(viewModel)),
           m_languageService(languageService),
-          m_themeProvider(themeProvider),
           m_pluginConfigFactory(std::move(pluginConfigFactory))
     {
         m_viewModel->set_event_callback(
@@ -81,6 +79,9 @@ namespace Vertex::View
         refresh_plugin_list();
         refresh_plugin_paths_list();
 
+        refresh_script_paths_list();
+        refresh_script_list();
+
         refresh_language_choice();
         refresh_language_paths_list();
 
@@ -97,14 +98,6 @@ namespace Vertex::View
 
     void SettingsView::bind_events()
     {
-        Bind(wxEVT_SYS_COLOUR_CHANGED, [this](wxSysColourChangedEvent& event)
-        {
-            m_themeProvider.refresh();
-            Gui::ThemeProvider::apply_palette_to_tree(this, m_themeProvider.palette());
-            Refresh();
-            event.Skip();
-        });
-
         m_okButton->Bind(wxEVT_BUTTON,
                          [this]([[maybe_unused]] wxCommandEvent& event)
                          {
@@ -196,6 +189,14 @@ namespace Vertex::View
         m_addPluginPathButton->Bind(wxEVT_BUTTON, &SettingsView::on_add_plugin_path_clicked, this);
         m_removePluginPathButton->Bind(wxEVT_BUTTON, &SettingsView::on_remove_plugin_path_clicked, this);
 
+        m_scriptListCtrl->Bind(wxEVT_LIST_ITEM_CHECKED, &SettingsView::on_script_checked, this);
+        m_scriptListCtrl->Bind(wxEVT_LIST_ITEM_UNCHECKED, &SettingsView::on_script_unchecked, this);
+        m_refreshScriptsButton->Bind(wxEVT_BUTTON, &SettingsView::on_refresh_scripts_clicked, this);
+        m_scriptPathsListCtrl->Bind(wxEVT_LIST_ITEM_SELECTED, &SettingsView::on_script_path_selected, this);
+        m_scriptPathsListCtrl->Bind(wxEVT_LIST_ITEM_DESELECTED, &SettingsView::on_script_path_deselected, this);
+        m_addScriptPathButton->Bind(wxEVT_BUTTON, &SettingsView::on_add_script_path_clicked, this);
+        m_removeScriptPathButton->Bind(wxEVT_BUTTON, &SettingsView::on_remove_script_path_clicked, this);
+
         m_interfaceLanguageChoice->Bind(wxEVT_CHOICE, &SettingsView::on_language_changed, this);
         m_languagePathsListCtrl->Bind(wxEVT_LIST_ITEM_SELECTED, &SettingsView::on_language_path_selected, this);
         m_languagePathsListCtrl->Bind(wxEVT_LIST_ITEM_DESELECTED, &SettingsView::on_language_path_deselected, this);
@@ -217,8 +218,6 @@ namespace Vertex::View
             return;
         }
 
-        m_themeProvider.set_theme(static_cast<Theme>(selection));
-
         auto appearance = wxAppBase::Appearance::System;
         if (selection == ApplicationAppearance::LIGHT)
         {
@@ -230,7 +229,6 @@ namespace Vertex::View
         }
 
         std::ignore = wxTheApp->SetAppearance(appearance);
-        Gui::ThemeProvider::apply_theme_to_all_windows(m_themeProvider);
     }
 
     void SettingsView::create_controls()
@@ -241,6 +239,7 @@ namespace Vertex::View
         m_pluginPanel = new wxPanel(m_tabNotebook);
         m_languagePanel = new wxPanel(m_tabNotebook);
         m_memoryScannerPanel = new wxPanel(m_tabNotebook);
+        m_scriptsPanel = new wxPanel(m_tabNotebook);
 
         if (m_pluginConfigFactory)
         {
@@ -259,12 +258,14 @@ namespace Vertex::View
         create_plugin_tab_controls();
         create_language_tab_controls();
         create_memory_scanner_tab_controls();
+        create_scripts_tab_controls();
     }
 
     void SettingsView::layout_controls()
     {
         m_tabNotebook->AddPage(m_generalPanel, wxString::FromUTF8(m_languageService.fetch_translation("settingsWindow.general")));
         m_tabNotebook->AddPage(m_pluginPanel, wxString::FromUTF8(m_languageService.fetch_translation("settingsWindow.plugins")));
+        m_tabNotebook->AddPage(m_scriptsPanel, wxString::FromUTF8(m_languageService.fetch_translation("settingsWindow.scripts")));
         m_tabNotebook->AddPage(m_languagePanel, wxString::FromUTF8(m_languageService.fetch_translation("settingsWindow.language")));
         m_tabNotebook->AddPage(m_memoryScannerPanel, wxString::FromUTF8(m_languageService.fetch_translation("settingsWindow.memoryScanner")));
 
@@ -294,6 +295,7 @@ namespace Vertex::View
         layout_plugin_tab();
         layout_language_tab();
         layout_memory_scanner_tab();
+        layout_scripts_tab();
 
         SetSizer(m_settingsMainSizer);
         Layout();
@@ -797,5 +799,154 @@ namespace Vertex::View
         m_threadBufferSizeGroup->Add(m_threadBufferSizeSpinCtrl, StandardWidgetValues::NO_PROPORTION, wxEXPAND | wxALL, StandardWidgetValues::STANDARD_BORDER);
         m_memoryScannerMainSizer->Add(m_threadBufferSizeGroup, StandardWidgetValues::NO_PROPORTION, wxEXPAND | wxALL, StandardWidgetValues::STANDARD_BORDER);
         m_memoryScannerPanel->SetSizer(m_memoryScannerMainSizer);
+    }
+
+    void SettingsView::create_scripts_tab_controls()
+    {
+        m_scriptsMainSizer = new wxBoxSizer(wxVERTICAL);
+        m_scriptListCtrl = new wxListCtrl(m_scriptsPanel, wxID_ANY, wxDefaultPosition, wxSize(-1, 220), wxLC_REPORT | wxLC_SINGLE_SEL);
+        m_scriptListCtrl->EnableCheckBoxes(true);
+        m_scriptListCtrl->AppendColumn(wxString::FromUTF8(m_languageService.fetch_translation("settingsWindow.scriptsTab.columnName")), wxLIST_FORMAT_LEFT, 200);
+        m_scriptListCtrl->AppendColumn(wxString::FromUTF8(m_languageService.fetch_translation("settingsWindow.scriptsTab.columnPath")), wxLIST_FORMAT_LEFT, 400);
+        m_refreshScriptsButton = new wxButton(m_scriptsPanel, wxID_ANY, wxString::FromUTF8(m_languageService.fetch_translation("settingsWindow.scriptsTab.refreshList")));
+
+        m_scriptPathsStaticBox = new wxStaticBox(m_scriptsPanel, wxID_ANY, wxString::FromUTF8(m_languageService.fetch_translation("settingsWindow.scriptsTab.scriptPaths")));
+        m_scriptPathsGroup = new wxStaticBoxSizer(m_scriptPathsStaticBox, wxVERTICAL);
+        m_scriptPathsListCtrl = new wxListCtrl(m_scriptPathsStaticBox, wxID_ANY, wxDefaultPosition, wxSize(-1, 120), wxLC_REPORT | wxLC_SINGLE_SEL);
+        m_scriptPathsListCtrl->AppendColumn(wxString::FromUTF8(m_languageService.fetch_translation("settingsWindow.scriptsTab.pathColumn")), wxLIST_FORMAT_LEFT, 600);
+        m_scriptPathsButtonSizer = new wxBoxSizer(wxHORIZONTAL);
+        m_addScriptPathButton = new wxButton(m_scriptPathsStaticBox, wxID_ANY, wxString::FromUTF8(m_languageService.fetch_translation("settingsWindow.scriptsTab.addPath")));
+        m_removeScriptPathButton = new wxButton(m_scriptPathsStaticBox, wxID_ANY, wxString::FromUTF8(m_languageService.fetch_translation("settingsWindow.scriptsTab.removePath")));
+        m_removeScriptPathButton->Disable();
+    }
+
+    void SettingsView::layout_scripts_tab()
+    {
+        m_scriptsMainSizer->Add(new wxStaticText(m_scriptsPanel, wxID_ANY, wxString::FromUTF8(m_languageService.fetch_translation("settingsWindow.scriptsTab.availableScripts"))),
+                                StandardWidgetValues::NO_PROPORTION, wxALL, StandardWidgetValues::STANDARD_BORDER);
+        m_scriptsMainSizer->Add(m_scriptListCtrl, StandardWidgetValues::STANDARD_PROPORTION, wxEXPAND | wxALL, StandardWidgetValues::STANDARD_BORDER);
+        m_scriptsMainSizer->Add(m_refreshScriptsButton, StandardWidgetValues::NO_PROPORTION, wxEXPAND | wxALL, StandardWidgetValues::STANDARD_BORDER);
+
+        m_scriptPathsGroup->Add(m_scriptPathsListCtrl, StandardWidgetValues::STANDARD_PROPORTION, wxEXPAND | wxALL, StandardWidgetValues::STANDARD_BORDER);
+        m_scriptPathsButtonSizer->Add(m_addScriptPathButton, StandardWidgetValues::NO_PROPORTION, wxALL, StandardWidgetValues::STANDARD_BORDER);
+        m_scriptPathsButtonSizer->Add(m_removeScriptPathButton, StandardWidgetValues::NO_PROPORTION, wxALL, StandardWidgetValues::STANDARD_BORDER);
+        m_scriptPathsButtonSizer->AddStretchSpacer();
+        m_scriptPathsGroup->Add(m_scriptPathsButtonSizer, StandardWidgetValues::NO_PROPORTION, wxEXPAND | wxALL, StandardWidgetValues::STANDARD_BORDER);
+        m_scriptsMainSizer->Add(m_scriptPathsGroup, StandardWidgetValues::NO_PROPORTION, wxEXPAND | wxALL, StandardWidgetValues::STANDARD_BORDER);
+
+        m_scriptsPanel->SetSizer(m_scriptsMainSizer);
+    }
+
+    void SettingsView::refresh_script_list()
+    {
+        m_scriptListCtrl->DeleteAllItems();
+        m_availableScripts = m_viewModel->get_available_scripts();
+
+        for (const auto& [i, scriptPath] : m_availableScripts | std::views::enumerate)
+        {
+            const long itemIndex = m_scriptListCtrl->InsertItem(static_cast<long>(i),
+                wxString::FromUTF8(scriptPath.filename().string()));
+            m_scriptListCtrl->SetItem(itemIndex, 1, wxString::FromUTF8(scriptPath.string()));
+
+            if (m_viewModel->is_script_auto_start(scriptPath))
+            {
+                m_scriptListCtrl->CheckItem(itemIndex, true);
+            }
+        }
+    }
+
+    void SettingsView::refresh_script_paths_list()
+    {
+        m_scriptPathsListCtrl->DeleteAllItems();
+        m_scriptPaths = m_viewModel->get_script_paths();
+
+        for (const auto& [i, path] : m_scriptPaths | std::views::enumerate)
+        {
+            m_scriptPathsListCtrl->InsertItem(static_cast<long>(i), wxString::FromUTF8(path.string()));
+        }
+    }
+
+    void SettingsView::on_script_checked(wxListEvent& event)
+    {
+        const long index = event.GetIndex();
+        if (index < 0 || index >= static_cast<long>(m_availableScripts.size()))
+        {
+            return;
+        }
+
+        m_viewModel->set_script_auto_start(m_availableScripts[index], true);
+        m_applyButton->Enable(true);
+    }
+
+    void SettingsView::on_script_unchecked(wxListEvent& event)
+    {
+        const long index = event.GetIndex();
+        if (index < 0 || index >= static_cast<long>(m_availableScripts.size()))
+        {
+            return;
+        }
+
+        m_viewModel->set_script_auto_start(m_availableScripts[index], false);
+        m_applyButton->Enable(true);
+    }
+
+    void SettingsView::on_refresh_scripts_clicked([[maybe_unused]] wxCommandEvent& event)
+    {
+        refresh_script_list();
+    }
+
+    void SettingsView::on_add_script_path_clicked([[maybe_unused]] wxCommandEvent& event)
+    {
+        wxDirDialog dialog(this, wxString::FromUTF8(m_languageService.fetch_translation("settingsWindow.scriptsTab.selectScriptPath")));
+
+        if (dialog.ShowModal() == wxID_OK)
+        {
+            const std::filesystem::path selectedPath = dialog.GetPath().ToStdString();
+
+            if (m_viewModel->add_script_path(selectedPath))
+            {
+                refresh_script_paths_list();
+                refresh_script_list();
+                m_applyButton->Enable(true);
+            }
+            else
+            {
+                wxMessageBox(wxString::FromUTF8(m_languageService.fetch_translation("settingsWindow.scriptsTab.pathAlreadyExists")),
+                             wxString::FromUTF8(m_languageService.fetch_translation("general.error")),
+                             wxOK | wxICON_WARNING, this);
+            }
+        }
+    }
+
+    void SettingsView::on_remove_script_path_clicked([[maybe_unused]] wxCommandEvent& event)
+    {
+        const long selectedIndex = m_scriptPathsListCtrl->GetNextItem(-1, wxLIST_NEXT_ALL, wxLIST_STATE_SELECTED);
+
+        if (selectedIndex == -1 || selectedIndex >= static_cast<long>(m_scriptPaths.size()))
+        {
+            return;
+        }
+
+        const auto& pathToRemove = m_scriptPaths[selectedIndex];
+
+        if (m_viewModel->remove_script_path(pathToRemove))
+        {
+            refresh_script_paths_list();
+            refresh_script_list();
+            m_applyButton->Enable(true);
+            m_removeScriptPathButton->Enable(false);
+        }
+    }
+
+    void SettingsView::on_script_path_selected([[maybe_unused]] wxListEvent& event)
+    {
+        const long selectedIndex = m_scriptPathsListCtrl->GetNextItem(-1, wxLIST_NEXT_ALL, wxLIST_STATE_SELECTED);
+        m_removeScriptPathButton->Enable(selectedIndex != -1);
+    }
+
+    void SettingsView::on_script_path_deselected([[maybe_unused]] wxListEvent& event)
+    {
+        const long selectedIndex = m_scriptPathsListCtrl->GetNextItem(-1, wxLIST_NEXT_ALL, wxLIST_STATE_SELECTED);
+        m_removeScriptPathButton->Enable(selectedIndex != -1);
     }
 }

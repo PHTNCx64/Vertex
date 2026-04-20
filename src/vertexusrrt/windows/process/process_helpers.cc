@@ -34,8 +34,11 @@ namespace ProcessInternal
     StatusCode invalidate_handle()
     {
         native_handle& handle = get_native_handle();
-        CloseHandle(handle);
-        handle = INVALID_HANDLE_VALUE;
+        if (handle != INVALID_HANDLE_VALUE)
+        {
+            CloseHandle(handle);
+            handle = INVALID_HANDLE_VALUE;
+        }
 
         clear_process_architecture();
 

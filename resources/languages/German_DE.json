@@ -141,7 +141,9 @@
       "analytics": "Analyse",
       "analyticsDescription": "Öffnet das Analysefenster",
       "injector": "Injektor",
-      "injectorDescription": "Öffnet das Injektorfenster"
+      "injectorDescription": "Öffnet das Injektorfenster",
+      "code": "Skripteditor",
+      "codeDescription": "Öffnet den Skripteditor"
     },
     "buttons": {
       "initialScan": "Erster Scan",
@@ -754,6 +756,42 @@
       "stateSleeping": "Schlafend",
       "stateFinished": "Abgeschlossen",
       "stateError": "Fehler"
+    }
+  },
+  "accessTracker": {
+    "title": "Zugriffs-Tracker",
+    "tracking": "Beobachtet",
+    "stop": "Stopp",
+    "clear": "Leeren",
+    "close": "Schließen",
+    "columnInstruction": "Instruktion",
+    "columnModule": "Modul",
+    "columnFunction": "Funktion",
+    "columnMnemonic": "Mnemonik",
+    "columnHits": "Treffer",
+    "columnAccess": "Zugriff",
+    "columnSize": "Größe",
+    "columnRegisters": "Register",
+    "columnCaller": "Aufrufer",
+    "statusIdle": "Inaktiv",
+    "statusStarting": "Startet…",
+    "statusActive": "Aktiv",
+    "statusStopping": "Wird gestoppt…",
+    "statusStartFailed": "Start fehlgeschlagen",
+    "statusStopFailed": "Stopp fehlgeschlagen",
+    "context": {
+      "viewInDisassembly": "Im Disassembly anzeigen",
+      "showCallStack": "Aufrufliste anzeigen",
+      "copyInstructionAddress": "Instruktionsadresse kopieren",
+      "copyRegisters": "Register kopieren"
+    },
+    "callStackDialog": {
+      "title": "Aufrufliste",
+      "columnIndex": "#",
+      "columnReturnAddress": "Rücksprungadresse",
+      "columnModule": "Modul",
+      "columnFunction": "Funktion",
+      "goToFrame": "Zu Frame springen"
     }
   }
 }

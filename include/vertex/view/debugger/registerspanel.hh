@@ -15,7 +15,6 @@
 #include <vertex/debugger/debuggertypes.hh>
 #include <vertex/runtime/iregistry.hh>
 #include <vertex/language/language.hh>
-#include <vertex/gui/theme/ithemeprovider.hh>
 
 namespace Vertex::View::Debugger
 {
@@ -26,7 +25,7 @@ namespace Vertex::View::Debugger
         using RefreshCallback = std::function<void()>;
         using ShowInMemoryCallback = std::function<void(std::uint64_t address)>;
 
-        RegistersPanel(wxWindow* parent, Language::ILanguage& languageService, Gui::IThemeProvider& themeProvider);
+        RegistersPanel(wxWindow* parent, Language::ILanguage& languageService);
 
         void update_registers(const ::Vertex::Debugger::RegisterSet& registers);
         void clear();
@@ -41,8 +40,6 @@ namespace Vertex::View::Debugger
         void set_register_callback(SetRegisterCallback callback);
         void set_refresh_callback(RefreshCallback callback);
         void set_show_in_memory_callback(ShowInMemoryCallback callback);
-
-        void refresh_theme() const;
 
         [[nodiscard]] bool is_configured() const { return m_isConfigured; }
 
@@ -77,6 +74,5 @@ namespace Vertex::View::Debugger
         std::unordered_map<std::string, long> m_registerIndexMap{};
 
         Language::ILanguage& m_languageService;
-        Gui::IThemeProvider& m_themeProvider;
     };
 }

@@ -4,7 +4,6 @@
 //
 #include <vertex/view/debugger/disassemblycontrol.hh>
 #include <vertex/utility.hh>
-#include <vertex/gui/theme/themeprovider.hh>
 #include <wx/menu.h>
 #include <wx/clipbrd.h>
 #include <wx/dialog.h>
@@ -12,6 +11,7 @@
 #include <wx/sizer.h>
 #include <wx/stattext.h>
 #include <wx/button.h>
+#include <wx/settings.h>
 #include <fmt/format.h>
 #include <algorithm>
 #include <array>
@@ -22,15 +22,14 @@ namespace Vertex::View::Debugger
 {
     DisassemblyHeader::DisassemblyHeader(
         wxWindow* parent,
-        Language::ILanguage& languageService,
-        Gui::IThemeProvider& themeProvider
+        Language::ILanguage& languageService
     )
         : wxPanel()
-        , m_themeProvider(themeProvider)
     {
         wxWindow::SetBackgroundStyle(wxBG_STYLE_PAINT);
         Create(parent, wxID_ANY, wxDefaultPosition, wxDefaultSize, wxFULL_REPAINT_ON_RESIZE);
-        refresh_theme();
+
+        load_system_colors();
 
         m_codeFont = wxFont(10, wxFONTFAMILY_TELETYPE, wxFONTSTYLE_NORMAL, wxFONTWEIGHT_NORMAL);
         m_codeFontBold = m_codeFont.Bold();
@@ -109,18 +108,6 @@ namespace Vertex::View::Debugger
     void DisassemblyHeader::set_column_reorder_callback(ColumnReorderCallback callback)
     {
         m_columnReorderCallback = std::move(callback);
-    }
-
-    void DisassemblyHeader::refresh_theme()
-    {
-        const auto& pal = m_themeProvider.palette();
-        m_colors.headerBackground = pal.panel;
-        m_colors.headerBorder = pal.border;
-        m_colors.headerText = pal.textHeader;
-        m_colors.separatorHover = pal.accent;
-        m_colors.dragIndicator = pal.dragIndicator;
-        m_colors.draggedColumn = pal.draggedColumn;
-        Refresh();
     }
 
     void DisassemblyHeader::set_left_offset(const int offset)
@@ -481,17 +468,17 @@ namespace Vertex::View::Debugger
     {
     }
 
-    DisassemblyControl::DisassemblyControl(wxWindow* parent, Language::ILanguage& languageService, Gui::IThemeProvider& themeProvider, DisassemblyHeader* header)
+    DisassemblyControl::DisassemblyControl(wxWindow* parent, Language::ILanguage& languageService, DisassemblyHeader* header)
         : wxScrolledWindow()
         , m_loadingAnimTimer(this)
         , m_header(header)
         , m_languageService(languageService)
-        , m_themeProvider(themeProvider)
     {
         SetBackgroundStyle(wxBG_STYLE_PAINT);
         Create(parent, wxID_ANY, wxDefaultPosition, wxDefaultSize,
                wxVSCROLL | wxHSCROLL | wxFULL_REPAINT_ON_RESIZE | wxWANTS_CHARS);
-        refresh_theme();
+
+        load_system_colors();
 
         m_codeFont = wxFont(10, wxFONTFAMILY_TELETYPE, wxFONTSTYLE_NORMAL, wxFONTWEIGHT_NORMAL);
         m_codeFontBold = m_codeFont.Bold();
@@ -548,55 +535,6 @@ namespace Vertex::View::Debugger
     void DisassemblyControl::on_columns_changed()
     {
         update_virtual_size();
-        Refresh();
-    }
-
-    void DisassemblyControl::refresh_theme()
-    {
-        const auto& pal = m_themeProvider.palette();
-        m_colors.background = pal.background;
-        m_colors.backgroundAlt = pal.backgroundAlt;
-        m_colors.selectedLine = pal.selection;
-        m_colors.currentLine = pal.currentLine;
-        m_colors.breakpointLine = pal.breakpointLine;
-
-        m_colors.address = pal.accent;
-        m_colors.bytes = pal.textSecondary;
-        m_colors.mnemonicNormal = pal.text;
-        m_colors.mnemonicJump = pal.syntaxFlowJump;
-        m_colors.mnemonicCall = pal.syntaxFlowCall;
-        m_colors.mnemonicRet = pal.syntaxFlowReturn;
-        m_colors.mnemonicMov = pal.syntaxMove;
-        m_colors.mnemonicArith = pal.syntaxArithmetic;
-        m_colors.operands = pal.syntaxOperand;
-        m_colors.operandReg = pal.syntaxRegister;
-        m_colors.operandImm = pal.syntaxImmediate;
-        m_colors.operandMem = pal.syntaxMemory;
-        m_colors.comment = pal.syntaxComment;
-        m_colors.symbolLabel = pal.syntaxSymbol;
-        m_colors.moduleContext = pal.textSecondary;
-        m_colors.functionEntryLine = pal.functionEntryLine;
-
-        m_colors.arrowUnconditional = pal.arrowUnconditional;
-        m_colors.arrowConditional = pal.arrowConditional;
-        m_colors.arrowCall = pal.arrowCall;
-        m_colors.arrowLoop = pal.arrowLoop;
-
-        m_colors.breakpointMarker = pal.markerBreakpoint;
-        m_colors.breakpointMarkerDisabled = pal.markerBreakpointDisabled;
-        m_colors.breakpointMarkerPending = pal.markerBreakpointPending;
-        m_colors.breakpointLineDisabled = pal.breakpointLineDisabled;
-        m_colors.breakpointLinePending = pal.breakpointLinePending;
-        m_colors.currentMarker = pal.markerCurrent;
-
-        m_colors.gutter = pal.gutterBackground;
-        m_colors.gutterBorder = pal.gutterBorder;
-
-        m_colors.loadingText = pal.loadingText;
-        m_colors.endOfRangeText = pal.endOfRangeText;
-        m_colors.errorText = pal.error;
-        m_colors.errorRetryText = pal.errorRetryText;
-        m_colors.edgeIndicatorBg = pal.edgeIndicatorBg;
         Refresh();
     }
 
@@ -2307,7 +2245,6 @@ namespace Vertex::View::Debugger
         sizer->Add(buttonSizer, StandardWidgetValues::NO_PROPORTION, wxEXPAND | wxALL, StandardWidgetValues::STANDARD_BORDER);
 
         dialog.SetSizer(sizer);
-        Gui::ThemeProvider::apply_palette_to_tree(&dialog, m_themeProvider.palette());
 
         goButton->Bind(wxEVT_BUTTON,
             [listCtrl, &navigateTarget, &dialog, resolve_navigate_target](wxCommandEvent&)
@@ -2323,6 +2260,36 @@ namespace Vertex::View::Debugger
         {
             m_navigateCallback(navigateTarget);
         }
+    }
+
+    void DisassemblyHeader::load_system_colors()
+    {
+        m_colors.headerBackground = wxSystemSettings::GetColour(wxSYS_COLOUR_BTNFACE);
+        m_colors.headerBorder = wxSystemSettings::GetColour(wxSYS_COLOUR_BTNSHADOW);
+        m_colors.headerText = wxSystemSettings::GetColour(wxSYS_COLOUR_BTNTEXT);
+        m_colors.separatorHover = wxSystemSettings::GetColour(wxSYS_COLOUR_HIGHLIGHT);
+        m_colors.dragIndicator = wxSystemSettings::GetColour(wxSYS_COLOUR_HIGHLIGHT);
+
+        const bool isDark = m_colors.headerBackground.GetLuminance() < 0.5;
+        m_colors.draggedColumn = isDark
+            ? m_colors.headerBackground.ChangeLightness(120)
+            : m_colors.headerBackground.ChangeLightness(85);
+    }
+
+    void DisassemblyControl::load_system_colors()
+    {
+        m_colors.background = wxSystemSettings::GetColour(wxSYS_COLOUR_LISTBOX);
+        m_colors.selectedLine = wxSystemSettings::GetColour(wxSYS_COLOUR_HIGHLIGHT);
+        m_colors.gutter = wxSystemSettings::GetColour(wxSYS_COLOUR_BTNFACE);
+        m_colors.gutterBorder = wxSystemSettings::GetColour(wxSYS_COLOUR_BTNSHADOW);
+
+        const bool isDark = m_colors.background.GetLuminance() < 0.5;
+        m_colors.backgroundAlt = isDark
+            ? m_colors.background.ChangeLightness(115)
+            : m_colors.background.ChangeLightness(95);
+        m_colors.edgeIndicatorBg = isDark
+            ? m_colors.background.ChangeLightness(85)
+            : m_colors.background.ChangeLightness(110);
     }
 
 } // namespace Vertex::View::Debugger

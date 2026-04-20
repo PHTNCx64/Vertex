@@ -3,20 +3,17 @@
 // Licensed under GPLv3.0 with Plugin Interface exceptions.
 //
 #include <vertex/view/memoryattributeview.hh>
-#include <vertex/gui/theme/themeprovider.hh>
 #include <wx/msgdlg.h>
 #include <wx/app.h>
 
 namespace Vertex::View
 {
     MemoryAttributeView::MemoryAttributeView(std::unique_ptr<ViewModel::MemoryAttributeViewModel> viewModel,
-                                             Language::ILanguage& languageService,
-                                             Gui::IThemeProvider& themeProvider)
+                                             Language::ILanguage& languageService)
         : wxDialog(wxTheApp->GetTopWindow(), wxID_ANY,
                   wxString::FromUTF8(languageService.fetch_translation("memoryAttributeWindow.title"))),
           m_viewModel{std::move(viewModel)},
-          m_languageService{languageService},
-          m_themeProvider{themeProvider}
+          m_languageService{languageService}
     {
         m_viewModel->set_event_callback([this](const Event::EventId eventId, const Event::VertexEvent& event)
         {
@@ -25,14 +22,6 @@ namespace Vertex::View
 
         create_ui_elements();
         layout_ui_elements();
-
-        Bind(wxEVT_SYS_COLOUR_CHANGED, [this](wxSysColourChangedEvent& event)
-        {
-            m_themeProvider.refresh();
-            Gui::ThemeProvider::apply_palette_to_tree(this, m_themeProvider.palette());
-            Refresh();
-            event.Skip();
-        });
 
         SetSizer(m_mainSizer);
         wxTopLevelWindowBase::Layout();

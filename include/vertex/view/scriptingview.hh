@@ -27,7 +27,6 @@
 #include <vertex/viewmodel/scriptingviewmodel.hh>
 #include <vertex/language/ilanguage.hh>
 #include <vertex/gui/iconmanager/iiconmanager.hh>
-#include <vertex/gui/theme/ithemeprovider.hh>
 #include <vertex/event/eventbus.hh>
 
 namespace Vertex::View
@@ -37,8 +36,7 @@ namespace Vertex::View
     public:
         ScriptingView(Language::ILanguage& languageService,
                       std::unique_ptr<ViewModel::ScriptingViewModel> viewModel,
-                      Gui::IIconManager& iconManager,
-                      Gui::IThemeProvider& themeProvider);
+                      Gui::IIconManager& iconManager);
 
     private:
         void vertex_event_callback(Event::EventId eventId, const Event::VertexEvent& event);
@@ -151,6 +149,5 @@ namespace Vertex::View
         std::unique_ptr<ViewModel::ScriptingViewModel> m_viewModel{};
         Language::ILanguage& m_languageService;
         Gui::IIconManager& m_iconManager;
-        Gui::IThemeProvider& m_themeProvider;
     };
 }

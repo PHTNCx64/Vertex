@@ -6,6 +6,7 @@
 
 #include <sdk/statuscode.h>
 #include <vertex/scanner/scanconfig.hh>
+#include <vertex/scanner/scanner_typeschema.hh>
 #include <vertex/scanner/imemoryreader.hh>
 
 #include <vector>
@@ -41,8 +42,8 @@ namespace Vertex::Scanner
         virtual void set_scan_progress_callback(std::move_only_function<void()> callback) = 0;
         [[nodiscard]] virtual bool has_memory_reader() const = 0;
 
-        virtual StatusCode initialize_scan(const ScanConfiguration& configuration, const std::vector<ScanRegion>& memoryRegions) = 0;
-        virtual StatusCode initialize_next_scan(const ScanConfiguration& configuration) = 0;
+        virtual StatusCode initialize_scan(const ScanConfiguration& configuration, std::shared_ptr<const TypeSchema> schema, const std::vector<ScanRegion>& memoryRegions) = 0;
+        virtual StatusCode initialize_next_scan(const ScanConfiguration& configuration, std::shared_ptr<const TypeSchema> schema) = 0;
         virtual StatusCode undo_scan() = 0;
         virtual StatusCode stop_scan() = 0;
         virtual void finalize_scan() = 0;
@@ -50,6 +51,7 @@ namespace Vertex::Scanner
         [[nodiscard]] virtual std::uint64_t get_regions_scanned() const noexcept = 0;
         [[nodiscard]] virtual std::uint64_t get_total_regions() const noexcept = 0;
         [[nodiscard]] virtual std::uint64_t get_results_count() const = 0;
+        [[nodiscard]] virtual StatusCode get_last_plugin_error() const noexcept = 0;
         virtual void set_scan_abort_state(bool state) = 0;
         virtual bool is_scan_complete() = 0;
         [[nodiscard]] virtual bool can_undo() const = 0;

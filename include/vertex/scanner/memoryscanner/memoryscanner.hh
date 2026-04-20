@@ -45,6 +45,8 @@ namespace Vertex::Scanner
     class MemoryScanner final : public IMemoryScanner
     {
       public:
+        static constexpr std::chrono::milliseconds SCAN_PROGRESS_MIN_INTERVAL{50};
+
         MemoryScanner(Configuration::ISettings& settingsService, Log::ILog& logService, Thread::IThreadDispatcher& dispatcher);
         ~MemoryScanner() override;
 
@@ -53,8 +55,8 @@ namespace Vertex::Scanner
         void set_scan_progress_callback(std::move_only_function<void()> callback) override;
         [[nodiscard]] bool has_memory_reader() const override;
 
-        StatusCode initialize_scan(const ScanConfiguration& configuration, const std::vector<ScanRegion>& memoryRegions) override;
-        StatusCode initialize_next_scan(const ScanConfiguration& configuration) override;
+        StatusCode initialize_scan(const ScanConfiguration& configuration, std::shared_ptr<const TypeSchema> schema, const std::vector<ScanRegion>& memoryRegions) override;
+        StatusCode initialize_next_scan(const ScanConfiguration& configuration, std::shared_ptr<const TypeSchema> schema) override;
         StatusCode undo_scan() override;
         StatusCode stop_scan() override;
         void finalize_scan() override;
@@ -71,6 +73,7 @@ namespace Vertex::Scanner
         [[nodiscard]] std::uint64_t get_regions_scanned() const noexcept override;
         [[nodiscard]] std::uint64_t get_total_regions() const noexcept override;
         [[nodiscard]] std::uint64_t get_results_count() const override;
+        [[nodiscard]] StatusCode get_last_plugin_error() const noexcept override;
 
       private:
         StatusCode scan_memory_region(const ScanRegion& region, std::size_t writerIndex, IMemoryReader& reader, Memory::AlignedByteVector& regionBuffer);
@@ -121,6 +124,7 @@ namespace Vertex::Scanner
 
         alignas(std::hardware_destructive_interference_size) std::atomic<bool> m_scanAbort{};
         alignas(std::hardware_destructive_interference_size) std::atomic<bool> m_resultsReconciled{true};
+        alignas(std::hardware_destructive_interference_size) std::atomic<StatusCode> m_pluginCallStatus{StatusCode::STATUS_OK};
         alignas(std::hardware_destructive_interference_size) std::atomic<int> m_activeReaders{};
         alignas(std::hardware_destructive_interference_size) std::atomic<std::uint64_t> m_regionsScanned{};
         alignas(std::hardware_destructive_interference_size) std::atomic<std::uint64_t> m_totalRegions{};
@@ -131,6 +135,9 @@ namespace Vertex::Scanner
 
         int m_scanIteration{};
         ScanConfiguration m_scanConfig{};
+        std::shared_ptr<const TypeSchema> m_activeSchema{};
+        TypeId m_lastScanTypeId{TypeId::Invalid};
+        void release_active_schema() noexcept;
 
         using ScanComparatorFn = bool (*)(const void*, const void*, const void*, const void*);
         ScanComparatorFn m_resolvedComparator{};
@@ -138,6 +145,10 @@ namespace Vertex::Scanner
         const void* m_resolvedInput2{};
         bool m_resolvedSwapNeeded{};
         bool m_resolvedIsString{};
+        bool m_resolvedIsPluginDefined{};
+        VertexExtractor_t m_resolvedPluginExtractor{};
+        VertexComparator_t m_resolvedPluginComparator{};
+        std::size_t m_resolvedPluginValueSize{};
         Simd::SimdScanCapability m_simdCapability{};
 
         std::size_t m_workerCount{};

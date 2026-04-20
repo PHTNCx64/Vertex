@@ -122,24 +122,31 @@ namespace Vertex::Scanner
         "Ends With",
     }};
 
+    inline constexpr ValueTypeInfo VALUE_TYPE_INFO_FALLBACK{"Invalid", 0, false, false, false};
+
     [[nodiscard]] inline constexpr const ValueTypeInfo& get_value_type_info(ValueType type)
     {
-        return VALUE_TYPE_INFO[static_cast<std::size_t>(type)];
+        const auto idx = static_cast<std::size_t>(type);
+        if (idx >= VALUE_TYPE_INFO.size())
+        {
+            return VALUE_TYPE_INFO_FALLBACK;
+        }
+        return VALUE_TYPE_INFO[idx];
     }
 
     [[nodiscard]] inline constexpr std::size_t get_value_size(ValueType type)
     {
-        return VALUE_TYPE_INFO[static_cast<std::size_t>(type)].size;
+        return get_value_type_info(type).size;
     }
 
     [[nodiscard]] inline constexpr std::size_t get_value_type_size(ValueType type)
     {
-        return VALUE_TYPE_INFO[static_cast<std::size_t>(type)].size;
+        return get_value_type_info(type).size;
     }
 
     [[nodiscard]] inline std::string get_value_type_name(ValueType type)
     {
-        return VALUE_TYPE_INFO[static_cast<std::size_t>(type)].name;
+        return get_value_type_info(type).name;
     }
 
     [[nodiscard]] inline std::string get_numeric_scan_mode_name(NumericScanMode mode)
@@ -154,11 +161,16 @@ namespace Vertex::Scanner
 
     [[nodiscard]] inline constexpr bool is_string_type(ValueType type)
     {
-        return VALUE_TYPE_INFO[static_cast<std::size_t>(type)].isString;
+        return get_value_type_info(type).isString;
     }
 
     [[nodiscard]] inline constexpr bool is_numeric_type(ValueType type)
     {
+        const auto idx = static_cast<std::size_t>(type);
+        if (idx >= VALUE_TYPE_INFO.size())
+        {
+            return false;
+        }
         return !is_string_type(type);
     }
 
@@ -185,12 +197,12 @@ namespace Vertex::Scanner
 
     [[nodiscard]] inline constexpr bool is_floating_point(ValueType type)
     {
-        return VALUE_TYPE_INFO[static_cast<std::size_t>(type)].isFloatingPoint;
+        return get_value_type_info(type).isFloatingPoint;
     }
 
     [[nodiscard]] inline constexpr bool is_signed(ValueType type)
     {
-        return VALUE_TYPE_INFO[static_cast<std::size_t>(type)].isSigned;
+        return get_value_type_info(type).isSigned;
     }
 
     [[nodiscard]] inline constexpr bool scan_mode_needs_input(NumericScanMode mode)

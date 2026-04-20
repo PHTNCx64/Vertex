@@ -1,3 +1,7 @@
+//
+// Copyright (C) 2026 PHTNC<>.
+// Licensed under GPLv3.0 with Plugin Interface exceptions.
+//
 #include <gtest/gtest.h>
 #include <gmock/gmock.h>
 
@@ -14,6 +18,7 @@
 #include <algorithm>
 #include <array>
 #include <cstdint>
+#include <cstdlib>
 #include <expected>
 #include <future>
 #include <limits>
@@ -198,7 +203,15 @@ namespace
         }
         else
         {
-            *regions = g_memoryStubContext->queryRegions.data();
+            const auto regionCount = g_memoryStubContext->queryRegions.size();
+            auto* allocated = static_cast<MemoryRegion*>(
+                std::malloc(sizeof(MemoryRegion) * regionCount));
+            if (allocated == nullptr)
+            {
+                return StatusCode::STATUS_ERROR_MEMORY_ALLOCATION_FAILED;
+            }
+            std::copy_n(g_memoryStubContext->queryRegions.data(), regionCount, allocated);
+            *regions = allocated;
         }
 
         return StatusCode::STATUS_OK;
@@ -256,6 +269,8 @@ protected:
 
         ON_CALL(*m_dispatcher, schedule_recurring(_, _, _, _, _, _))
             .WillByDefault(Return(std::expected<RecurringTaskHandle, StatusCode>{RecurringTaskHandle{1}}));
+        ON_CALL(*m_dispatcher, schedule_recurring_persistent(_, _, _, _, _, _))
+            .WillByDefault(Return(std::expected<RecurringTaskHandle, StatusCode>{RecurringTaskHandle{2}}));
         ON_CALL(*m_dispatcher, cancel_recurring(_))
             .WillByDefault(Return(StatusCode::STATUS_OK));
 

@@ -71,7 +71,7 @@ namespace debugger_options
         auto& continueOnWpField = fields[0];
         fill_c_string(continueOnWpField.fieldId, CONTINUE_ON_WP_HIT_FIELD_ID);
         fill_c_string(continueOnWpField.label, "Continue on Watchpoint Hit");
-        fill_c_string(continueOnWpField.tooltip, "When enabled, the debugger will automatically continue execution after a watchpoint is hit instead of pausing.");
+        fill_c_string(continueOnWpField.tooltip, "When enabled, the debugger continues execution after a watchpoint hits instead of pausing. Note: Access Tracker entries will not show registers, call stack, module, caller, or mnemonic because the target resumes before capture.");
         continueOnWpField.type = VERTEX_UI_FIELD_CHECKBOX;
         continueOnWpField.defaultValue.boolValue = 0;
         continueOnWpField.layoutOrientation = VERTEX_UI_LAYOUT_VERTICAL;

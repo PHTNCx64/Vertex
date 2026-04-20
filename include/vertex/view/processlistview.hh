@@ -9,6 +9,7 @@
 #include <vertex/viewmodel/processlistviewmodel.hh>
 
 #include <wx/dialog.h>
+#include <wx/panel.h>
 #include <wx/sizer.h>
 #include <wx/stattext.h>
 #include <wx/textctrl.h>
@@ -17,14 +18,13 @@
 
 #include <vertex/language/language.hh>
 #include <vertex/customwidgets/processlistctrl.hh>
-#include <vertex/gui/theme/ithemeprovider.hh>
 
 namespace Vertex::View
 {
     class ProcessListView final : public wxDialog
     {
     public:
-        ProcessListView(Language::ILanguage& languageService, const std::shared_ptr<ViewModel::ProcessListViewModel>& viewModel, Gui::IThemeProvider& themeProvider);
+        ProcessListView(Language::ILanguage& languageService, const std::shared_ptr<ViewModel::ProcessListViewModel>& viewModel);
 
     private:
         void vertex_event_callback(Event::EventId, const Event::VertexEvent& event);
@@ -40,9 +40,9 @@ namespace Vertex::View
         std::shared_ptr<ViewModel::ProcessListViewModel> m_viewModel{};
 
         Language::ILanguage& m_languageService;
-        Gui::IThemeProvider& m_themeProvider;
 
         wxTimer* m_taskTimer{};
+        wxPanel* m_mainPanel{};
         wxBoxSizer* m_mainSizer{};
         wxBoxSizer* m_processListInformationTextSizer{};
         wxStaticText* m_processListInformationText{};

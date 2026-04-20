@@ -17,7 +17,6 @@
 #include <sdk/disassembler.h>
 
 #include <atomic>
-#include <cstdint>
 #include <functional>
 #include <memory>
 #include <mutex>
@@ -50,6 +49,9 @@ namespace Vertex::Model
 
         [[nodiscard]] StatusCode start_engine() const;
         [[nodiscard]] StatusCode stop_engine() const;
+
+        [[nodiscard]] Debugger::DebuggerEngine& engine() noexcept { return *m_engine; }
+        [[nodiscard]] const Debugger::DebuggerEngine& engine() const noexcept { return *m_engine; }
 
         void set_event_handler(DebuggerEventHandler handler);
         void set_extension_result_handler(ExtensionResultHandler handler);

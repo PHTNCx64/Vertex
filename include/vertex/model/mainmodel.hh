@@ -7,6 +7,7 @@
 #include <vertex/theme.hh>
 #include <vertex/log/ilog.hh>
 #include <vertex/configuration/isettings.hh>
+#include <vertex/scanner/iscannerruntimeservice.hh>
 #include <vertex/scanner/memoryscanner/imemoryscanner.hh>
 #include <vertex/scanner/valuetypes.hh>
 #include <vertex/runtime/iloader.hh>
@@ -15,8 +16,10 @@
 #include <sdk/statuscode.h>
 #include <sdk/memory.h>
 
+#include <optional>
 #include <span>
 #include <string_view>
+#include <vector>
 
 namespace Vertex::Model
 {
@@ -36,9 +39,17 @@ namespace Vertex::Model
     class MainModel final
     {
       public:
-        explicit MainModel(Configuration::ISettings& settingsService, Scanner::IMemoryScanner& memoryService, Runtime::ILoader& loaderService, Log::ILog& loggerService, Thread::IThreadDispatcher& dispatcher);
+        explicit MainModel(Configuration::ISettings& settingsService, Scanner::IMemoryScanner& memoryService, Scanner::IScannerRuntimeService& scannerService, Runtime::ILoader& loaderService, Log::ILog& loggerService, Thread::IThreadDispatcher& dispatcher);
 
         [[nodiscard]] StatusCode validate_input(Scanner::ValueType type, bool hexadecimal, std::string_view input, std::vector<std::uint8_t>& output) const;
+
+        [[nodiscard]] StatusCode validate_input(Scanner::TypeId typeId, bool hexadecimal, std::string_view input, std::vector<std::uint8_t>& output) const;
+
+        [[nodiscard]] StatusCode validate_input(Scanner::TypeId typeId, ::NumericSystem numericBase, std::string_view input, std::vector<std::uint8_t>& output) const;
+
+        [[nodiscard]] std::vector<Scanner::TypeSchema> list_scanner_types() const;
+
+        [[nodiscard]] std::optional<Scanner::TypeSchema> find_scanner_type(Scanner::TypeId id) const;
 
         [[nodiscard]] StatusCode read_process_memory(std::uint64_t address, std::size_t size, std::vector<char>& output) const;
         [[nodiscard]] StatusCode write_process_memory(std::uint64_t address, const std::vector<std::uint8_t>& data) const;
@@ -62,6 +73,15 @@ namespace Vertex::Model
                                                  const std::vector<std::uint8_t>& input,
                                                  const std::vector<std::uint8_t>& input2) const;
 
+        [[nodiscard]] StatusCode initialize_scan(Scanner::TypeId typeId,
+                                                 std::uint32_t scanMode,
+                                                 bool hexDisplay,
+                                                 bool alignmentEnabled,
+                                                 std::size_t alignmentValue,
+                                                 Scanner::Endianness endianness,
+                                                 const std::vector<std::uint8_t>& input,
+                                                 const std::vector<std::uint8_t>& input2) const;
+
         [[nodiscard]] StatusCode initialize_next_scan(Scanner::ValueType valueType,
                                                       std::uint8_t scanMode,
                                                       bool hexDisplay,
@@ -71,10 +91,17 @@ namespace Vertex::Model
                                                       const std::vector<std::uint8_t>& input,
                                                       const std::vector<std::uint8_t>& input2) const;
 
+        [[nodiscard]] StatusCode initialize_next_scan(Scanner::TypeId typeId,
+                                                      std::uint32_t scanMode,
+                                                      bool hexDisplay,
+                                                      bool alignmentEnabled,
+                                                      std::size_t alignmentValue,
+                                                      Scanner::Endianness endianness,
+                                                      const std::vector<std::uint8_t>& input,
+                                                      const std::vector<std::uint8_t>& input2) const;
+
         [[nodiscard]] StatusCode undo_scan() const;
         [[nodiscard]] StatusCode stop_scan() const;
-        void set_scan_completion_callback(std::move_only_function<void()> callback) const;
-        void set_scan_progress_callback(std::move_only_function<void()> callback) const;
         void finalize_scan() const;
         [[nodiscard]] bool can_undo_scan() const;
         [[nodiscard]] std::uint64_t get_scan_progress_current() const;
@@ -85,6 +112,7 @@ namespace Vertex::Model
 
         [[nodiscard]] Theme get_theme() const;
         [[nodiscard]] StatusCode is_process_opened() const;
+        [[nodiscard]] StatusCode close_process() const;
         [[nodiscard]] StatusCode kill_process() const;
 
         [[nodiscard]] bool is_scan_complete() const;
@@ -102,6 +130,7 @@ namespace Vertex::Model
 
         Configuration::ISettings& m_settingsService;
         Scanner::IMemoryScanner& m_memoryService;
+        Scanner::IScannerRuntimeService& m_scannerService;
         Runtime::ILoader& m_loaderService;
         Log::ILog& m_loggerService;
         Thread::IThreadDispatcher& m_dispatcher;

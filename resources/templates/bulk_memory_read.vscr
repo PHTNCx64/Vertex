@@ -1,0 +1,60 @@
+// Bulk memory read template.
+// Demonstrates BulkReadEntry/BulkReadResult usage.
+void main()
+{
+    if (!is_process_open())
+    {
+        log_warn("Open a process first, then run this template.");
+        return;
+    }
+
+    int status = refresh_memory_regions();
+    if (status != STATUS_OK)
+    {
+        log_error("refresh_memory_regions failed: " + status);
+        return;
+    }
+
+    if (get_region_count() == 0)
+    {
+        log_warn("No memory regions found.");
+        return;
+    }
+
+    array<BulkReadEntry> requests;
+
+    MemoryRegion first = get_region_at(0);
+    requests.insertLast(BulkReadEntry(first.baseAddress, 16));
+
+    if (get_region_count() > 1)
+    {
+        MemoryRegion second = get_region_at(1);
+        requests.insertLast(BulkReadEntry(second.baseAddress, 16));
+    }
+
+    array<BulkReadResult>@ results;
+    status = bulk_read(requests, results);
+    if (status != STATUS_OK)
+    {
+        log_error("bulk_read failed: " + status);
+        return;
+    }
+
+    if (results is null)
+    {
+        log_error("bulk_read returned no result array.");
+        return;
+    }
+
+    for (uint i = 0; i < results.length(); ++i)
+    {
+        if (results[i].status == STATUS_OK)
+        {
+            log_info("Request " + i + " succeeded, bytes=" + results[i].data.length());
+        }
+        else
+        {
+            log_warn("Request " + i + " failed with status " + results[i].status);
+        }
+    }
+}

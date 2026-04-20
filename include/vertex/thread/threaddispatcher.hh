@@ -47,6 +47,14 @@ namespace Vertex::Thread
                            std::function<StatusCode()> task,
                            RecurringFailurePolicy failurePolicy = RecurringFailurePolicy::Continue) override;
 
+        [[nodiscard]] std::expected<RecurringTaskHandle, StatusCode>
+        schedule_recurring_persistent(ThreadChannel channel,
+                                      DispatchPriority priority,
+                                      RecurringPolicy policy,
+                                      std::chrono::milliseconds delay,
+                                      std::function<StatusCode()> task,
+                                      RecurringFailurePolicy failurePolicy = RecurringFailurePolicy::Continue) override;
+
         [[nodiscard]] StatusCode cancel_recurring(RecurringTaskHandle handle) override;
 
         [[nodiscard]] std::expected<std::future<StatusCode>, StatusCode>
@@ -89,7 +97,7 @@ namespace Vertex::Thread
 
         std::unique_ptr<VertexMPSCThread> m_sharedThread {};
         std::unordered_map<ThreadChannel, std::unique_ptr<VertexSPSCThread>> m_dedicatedThreads {};
-        std::unique_ptr<VertexPriorityThread> m_debuggerPriorityThread {};
+        std::unique_ptr<VertexPriorityThread> m_priorityThread {};
 
         std::unordered_map<ThreadChannel, std::vector<std::unique_ptr<VertexSPSCThread>>> m_workerPools {};
         std::unordered_map<ThreadChannel, std::size_t> m_workerPoolLogicalSizes {};

@@ -4,6 +4,7 @@
 //
 #include <fmt/format.h>
 #include <vertex/scanner/memoryscanner/memoryscanner.hh>
+#include <vertex/scanner/plugin_value_format.hh>
 #include <vertex/scanner/valueconverter.hh>
 #include <vertex/memory/scannerallocator.hh>
 #include <span>
@@ -242,6 +243,7 @@ namespace Vertex::Scanner
                     offset += chunkCount;
                 }
 
+                const bool isPlugin = m_activeSchema && m_activeSchema->kind == TypeKind::PluginDefined;
                 for (std::size_t i{}; i < results.size(); ++i)
                 {
                     if (readSuccess[i] == 0)
@@ -250,16 +252,25 @@ namespace Vertex::Scanner
                     }
 
                     results[i].value = bulkValueBuffers[i];
-                    results[i].formattedValue = ValueConverter::format(
-                        m_scanConfig.valueType,
-                        bulkValueBuffers[i].data(),
-                        dataSize,
-                        m_scanConfig.hexDisplay,
-                        m_scanConfig.endianness);
+                    if (isPlugin)
+                    {
+                        results[i].formattedValue = format_plugin_bytes(
+                            *m_activeSchema, bulkValueBuffers[i].data(), dataSize);
+                    }
+                    else
+                    {
+                        results[i].formattedValue = ValueConverter::format(
+                            m_scanConfig.valueType,
+                            bulkValueBuffers[i].data(),
+                            dataSize,
+                            m_scanConfig.hexDisplay,
+                            m_scanConfig.endianness);
+                    }
                 }
             }
             else
             {
+                const bool isPlugin = m_activeSchema && m_activeSchema->kind == TypeKind::PluginDefined;
                 Memory::AlignedByteVector currentValueBuffer(dataSize);
                 for (auto& entry : results)
                 {
@@ -270,12 +281,20 @@ namespace Vertex::Scanner
                     }
 
                     entry.value.assign(currentValueBuffer.begin(), currentValueBuffer.begin() + dataSize);
-                    entry.formattedValue = ValueConverter::format(
-                        m_scanConfig.valueType,
-                        currentValueBuffer.data(),
-                        dataSize,
-                        m_scanConfig.hexDisplay,
-                        m_scanConfig.endianness);
+                    if (isPlugin)
+                    {
+                        entry.formattedValue = format_plugin_bytes(
+                            *m_activeSchema, currentValueBuffer.data(), dataSize);
+                    }
+                    else
+                    {
+                        entry.formattedValue = ValueConverter::format(
+                            m_scanConfig.valueType,
+                            currentValueBuffer.data(),
+                            dataSize,
+                            m_scanConfig.hexDisplay,
+                            m_scanConfig.endianness);
+                    }
                 }
             }
         }

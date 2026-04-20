@@ -7,7 +7,6 @@
 #include <vertex/event/types/processopenevent.hh>
 #include <vertex/customwidgets/processlistctrl.hh>
 #include <vertex/view/processlistview.hh>
-#include <vertex/gui/theme/themeprovider.hh>
 
 #include <algorithm>
 #include <string>
@@ -19,7 +18,7 @@
 
 namespace Vertex::View
 {
-    ProcessListView::ProcessListView(Language::ILanguage& languageService, const std::shared_ptr<ViewModel::ProcessListViewModel>& viewModel, Gui::IThemeProvider& themeProvider)
+    ProcessListView::ProcessListView(Language::ILanguage& languageService, const std::shared_ptr<ViewModel::ProcessListViewModel>& viewModel)
         : wxDialog(wxTheApp->GetTopWindow(),
                    wxID_ANY,
                    languageService.fetch_translation("processListView.ui.title"),
@@ -28,8 +27,7 @@ namespace Vertex::View
                                          wxTheApp->GetTopWindow()),
                    wxDEFAULT_DIALOG_STYLE | wxRESIZE_BORDER | wxMINIMIZE_BOX | wxMAXIMIZE_BOX | wxCLOSE_BOX),
           m_viewModel(viewModel),
-        m_languageService(languageService),
-        m_themeProvider(themeProvider)
+        m_languageService(languageService)
     {
         m_viewModel->set_event_callback([this](const Event::EventId id, const Event::VertexEvent& event)
         {
@@ -48,10 +46,12 @@ namespace Vertex::View
 
     void ProcessListView::create_controls(const std::shared_ptr<ViewModel::ProcessListViewModel>& viewModel)
     {
+        m_mainPanel = new wxPanel(this, wxID_ANY);
+
         m_mainSizer = new wxBoxSizer(wxVERTICAL);
         m_processListInformationTextSizer = new wxBoxSizer(wxHORIZONTAL);
-        m_processListInformationText = new wxStaticText(this, wxID_ANY, wxString::FromUTF8(m_languageService.fetch_translation("processListView.ui.informationText")));
-        m_processFilteringOptionsBox = new wxStaticBox(this, wxID_ANY, wxString::FromUTF8(m_languageService.fetch_translation("processListView.ui.filterOptionsGroup")));
+        m_processListInformationText = new wxStaticText(m_mainPanel, wxID_ANY, wxString::FromUTF8(m_languageService.fetch_translation("processListView.ui.informationText")));
+        m_processFilteringOptionsBox = new wxStaticBox(m_mainPanel, wxID_ANY, wxString::FromUTF8(m_languageService.fetch_translation("processListView.ui.filterOptionsGroup")));
         m_processFilteringOptionsBoxSizer = new wxStaticBoxSizer(m_processFilteringOptionsBox, wxVERTICAL);
         m_processFilteringInputSizer = new wxBoxSizer(wxHORIZONTAL);
         m_processFilteringTextInformation = new wxStaticText(m_processFilteringOptionsBox, wxID_ANY, wxString::FromUTF8(m_languageService.fetch_translation("processListView.ui.filterLabel")));
@@ -61,14 +61,14 @@ namespace Vertex::View
         m_filterByProcessIDRadioButton = new wxRadioButton(m_processFilteringOptionsBox, wxID_ANY, wxString::FromUTF8(m_languageService.fetch_translation("processListView.ui.filterByProcessId")));
         m_filterByProcessOwnerRadioButton = new wxRadioButton(m_processFilteringOptionsBox, wxID_ANY, wxString::FromUTF8(m_languageService.fetch_translation("processListView.ui.filterByProcessOwner")));
         m_processListSizer = new wxBoxSizer(wxVERTICAL);
-        m_processList = new CustomWidgets::ProcessListControl(this, m_languageService, viewModel);
+        m_processList = new CustomWidgets::ProcessListControl(m_mainPanel, m_languageService, viewModel);
         m_directPidSizer = new wxBoxSizer(wxHORIZONTAL);
-        m_directPidLabel = new wxStaticText(this, wxID_ANY, wxString::FromUTF8(m_languageService.fetch_translation("processListView.ui.directPidLabel")));
-        m_directPidInput = new wxTextCtrl(this, wxID_ANY, EMPTY_STRING, wxDefaultPosition, wxDefaultSize, wxTE_PROCESS_ENTER);
-        m_directPidOpenButton = new wxButton(this, wxID_ANY, wxString::FromUTF8(m_languageService.fetch_translation("processListView.ui.directPidOpenButton")));
+        m_directPidLabel = new wxStaticText(m_mainPanel, wxID_ANY, wxString::FromUTF8(m_languageService.fetch_translation("processListView.ui.directPidLabel")));
+        m_directPidInput = new wxTextCtrl(m_mainPanel, wxID_ANY, EMPTY_STRING, wxDefaultPosition, wxDefaultSize, wxTE_PROCESS_ENTER);
+        m_directPidOpenButton = new wxButton(m_mainPanel, wxID_ANY, wxString::FromUTF8(m_languageService.fetch_translation("processListView.ui.directPidOpenButton")));
         m_buttonOptionsSizer = new wxBoxSizer(wxHORIZONTAL);
-        m_attachButton = new wxButton(this, wxID_OK, wxString::FromUTF8(m_languageService.fetch_translation("processListView.ui.openProcessButton")));
-        m_cancelButton = new wxButton(this, wxID_CANCEL, wxString::FromUTF8(m_languageService.fetch_translation("processListView.ui.cancelButton")));
+        m_attachButton = new wxButton(m_mainPanel, wxID_OK, wxString::FromUTF8(m_languageService.fetch_translation("processListView.ui.openProcessButton")));
+        m_cancelButton = new wxButton(m_mainPanel, wxID_CANCEL, wxString::FromUTF8(m_languageService.fetch_translation("processListView.ui.cancelButton")));
         m_taskTimer = new wxTimer(this);
     }
 
@@ -95,19 +95,15 @@ namespace Vertex::View
         m_mainSizer->Add(m_directPidSizer, StandardWidgetValues::NO_PROPORTION, wxALL | wxEXPAND, StandardWidgetValues::BORDER_TWICE);
         m_mainSizer->Add(m_buttonOptionsSizer, StandardWidgetValues::NO_PROPORTION, wxALL | wxEXPAND, StandardWidgetValues::BORDER_TWICE);
 
-        SetSizer(m_mainSizer);
+        m_mainPanel->SetSizer(m_mainSizer);
+
+        auto* dialogSizer = new wxBoxSizer(wxVERTICAL);
+        dialogSizer->Add(m_mainPanel, StandardWidgetValues::STANDARD_PROPORTION, wxEXPAND);
+        SetSizer(dialogSizer);
     }
 
     void ProcessListView::bind_events()
     {
-        Bind(wxEVT_SYS_COLOUR_CHANGED, [this](wxSysColourChangedEvent& event)
-        {
-            m_themeProvider.refresh();
-            Gui::ThemeProvider::apply_palette_to_tree(this, m_themeProvider.palette());
-            Refresh();
-            event.Skip();
-        });
-
         Bind(wxEVT_SHOW, &ProcessListView::on_show, this);
 
         Bind(wxEVT_BUTTON, [this]([[maybe_unused]] wxCommandEvent& event)
@@ -176,11 +172,7 @@ namespace Vertex::View
 
             m_viewModel->set_filter_text(event.GetString().utf8_string());
             m_viewModel->set_should_filter(!isEmpty);
-
-            if (!isEmpty)
-            {
-                m_viewModel->filter_list();
-            }
+            m_viewModel->filter_list();
 
             m_processList->refresh_list();
         }, m_processFilteringText->GetId());

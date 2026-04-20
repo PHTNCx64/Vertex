@@ -9,7 +9,7 @@
 
 extern "C"
 {
-    VERTEX_EXPORT StatusCode VERTEX_API vertex_debugger_get_call_stack(const uint32_t threadId, const CallStack* callStack)
+    VERTEX_EXPORT StatusCode VERTEX_API vertex_debugger_get_call_stack(const uint32_t threadId, CallStack* callStack)
     {
         std::ignore = threadId;
         std::ignore = callStack;

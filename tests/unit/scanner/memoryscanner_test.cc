@@ -1,3 +1,7 @@
+//
+// Copyright (C) 2026 PHTNC<>.
+// Licensed under GPLv3.0 with Plugin Interface exceptions.
+//
 #include <gtest/gtest.h>
 #include <gmock/gmock.h>
 #include "../../../include/vertex/scanner/memoryscanner/memoryscanner.hh"
@@ -54,7 +58,7 @@ class MemoryScannerTest : public ::testing::Test
     std::unique_ptr<Vertex::Scanner::MemoryScanner> scanner;
 };
 
-// ==================== Memory Reader Tests ====================
+
 
 TEST_F(MemoryScannerTest, HasMemoryReader_NoReaderSet_ReturnsFalse)
 {
@@ -73,7 +77,7 @@ TEST_F(MemoryScannerTest, HasMemoryReader_ReaderSet_ReturnsTrue)
     EXPECT_TRUE(result);
 }
 
-// ==================== Scan Initialization Tests ====================
+
 
 TEST_F(MemoryScannerTest, InitializeScan_EmptyMemoryRegions_ReturnsError)
 {
@@ -85,7 +89,7 @@ TEST_F(MemoryScannerTest, InitializeScan_EmptyMemoryRegions_ReturnsError)
     config.scanMode = static_cast<std::uint8_t>(Vertex::Scanner::NumericScanMode::Exact);
     std::vector<Vertex::Scanner::ScanRegion> emptyRegions;
 
-    StatusCode result = scanner->initialize_scan(config, emptyRegions);
+    StatusCode result = scanner->initialize_scan(config, Vertex::Scanner::make_builtin_schema(config.valueType), emptyRegions);
 
     EXPECT_EQ(StatusCode::STATUS_ERROR_INVALID_PARAMETER, result);
 }
@@ -99,12 +103,12 @@ TEST_F(MemoryScannerTest, InitializeScan_NoMemoryReader_ReturnsError)
     std::vector<Vertex::Scanner::ScanRegion> regions;
     regions.push_back(Vertex::Scanner::ScanRegion{.baseAddress = 0x1000, .size = 4096});
 
-    StatusCode result = scanner->initialize_scan(config, regions);
+    StatusCode result = scanner->initialize_scan(config, Vertex::Scanner::make_builtin_schema(config.valueType), regions);
 
     EXPECT_EQ(StatusCode::STATUS_ERROR_PLUGIN_NOT_ACTIVE, result);
 }
 
-// ==================== Scan Control Tests ====================
+
 
 TEST_F(MemoryScannerTest, StopScan_Succeeds)
 {
@@ -120,7 +124,7 @@ TEST_F(MemoryScannerTest, IsScanComplete_NoScanStarted_ReturnsTrue)
     EXPECT_TRUE(result);
 }
 
-// ==================== Progress Tracking Tests ====================
+
 
 TEST_F(MemoryScannerTest, GetRegionsScanned_InitiallyZero)
 {
@@ -143,7 +147,7 @@ TEST_F(MemoryScannerTest, GetResultsCount_InitiallyZero)
     EXPECT_EQ(0, result);
 }
 
-// ==================== Undo Tests ====================
+
 
 TEST_F(MemoryScannerTest, CanUndo_NoScansPerformed_ReturnsFalse)
 {
@@ -159,7 +163,7 @@ TEST_F(MemoryScannerTest, UndoScan_NoHistory_ReturnsError)
     EXPECT_EQ(StatusCode::STATUS_ERROR_GENERAL, result);
 }
 
-// ==================== Abort State Tests ====================
+
 
 TEST_F(MemoryScannerTest, SetScanAbortState_True_SetsState)
 {
@@ -177,7 +181,7 @@ TEST_F(MemoryScannerTest, SetScanAbortState_False_SetsState)
     EXPECT_EQ(StatusCode::STATUS_OK, result);
 }
 
-// ==================== Scan Active State Tests ====================
+
 
 TEST_F(MemoryScannerTest, IsScanActive_NoScanRunning_ReturnsOK)
 {
@@ -230,11 +234,11 @@ TEST_F(MemoryScannerTest, InitializeNextScan_RecreatesWorkerPoolWithSameThreadCo
         Vertex::Scanner::ScanRegion{.baseAddress = 0x1000, .size = sizeof(expectedValue)}
     };
 
-    EXPECT_EQ(StatusCode::STATUS_OK, scanner->initialize_scan(config, regions));
+    EXPECT_EQ(StatusCode::STATUS_OK, scanner->initialize_scan(config, Vertex::Scanner::make_builtin_schema(config.valueType), regions));
     EXPECT_TRUE(scanner->is_scan_complete());
     EXPECT_EQ(1U, scanner->get_results_count());
 
-    EXPECT_EQ(StatusCode::STATUS_OK, scanner->initialize_next_scan(config));
+    EXPECT_EQ(StatusCode::STATUS_OK, scanner->initialize_next_scan(config, Vertex::Scanner::make_builtin_schema(config.valueType)));
     EXPECT_TRUE(scanner->is_scan_complete());
     EXPECT_EQ(1U, scanner->get_results_count());
 }
@@ -281,7 +285,7 @@ TEST_F(MemoryScannerTest, InitializeNextScan_BlocksFastPathUntilFinalize)
         Vertex::Scanner::ScanRegion{.baseAddress = 0x1000, .size = sizeof(expectedValue)}
     };
 
-    EXPECT_EQ(StatusCode::STATUS_OK, scanner->initialize_scan(config, regions));
+    EXPECT_EQ(StatusCode::STATUS_OK, scanner->initialize_scan(config, Vertex::Scanner::make_builtin_schema(config.valueType), regions));
     EXPECT_TRUE(scanner->is_scan_complete());
     EXPECT_EQ(1U, scanner->get_results_count());
 
@@ -320,7 +324,7 @@ TEST_F(MemoryScannerTest, InitializeNextScan_BlocksFastPathUntilFinalize)
     std::thread nextScanThread(
       [&]
       {
-          nextScanStatus = scanner->initialize_next_scan(config);
+          nextScanStatus = scanner->initialize_next_scan(config, Vertex::Scanner::make_builtin_schema(config.valueType));
       });
 
     {
@@ -395,7 +399,7 @@ TEST_F(MemoryScannerTest, InitializeNextScan_DuringSetup_IsNotComplete)
         Vertex::Scanner::ScanRegion{.baseAddress = 0x1000, .size = sizeof(expectedValue)}
     };
 
-    EXPECT_EQ(StatusCode::STATUS_OK, scanner->initialize_scan(config, regions));
+    EXPECT_EQ(StatusCode::STATUS_OK, scanner->initialize_scan(config, Vertex::Scanner::make_builtin_schema(config.valueType), regions));
     EXPECT_TRUE(scanner->is_scan_complete());
     EXPECT_EQ(1U, scanner->get_results_count());
 
@@ -432,7 +436,7 @@ TEST_F(MemoryScannerTest, InitializeNextScan_DuringSetup_IsNotComplete)
     std::thread nextScanThread(
       [&]
       {
-          nextScanStatus = scanner->initialize_next_scan(config);
+          nextScanStatus = scanner->initialize_next_scan(config, Vertex::Scanner::make_builtin_schema(config.valueType));
       });
 
     {
@@ -533,7 +537,7 @@ TEST_F(MemoryScannerTest, GetScanResults_UsesReadableRegionCountsDuringInProgres
     std::thread initialScanThread(
       [&]
       {
-          initialScanStatus = scanner->initialize_scan(config, regions);
+          initialScanStatus = scanner->initialize_scan(config, Vertex::Scanner::make_builtin_schema(config.valueType), regions);
       });
 
     {

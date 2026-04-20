@@ -294,6 +294,40 @@ namespace Vertex::ViewModel
         return m_model->remove_language_path(path) == StatusCode::STATUS_OK;
     }
 
+    std::vector<std::filesystem::path> SettingsViewModel::get_script_paths() const
+    {
+        return m_model->get_script_paths();
+    }
+
+    bool SettingsViewModel::add_script_path(const std::filesystem::path& path) const
+    {
+        return m_model->add_script_path(path) == StatusCode::STATUS_OK;
+    }
+
+    bool SettingsViewModel::remove_script_path(const std::filesystem::path& path) const
+    {
+        return m_model->remove_script_path(path) == StatusCode::STATUS_OK;
+    }
+
+    std::vector<std::filesystem::path> SettingsViewModel::get_available_scripts() const
+    {
+        return m_model->get_available_scripts();
+    }
+
+    bool SettingsViewModel::is_script_auto_start(const std::filesystem::path& scriptPath) const
+    {
+        return m_model->is_script_auto_start(scriptPath);
+    }
+
+    void SettingsViewModel::set_script_auto_start(const std::filesystem::path& scriptPath, const bool enabled) const
+    {
+        if (const auto status = m_model->set_script_auto_start(scriptPath, enabled); status != StatusCode::STATUS_OK) [[unlikely]]
+        {
+            m_logService.log_error(fmt::format("SettingsViewModel: failed to set auto-start for script '{}' (status={})",
+                scriptPath.string(), static_cast<int>(status)));
+        }
+    }
+
     int SettingsViewModel::get_last_tab_index() const
     {
         return m_model->get_ui_state_int("uiState.settingsView.lastTabIndex", 0);

@@ -18,7 +18,6 @@
 #include <vector>
 
 #include <vertex/language/language.hh>
-#include <vertex/gui/theme/ithemeprovider.hh>
 
 namespace Vertex::View
 {
@@ -71,7 +70,7 @@ namespace Vertex::View
     class AboutView final : public wxDialog
     {
       public:
-        AboutView(wxWindow* parent, Language::ILanguage& languageService, Gui::IThemeProvider& themeProvider, AboutInfo aboutInfo);
+        AboutView(wxWindow* parent, Language::ILanguage& languageService, AboutInfo aboutInfo);
 
       private:
         void create_controls();
@@ -114,7 +113,6 @@ namespace Vertex::View
         wxButton* m_closeButton{};
 
         Language::ILanguage& m_languageService;
-        Gui::IThemeProvider& m_themeProvider;
         AboutInfo m_aboutInfo;
     };
 }

@@ -191,25 +191,7 @@ namespace Vertex::Configuration
         }
 
         const int maxUndoDepth = get_int("memoryScan.maxUndoDepth", 3);
-        if (maxUndoDepth < 1 || maxUndoDepth > 10)
-        {
-            return false;
-        }
-
-        const int psReaderThreads = get_int("pointerScan.readerThreads", 1);
-        if (psReaderThreads < 1 || psReaderThreads > 64)
-        {
-            return false;
-        }
-
-        const int psBufferSizeMB = get_int("pointerScan.threadBufferSizeMB", 64);
-        if (psBufferSizeMB < 1 || psBufferSizeMB > 1024)
-        {
-            return false;
-        }
-
-        const int psChunkSize = get_int("pointerScan.workerChunkSize", 8192);
-        return psChunkSize >= 64 && psChunkSize <= 1048576;
+        return maxUndoDepth >= 1 && maxUndoDepth <= 10;
     }
 
     bool Settings::get_bool(const std::string& key, bool defaultValue) const
@@ -308,10 +290,6 @@ namespace Vertex::Configuration
         m_settings["memoryScan"]["workerChunkSizeMB"] = 8;
         m_settings["memoryScan"]["maxUndoDepth"] = 3;
 
-        m_settings["pointerScan"]["readerThreads"] = std::max(1, hardwareConcurrency / 2);
-        m_settings["pointerScan"]["threadBufferSizeMB"] = 64;
-        m_settings["pointerScan"]["workerChunkSize"] = 8192;
-
         set_default_language();
 
         m_settings["plugins"]["activePluginPath"] = EMPTY_STRING;
@@ -321,6 +299,7 @@ namespace Vertex::Configuration
         m_settings["scripting"]["scriptPaths"] = nlohmann::json::array();
         m_settings["scripting"]["scriptPaths"].push_back(Filesystem::make_relative(Filesystem::get_script_path()).string());
         m_settings["scripting"]["recent_scripts"] = nlohmann::json::array();
+        m_settings["scripting"]["autoStartScripts"] = nlohmann::json::array();
 
         m_settings["uiState"]["mainView"]["valueTypeIndex"] = 2;
         m_settings["uiState"]["mainView"]["scanTypeIndex"] = 0;

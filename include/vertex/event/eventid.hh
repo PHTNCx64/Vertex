@@ -29,4 +29,6 @@ namespace Vertex::Event
 
     static constexpr EventId SCRIPT_OUTPUT_EVENT = 19;
     static constexpr EventId SCRIPT_DIAGNOSTIC_EVENT = 20;
+
+    static constexpr EventId DEBUGGER_NAVIGATE_EVENT = 21;
 }

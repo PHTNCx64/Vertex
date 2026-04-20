@@ -11,10 +11,9 @@
 
 namespace Vertex::View::Debugger
 {
-    ThreadsPanel::ThreadsPanel(wxWindow* parent, Language::ILanguage& languageService, Gui::IThemeProvider& themeProvider)
+    ThreadsPanel::ThreadsPanel(wxWindow* parent, Language::ILanguage& languageService)
         : wxPanel(parent, wxID_ANY)
         , m_languageService(languageService)
-        , m_themeProvider(themeProvider)
     {
         create_controls();
         layout_controls();
@@ -65,11 +64,6 @@ namespace Vertex::View::Debugger
             m_threadList->SetItem(idx, 2, get_state_string(thread.state));
             m_threadList->SetItem(idx, 3, fmt::format("{:016X}", thread.instructionPointer));
             m_threadList->SetItem(idx, 4, thread.priorityString.empty() ? fmt::format("{}", thread.priority) : thread.priorityString);
-
-            if (thread.isCurrent)
-            {
-                m_threadList->SetItemBackgroundColour(idx, m_themeProvider.palette().selection);
-            }
         }
     }
 
@@ -98,29 +92,6 @@ namespace Vertex::View::Debugger
         m_threadList->DeleteAllItems();
         m_threads.clear();
         m_currentThreadId = 0;
-    }
-
-    void ThreadsPanel::refresh_theme() const
-    {
-        const auto& pal = m_themeProvider.palette();
-        m_threadList->SetBackgroundColour(pal.background);
-        m_threadList->SetForegroundColour(pal.text);
-
-        const long count = m_threadList->GetItemCount();
-        for (long i = 0; i < count; ++i)
-        {
-            if (i < static_cast<long>(m_threads.size()) && m_threads[i].isCurrent)
-            {
-                m_threadList->SetItemBackgroundColour(i, pal.selection);
-            }
-            else
-            {
-                m_threadList->SetItemBackgroundColour(i, pal.background);
-            }
-            m_threadList->SetItemTextColour(i, pal.text);
-        }
-
-        m_threadList->Refresh();
     }
 
     void ThreadsPanel::on_item_activated(const wxListEvent& event)

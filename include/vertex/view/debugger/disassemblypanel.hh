@@ -12,7 +12,6 @@
 #include <vertex/debugger/debuggertypes.hh>
 #include <vertex/language/language.hh>
 #include <vertex/gui/iconmanager/iconmanager.hh>
-#include <vertex/gui/theme/ithemeprovider.hh>
 #include <vertex/view/debugger/disassemblycontrol.hh>
 
 namespace Vertex::View::Debugger
@@ -33,8 +32,7 @@ namespace Vertex::View::Debugger
         DisassemblyPanel(
             wxWindow* parent,
             Language::ILanguage& languageService,
-            Gui::IIconManager& iconManager,
-            Gui::IThemeProvider& themeProvider
+            Gui::IIconManager& iconManager
         );
 
         void update_disassembly(const ::Vertex::Debugger::DisassemblyRange& range) const;
@@ -55,7 +53,6 @@ namespace Vertex::View::Debugger
 
         [[nodiscard]] std::uint64_t get_selected_address() const;
         [[nodiscard]] DisassemblyHeader* get_header() const { return m_disassemblyHeader; }
-        void refresh_theme();
 
     private:
         void create_controls();
@@ -79,6 +76,5 @@ namespace Vertex::View::Debugger
 
         Language::ILanguage& m_languageService;
         Gui::IIconManager& m_iconManager;
-        Gui::IThemeProvider& m_themeProvider;
     };
 }

@@ -70,6 +70,13 @@ namespace Vertex::ViewModel
         [[nodiscard]] bool add_language_path(const std::filesystem::path& path) const;
         [[nodiscard]] bool remove_language_path(const std::filesystem::path& path) const;
 
+        [[nodiscard]] std::vector<std::filesystem::path> get_script_paths() const;
+        [[nodiscard]] bool add_script_path(const std::filesystem::path& path) const;
+        [[nodiscard]] bool remove_script_path(const std::filesystem::path& path) const;
+        [[nodiscard]] std::vector<std::filesystem::path> get_available_scripts() const;
+        [[nodiscard]] bool is_script_auto_start(const std::filesystem::path& scriptPath) const;
+        void set_script_auto_start(const std::filesystem::path& scriptPath, bool enabled) const;
+
         [[nodiscard]] int get_last_tab_index() const;
         void set_last_tab_index(int index) const;
 

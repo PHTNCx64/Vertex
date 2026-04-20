@@ -16,7 +16,7 @@ namespace Vertex::Thread
         Debugger,
         Scanner,
         Script,
-        PointerScanner
+        UI
     };
 }
 

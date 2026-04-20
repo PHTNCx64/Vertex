@@ -1,3 +1,7 @@
+//
+// Copyright (C) 2026 PHTNC<>.
+// Licensed under GPLv3.0 with Plugin Interface exceptions.
+//
 #pragma once
 
 #include <gmock/gmock.h>
@@ -16,6 +20,12 @@ namespace Vertex::Testing::Mocks
                     dispatch_fire_and_forget, (Thread::ThreadChannel channel, std::packaged_task<StatusCode()>&& task), (override));
         MOCK_METHOD((std::expected<Thread::RecurringTaskHandle, StatusCode>),
                     schedule_recurring,
+                    (Thread::ThreadChannel channel, Thread::DispatchPriority priority,
+                     Thread::RecurringPolicy policy, std::chrono::milliseconds delay,
+                     std::function<StatusCode()> task,
+                     Thread::RecurringFailurePolicy failurePolicy), (override));
+        MOCK_METHOD((std::expected<Thread::RecurringTaskHandle, StatusCode>),
+                    schedule_recurring_persistent,
                     (Thread::ThreadChannel channel, Thread::DispatchPriority priority,
                      Thread::RecurringPolicy policy, std::chrono::milliseconds delay,
                      std::function<StatusCode()> task,

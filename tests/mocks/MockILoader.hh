@@ -1,6 +1,10 @@
 //
-// Mock for ILoader interface
+// Copyright (C) 2026 PHTNC<>.
+// Licensed under GPLv3.0 with Plugin Interface exceptions.
 //
+
+
+
 
 #pragma once
 
@@ -29,17 +33,17 @@ namespace Vertex::Testing::Mocks
         MOCK_METHOD(const std::vector<Runtime::Plugin>&, get_plugins, (), (noexcept, override));
         MOCK_METHOD(std::optional<std::reference_wrapper<Runtime::Plugin>>, get_active_plugin, (), (override));
 
-        // Registry access - returns reference to internal mock registry
+        
         Runtime::IRegistry& get_registry() override { return m_mockRegistry; }
         const Runtime::IRegistry& get_registry() const override { return m_mockRegistry; }
 
         Runtime::IUIRegistry& get_ui_registry() override { return m_mockUIRegistry; }
         const Runtime::IUIRegistry& get_ui_registry() const override { return m_mockUIRegistry; }
 
-        // Event dispatching
+        
         MOCK_METHOD(StatusCode, dispatch_event, (VertexEvent event, const void* data), (override));
 
-        // Expose mock registries for test setup
+        
         MockIRegistry& mock_registry() { return m_mockRegistry; }
         MockIUIRegistry& mock_ui_registry() { return m_mockUIRegistry; }
 
@@ -47,4 +51,4 @@ namespace Vertex::Testing::Mocks
         MockIRegistry m_mockRegistry;
         MockIUIRegistry m_mockUIRegistry;
     };
-} // namespace Vertex::Testing::Mocks
+} 

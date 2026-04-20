@@ -20,16 +20,18 @@
 #include <vertex/event/types/viewupdateevent.hh>
 #include <vertex/model/mainmodel.hh>
 #include <vertex/scanner/memoryscanner/imemoryscanner.hh>
+#include <vertex/scanner/plugin_value_format.hh>
 #include <vertex/scanner/valueconverter.hh>
 #include <vertex/thread/threadchannel.hh>
 
 namespace Vertex::ViewModel
 {
-    MainViewModel::MainViewModel(std::unique_ptr<Model::MainModel> model, Event::EventBus& eventBus, Thread::IThreadDispatcher& dispatcher, std::string name)
+    MainViewModel::MainViewModel(std::unique_ptr<Model::MainModel> model, Event::EventBus& eventBus, Thread::IThreadDispatcher& dispatcher, Scanner::IScannerRuntimeService& scannerService, std::string name)
         : m_viewModelName{std::move(name)},
           m_model{std::move(model)},
           m_eventBus{eventBus},
-          m_dispatcher{dispatcher}
+          m_dispatcher{dispatcher},
+          m_scannerService{scannerService}
     {
         m_processInformation = "No process attached";
         m_scanProgress = {0, 0, "Ready"};
@@ -82,18 +84,105 @@ namespace Vertex::ViewModel
               return StatusCode::STATUS_OK;
           });
 
-        m_model->set_scan_completion_callback(
-          [this]()
-          {
-              notify_view_update(ViewUpdateFlags::SCAN_COMPLETED);
-          });
-        m_model->set_scan_progress_callback(
-          [this]()
-          {
-              notify_view_update(ViewUpdateFlags::SCAN_PROGRESS);
-          });
+        m_scanCompleteSub = Runtime::SubscriptionGuard<Scanner::IScannerRuntimeService>{
+            m_scannerService,
+            m_scannerService.subscribe(
+                static_cast<Scanner::ScannerEventKindMask>(Scanner::ScannerEventKind::ScanComplete),
+                [self = this,
+                 weak = std::weak_ptr<std::atomic<bool>>{m_alive},
+                 &dispatcher = m_dispatcher](const Scanner::ScannerEvent&)
+                {
+                    std::packaged_task<StatusCode()> task{
+                        [self, weak]() -> StatusCode
+                        {
+                            const auto alive = weak.lock();
+                            if (!alive || !alive->load(std::memory_order_acquire))
+                            {
+                                return STATUS_OK;
+                            }
+                            self->notify_view_update(ViewUpdateFlags::SCAN_COMPLETED);
+                            return STATUS_OK;
+                        }};
+                    std::ignore = dispatcher.dispatch_fire_and_forget(Thread::ThreadChannel::UI, std::move(task));
+                })};
+
+        m_scanProgressSub = Runtime::SubscriptionGuard<Scanner::IScannerRuntimeService>{
+            m_scannerService,
+            m_scannerService.subscribe(
+                static_cast<Scanner::ScannerEventKindMask>(Scanner::ScannerEventKind::ScanProgress),
+                [self = this,
+                 weak = std::weak_ptr<std::atomic<bool>>{m_alive},
+                 &dispatcher = m_dispatcher](const Scanner::ScannerEvent&)
+                {
+                    std::packaged_task<StatusCode()> task{
+                        [self, weak]() -> StatusCode
+                        {
+                            const auto alive = weak.lock();
+                            if (!alive || !alive->load(std::memory_order_acquire))
+                            {
+                                return STATUS_OK;
+                            }
+                            self->notify_view_update(ViewUpdateFlags::SCAN_PROGRESS);
+                            return STATUS_OK;
+                        }};
+                    std::ignore = dispatcher.dispatch_fire_and_forget(Thread::ThreadChannel::UI, std::move(task));
+                })};
+
+        m_valuesChangedSub = Runtime::SubscriptionGuard<Scanner::IScannerRuntimeService>{
+            m_scannerService,
+            m_scannerService.subscribe(
+                static_cast<Scanner::ScannerEventKindMask>(Scanner::ScannerEventKind::ValuesChanged),
+                [self = this,
+                 weak = std::weak_ptr<std::atomic<bool>>{m_alive},
+                 &dispatcher = m_dispatcher](const Scanner::ScannerEvent&)
+                {
+                    std::packaged_task<StatusCode()> task{
+                        [self, weak]() -> StatusCode
+                        {
+                            const auto alive = weak.lock();
+                            if (!alive || !alive->load(std::memory_order_acquire))
+                            {
+                                return STATUS_OK;
+                            }
+                            self->m_cacheWindow = {};
+                            self->m_visibleCache.clear();
+                            self->notify_view_update(ViewUpdateFlags::SCANNED_VALUES);
+                            return STATUS_OK;
+                        }};
+                    std::ignore = dispatcher.dispatch_fire_and_forget(Thread::ThreadChannel::UI, std::move(task));
+                })};
 
         subscribe_to_events();
+        reload_type_entries();
+
+        constexpr auto registryMask = static_cast<Scanner::ScannerEventKindMask>(
+            static_cast<std::uint32_t>(Scanner::ScannerEventKind::TypeRegistered) |
+            static_cast<std::uint32_t>(Scanner::ScannerEventKind::TypeUnregistered) |
+            static_cast<std::uint32_t>(Scanner::ScannerEventKind::RegistryInvalidated));
+
+        m_registrySub = Runtime::SubscriptionGuard<Scanner::IScannerRuntimeService>{
+            m_scannerService,
+            m_scannerService.subscribe(
+                registryMask,
+                [self = this,
+                 weak = std::weak_ptr<std::atomic<bool>>{m_alive},
+                 &dispatcher = m_dispatcher](const Scanner::ScannerEvent&)
+                {
+                    std::packaged_task<StatusCode()> task{
+                        [self, weak]() -> StatusCode
+                        {
+                            const auto alive = weak.lock();
+                            if (!alive || !alive->load(std::memory_order_acquire))
+                            {
+                                return STATUS_OK;
+                            }
+                            self->reload_type_entries();
+                            self->notify_view_update(ViewUpdateFlags::DATATYPES | ViewUpdateFlags::SCAN_MODES);
+                            return STATUS_OK;
+                        }};
+                    std::ignore = dispatcher.dispatch_fire_and_forget(Thread::ThreadChannel::UI, std::move(task));
+                })};
+
         load_ui_state_from_settings();
         update_available_scan_modes();
     }
@@ -110,8 +199,11 @@ namespace Vertex::ViewModel
 
     MainViewModel::~MainViewModel()
     {
-        m_model->set_scan_completion_callback({});
-        m_model->set_scan_progress_callback({});
+        m_scanCompleteSub.reset();
+        m_scanProgressSub.reset();
+        m_valuesChangedSub.reset();
+        m_registrySub.reset();
+        m_alive->store(false, std::memory_order_release);
         stop_freeze_timer();
         unsubscribe_from_events();
     }
@@ -147,24 +239,119 @@ namespace Vertex::ViewModel
 
     void MainViewModel::kill_process() const { std::ignore = m_model->kill_process(); }
 
-    Scanner::ValueType MainViewModel::get_current_value_type() const { return static_cast<Scanner::ValueType>(m_valueTypeIndex); }
+    void MainViewModel::reload_type_entries()
+    {
+        auto snapshot = m_model->list_scanner_types();
+        std::scoped_lock lock{m_typeEntriesMutex};
+        m_typeEntries = std::move(snapshot);
+    }
+
+    const Scanner::TypeSchema* MainViewModel::current_type_entry() const noexcept
+    {
+        std::scoped_lock lock{m_typeEntriesMutex};
+        if (m_valueTypeIndex < 0 || static_cast<std::size_t>(m_valueTypeIndex) >= m_typeEntries.size())
+        {
+            return nullptr;
+        }
+        return &m_typeEntries[static_cast<std::size_t>(m_valueTypeIndex)];
+    }
+
+    bool MainViewModel::current_type_is_plugin() const noexcept
+    {
+        const auto* entry = current_type_entry();
+        return entry && entry->kind == Scanner::TypeKind::PluginDefined;
+    }
+
+    Scanner::ValueType MainViewModel::get_current_value_type() const
+    {
+        const auto* entry = current_type_entry();
+        if (!entry || entry->kind == Scanner::TypeKind::PluginDefined)
+        {
+            return Scanner::ValueType::COUNT;
+        }
+        const auto raw = static_cast<std::uint32_t>(entry->id);
+        if (raw == 0)
+        {
+            return Scanner::ValueType::COUNT;
+        }
+        return static_cast<Scanner::ValueType>(raw - 1);
+    }
+
+    Scanner::TypeId MainViewModel::get_current_type_id() const
+    {
+        const auto* entry = current_type_entry();
+        return entry ? entry->id : Scanner::TypeId::Invalid;
+    }
+
+    const DataTypeUIHints* MainViewModel::get_current_type_ui_hints() const
+    {
+        const auto* entry = current_type_entry();
+        if (!entry || entry->kind != Scanner::TypeKind::PluginDefined || !entry->sdkType)
+        {
+            return nullptr;
+        }
+        return entry->sdkType->uiHints;
+    }
+
+    ::NumericSystem MainViewModel::get_plugin_numeric_base() const
+    {
+        return m_pluginNumericBase;
+    }
+
+    void MainViewModel::set_plugin_numeric_base(::NumericSystem base)
+    {
+        m_pluginNumericBase = base;
+    }
+
+    bool MainViewModel::current_type_supports_endianness() const
+    {
+        const auto* entry = current_type_entry();
+        if (!entry)
+        {
+            return true;
+        }
+        if (entry->kind != Scanner::TypeKind::PluginDefined)
+        {
+            const auto raw = static_cast<std::uint32_t>(entry->id);
+            if (raw == 0)
+            {
+                return true;
+            }
+            const auto valueType = static_cast<Scanner::ValueType>(raw - 1);
+            return Scanner::is_numeric_type(valueType) || Scanner::string_type_has_endianness(valueType);
+        }
+        if (entry->sdkType && entry->sdkType->uiHints)
+        {
+            return entry->sdkType->uiHints->supportsEndianness != 0;
+        }
+        return false;
+    }
 
     Scanner::ValueType MainViewModel::get_scanned_value_type() const { return static_cast<Scanner::ValueType>(m_scannedValueTypeIndex); }
 
     std::vector<std::string> MainViewModel::get_value_type_names() const
     {
-        auto indices = std::views::iota(0, static_cast<int>(Scanner::ValueType::COUNT));
-        return indices |
-               std::views::transform(
-                 [](const int i)
-                 {
-                     return Scanner::get_value_type_name(static_cast<Scanner::ValueType>(i));
-                 }) |
+        std::scoped_lock lock{m_typeEntriesMutex};
+        return m_typeEntries |
+               std::views::transform([](const Scanner::TypeSchema& s) { return s.name; }) |
                std::ranges::to<std::vector>();
     }
 
     std::vector<std::string> MainViewModel::get_scan_mode_names() const
     {
+        const auto* entry = current_type_entry();
+        if (entry && entry->kind == Scanner::TypeKind::PluginDefined && entry->sdkType)
+        {
+            std::vector<std::string> names{};
+            names.reserve(entry->sdkType->scanModeCount);
+            for (std::size_t i{}; i < entry->sdkType->scanModeCount; ++i)
+            {
+                const auto* modeName = entry->sdkType->scanModes[i].scanModeName;
+                names.emplace_back(modeName ? modeName : "");
+            }
+            return names;
+        }
+
         const auto valueType = get_current_value_type();
 
         if (Scanner::is_string_type(valueType))
@@ -190,6 +377,16 @@ namespace Vertex::ViewModel
 
     bool MainViewModel::needs_input_value() const
     {
+        const auto* entry = current_type_entry();
+        if (entry && entry->kind == Scanner::TypeKind::PluginDefined && entry->sdkType)
+        {
+            if (m_scanTypeIndex < 0 || static_cast<std::size_t>(m_scanTypeIndex) >= entry->sdkType->scanModeCount)
+            {
+                return false;
+            }
+            return entry->sdkType->scanModes[static_cast<std::size_t>(m_scanTypeIndex)].needsInput != 0;
+        }
+
         const auto valueType = get_current_value_type();
 
         if (Scanner::is_string_type(valueType))
@@ -205,13 +402,26 @@ namespace Vertex::ViewModel
         m_scanInitializationFailed = false;
         m_scannedValueTypeIndex = m_valueTypeIndex;
         m_scannedEndiannessIndex = m_endiannessTypeIndex;
-        const auto valueType = get_current_value_type();
+        const auto typeId = get_current_type_id();
+        if (typeId == Scanner::TypeId::Invalid)
+        {
+            m_scanInitializationFailed = true;
+            m_scanProgress = {0, 0, "No type selected"};
+            notify_property_changed();
+            return;
+        }
+        const bool isPlugin = current_type_is_plugin();
+        m_scannedTypeId = typeId;
+        m_scannedTypeIsPlugin = isPlugin;
+        m_scannedPluginSchema = isPlugin ? m_model->find_scanner_type(typeId) : std::nullopt;
         std::vector<std::uint8_t> inputBuffer{};
         std::vector<std::uint8_t> inputBuffer2{};
 
         if (needs_input_value() && !m_valueInput.empty())
         {
-            const StatusCode status = m_model->validate_input(valueType, m_isHexadecimal, m_valueInput, inputBuffer);
+            const StatusCode status = isPlugin
+                ? m_model->validate_input(typeId, m_pluginNumericBase, m_valueInput, inputBuffer)
+                : m_model->validate_input(typeId, m_isHexadecimal, m_valueInput, inputBuffer);
             if (status != StatusCode::STATUS_OK) [[unlikely]]
             {
                 m_scanInitializationFailed = true;
@@ -222,9 +432,9 @@ namespace Vertex::ViewModel
         }
 
         const auto actualMode = get_actual_numeric_scan_mode();
-        if (actualMode == Scanner::NumericScanMode::Between && !m_valueInput2.empty())
+        if (!isPlugin && actualMode == Scanner::NumericScanMode::Between && !m_valueInput2.empty())
         {
-            const StatusCode status = m_model->validate_input(valueType, m_isHexadecimal, m_valueInput2, inputBuffer2);
+            const StatusCode status = m_model->validate_input(typeId, m_isHexadecimal, m_valueInput2, inputBuffer2);
             if (status != StatusCode::STATUS_OK) [[unlikely]]
             {
                 m_scanInitializationFailed = true;
@@ -234,7 +444,10 @@ namespace Vertex::ViewModel
             }
         }
 
-        const StatusCode status = m_model->initialize_scan(valueType, get_actual_scan_mode_value(), m_isHexadecimal, m_alignmentEnabled, static_cast<std::size_t>(m_alignmentValue),
+        const auto scanModeValue = isPlugin
+            ? static_cast<std::uint32_t>(m_scanTypeIndex)
+            : static_cast<std::uint32_t>(get_actual_scan_mode_value());
+        const StatusCode status = m_model->initialize_scan(typeId, scanModeValue, m_isHexadecimal, m_alignmentEnabled, static_cast<std::size_t>(m_alignmentValue),
                                                            static_cast<Scanner::Endianness>(m_endiannessTypeIndex), inputBuffer, inputBuffer2);
 
         if (status != StatusCode::STATUS_OK) [[unlikely]]
@@ -245,11 +458,15 @@ namespace Vertex::ViewModel
             return;
         }
 
-        if (!Scanner::is_string_type(valueType) && actualMode == Scanner::NumericScanMode::Unknown)
+        if (!isPlugin)
         {
-            m_isUnknownScanMode = true;
-            update_available_scan_modes();
-            m_scanTypeIndex = 0;
+            const auto valueType = get_current_value_type();
+            if (!Scanner::is_string_type(valueType) && actualMode == Scanner::NumericScanMode::Unknown)
+            {
+                m_isUnknownScanMode = true;
+                update_available_scan_modes();
+                m_scanTypeIndex = 0;
+            }
         }
 
         m_scannedValues.clear();
@@ -269,13 +486,26 @@ namespace Vertex::ViewModel
         m_scanInitializationFailed = false;
         m_scannedValueTypeIndex = m_valueTypeIndex;
         m_scannedEndiannessIndex = m_endiannessTypeIndex;
-        const auto valueType = get_current_value_type();
+        const auto typeId = get_current_type_id();
+        if (typeId == Scanner::TypeId::Invalid)
+        {
+            m_scanInitializationFailed = true;
+            m_scanProgress = {0, 0, "No type selected"};
+            notify_property_changed();
+            return;
+        }
+        const bool isPlugin = current_type_is_plugin();
+        m_scannedTypeId = typeId;
+        m_scannedTypeIsPlugin = isPlugin;
+        m_scannedPluginSchema = isPlugin ? m_model->find_scanner_type(typeId) : std::nullopt;
         std::vector<std::uint8_t> inputBuffer{};
         std::vector<std::uint8_t> inputBuffer2{};
 
         if (needs_input_value() && !m_valueInput.empty())
         {
-            const StatusCode status = m_model->validate_input(valueType, m_isHexadecimal, m_valueInput, inputBuffer);
+            const StatusCode status = isPlugin
+                ? m_model->validate_input(typeId, m_pluginNumericBase, m_valueInput, inputBuffer)
+                : m_model->validate_input(typeId, m_isHexadecimal, m_valueInput, inputBuffer);
             if (status != StatusCode::STATUS_OK) [[unlikely]]
             {
                 m_scanInitializationFailed = true;
@@ -286,9 +516,9 @@ namespace Vertex::ViewModel
         }
 
         const auto actualMode = get_actual_numeric_scan_mode();
-        if (actualMode == Scanner::NumericScanMode::Between && !m_valueInput2.empty())
+        if (!isPlugin && actualMode == Scanner::NumericScanMode::Between && !m_valueInput2.empty())
         {
-            const StatusCode status = m_model->validate_input(valueType, m_isHexadecimal, m_valueInput2, inputBuffer2);
+            const StatusCode status = m_model->validate_input(typeId, m_isHexadecimal, m_valueInput2, inputBuffer2);
             if (status != StatusCode::STATUS_OK) [[unlikely]]
             {
                 m_scanInitializationFailed = true;
@@ -298,14 +528,16 @@ namespace Vertex::ViewModel
             }
         }
 
-        const auto scanMode = get_actual_scan_mode_value();
+        const auto scanMode = isPlugin
+            ? static_cast<std::uint32_t>(m_scanTypeIndex)
+            : static_cast<std::uint32_t>(get_actual_scan_mode_value());
         const auto alignmentValue = static_cast<std::size_t>(m_alignmentValue);
         const auto endianness = static_cast<Scanner::Endianness>(m_endiannessTypeIndex);
 
         std::packaged_task<StatusCode()> task(
-          [this, valueType, scanMode, hexDisplay = m_isHexadecimal, alignmentEnabled = m_alignmentEnabled, alignmentValue, endianness, input = std::move(inputBuffer), input2 = std::move(inputBuffer2)]() mutable -> StatusCode
+          [this, typeId, scanMode, hexDisplay = m_isHexadecimal, alignmentEnabled = m_alignmentEnabled, alignmentValue, endianness, input = std::move(inputBuffer), input2 = std::move(inputBuffer2)]() mutable -> StatusCode
           {
-              const StatusCode status = m_model->initialize_next_scan(valueType, scanMode, hexDisplay, alignmentEnabled, alignmentValue, endianness, input, input2);
+              const StatusCode status = m_model->initialize_next_scan(typeId, scanMode, hexDisplay, alignmentEnabled, alignmentValue, endianness, input, input2);
 
               notify_view_update(ViewUpdateFlags::SCAN_PROGRESS);
               return status;
@@ -444,6 +676,8 @@ namespace Vertex::ViewModel
 
     void MainViewModel::close_process_state()
     {
+        std::ignore = m_model->close_process();
+
         m_isInitialScanAvailable = false;
         m_isNextScanAvailable = false;
         m_isUnknownScanMode = false;
@@ -471,6 +705,22 @@ namespace Vertex::ViewModel
 
     std::vector<ScannedValue> MainViewModel::get_scanned_values() const { return m_scannedValues; }
 
+    std::uint32_t MainViewModel::get_scanned_value_size() const
+    {
+        if (m_scannedTypeIsPlugin)
+        {
+            if (m_scannedPluginSchema && m_scannedPluginSchema->valueSize > 0)
+            {
+                return static_cast<std::uint32_t>(m_scannedPluginSchema->valueSize);
+            }
+            return 0;
+        }
+
+        const auto valueType = static_cast<Scanner::ValueType>(m_scannedValueTypeIndex);
+        const auto size = Scanner::get_value_type_size(valueType);
+        return size > 0 ? static_cast<std::uint32_t>(size) : 0;
+    }
+
     ScannedValue MainViewModel::get_scanned_value_at(const int index)
     {
         const auto it = m_visibleCache.find(index);
@@ -487,7 +737,33 @@ namespace Vertex::ViewModel
                 const auto& entry = m_cacheWindow.addresses[cacheIndex];
 
                 ScannedValue value{};
-                value.address = fmt::format("0x{:X}", entry.address);
+                value.address = fmt::format("{:016X}", entry.address);
+
+                if (m_scannedTypeIsPlugin)
+                {
+                    if (m_scannedPluginSchema)
+                    {
+                        const auto& schema = *m_scannedPluginSchema;
+                        if (!entry.value.empty())
+                        {
+                            value.value = Scanner::format_plugin_bytes(schema, entry.value.data(), entry.value.size());
+                        }
+                        if (!entry.previousValue.empty())
+                        {
+                            value.previousValue = Scanner::format_plugin_bytes(schema, entry.previousValue.data(), entry.previousValue.size());
+                        }
+                        if (!entry.firstValue.empty())
+                        {
+                            value.firstValue = Scanner::format_plugin_bytes(schema, entry.firstValue.data(), entry.firstValue.size());
+                        }
+                        else if (!entry.previousValue.empty())
+                        {
+                            value.firstValue = Scanner::format_plugin_bytes(schema, entry.previousValue.data(), entry.previousValue.size());
+                        }
+                    }
+                    m_visibleCache[index] = value;
+                    return value;
+                }
 
                 const auto valueType = get_scanned_value_type();
                 const auto scannedEndianness = static_cast<Scanner::Endianness>(m_scannedEndiannessIndex);
@@ -525,7 +801,33 @@ namespace Vertex::ViewModel
         }
 
         ScannedValue value{};
-        value.address = fmt::format("0x{:X}", scanResults[0].address);
+        value.address = fmt::format("{:016X}", scanResults[0].address);
+
+        if (m_scannedTypeIsPlugin)
+        {
+            if (m_scannedPluginSchema)
+            {
+                const auto& schema = *m_scannedPluginSchema;
+                if (!scanResults[0].value.empty())
+                {
+                    value.value = Scanner::format_plugin_bytes(schema, scanResults[0].value.data(), scanResults[0].value.size());
+                }
+                if (!scanResults[0].previousValue.empty())
+                {
+                    value.previousValue = Scanner::format_plugin_bytes(schema, scanResults[0].previousValue.data(), scanResults[0].previousValue.size());
+                }
+                if (!scanResults[0].firstValue.empty())
+                {
+                    value.firstValue = Scanner::format_plugin_bytes(schema, scanResults[0].firstValue.data(), scanResults[0].firstValue.size());
+                }
+                else if (!scanResults[0].previousValue.empty())
+                {
+                    value.firstValue = Scanner::format_plugin_bytes(schema, scanResults[0].previousValue.data(), scanResults[0].previousValue.size());
+                }
+            }
+            m_visibleCache[index] = value;
+            return value;
+        }
 
         const auto valueType = get_scanned_value_type();
         const auto scannedEndianness = static_cast<Scanner::Endianness>(m_scannedEndiannessIndex);
@@ -684,34 +986,65 @@ namespace Vertex::ViewModel
             }
         }
 
+        const bool isPlugin = m_scannedTypeIsPlugin && m_scannedPluginSchema.has_value();
+        const Scanner::TypeSchema* pluginSchema = isPlugin ? &*m_scannedPluginSchema : nullptr;
+
         for (const auto& [visibleIndex, cacheEntry, currentValue, readOk] : pendingReads)
         {
             const auto& entry = *cacheEntry;
 
             ScannedValue value{};
-            value.address = fmt::format("0x{:X}", entry.address);
+            value.address = fmt::format("{:016X}", entry.address);
 
-            if (readOk)
+            if (isPlugin)
             {
-                value.value = Scanner::ValueConverter::format(valueType, reinterpret_cast<const std::uint8_t*>(currentValue.data()), currentValue.size(), m_isHexadecimal, scannedEndianness);
+                if (readOk)
+                {
+                    value.value = Scanner::format_plugin_bytes(*pluginSchema, currentValue.data(), currentValue.size());
+                }
+                else
+                {
+                    value.value = "???";
+                }
+
+                if (!entry.previousValue.empty())
+                {
+                    value.previousValue = Scanner::format_plugin_bytes(*pluginSchema, entry.previousValue.data(), entry.previousValue.size());
+                }
+
+                if (!entry.firstValue.empty())
+                {
+                    value.firstValue = Scanner::format_plugin_bytes(*pluginSchema, entry.firstValue.data(), entry.firstValue.size());
+                }
+                else if (!entry.previousValue.empty())
+                {
+                    value.firstValue = Scanner::format_plugin_bytes(*pluginSchema, entry.previousValue.data(), entry.previousValue.size());
+                }
             }
             else
             {
-                value.value = "???";
-            }
+                if (readOk)
+                {
+                    value.value = Scanner::ValueConverter::format(valueType, reinterpret_cast<const std::uint8_t*>(currentValue.data()), currentValue.size(), m_isHexadecimal, scannedEndianness);
+                }
+                else
+                {
+                    value.value = "???";
+                }
 
-            if (!entry.previousValue.empty())
-            {
-                value.previousValue = Scanner::ValueConverter::format(valueType, entry.previousValue.data(), entry.previousValue.size(), m_isHexadecimal, scannedEndianness);
-            }
+                if (!entry.previousValue.empty())
+                {
+                    value.previousValue = Scanner::ValueConverter::format(valueType, entry.previousValue.data(), entry.previousValue.size(), m_isHexadecimal, scannedEndianness);
+                }
 
-            if (!entry.firstValue.empty())
-            {
-                value.firstValue = Scanner::ValueConverter::format(valueType, entry.firstValue.data(), entry.firstValue.size(), m_isHexadecimal, scannedEndianness);
-            }
-            else if (!entry.previousValue.empty())
-            {
-                value.firstValue = Scanner::ValueConverter::format(valueType, entry.previousValue.data(), entry.previousValue.size(), m_isHexadecimal, scannedEndianness);
+                if (!entry.firstValue.empty())
+                {
+                    value.firstValue = Scanner::ValueConverter::format(valueType, entry.firstValue.data(), entry.firstValue.size(), m_isHexadecimal, scannedEndianness);
+                }
+                else if (!entry.previousValue.empty())
+                {
+                    value.firstValue = Scanner::ValueConverter::format(valueType, entry.previousValue.data(), entry.previousValue.size(), m_isHexadecimal, scannedEndianness);
+                }
             }
 
             m_visibleCache[visibleIndex] = value;
@@ -733,6 +1066,32 @@ namespace Vertex::ViewModel
     }
 
     std::int64_t MainViewModel::get_scanned_values_count() const { return static_cast<std::int64_t>(m_model->get_scan_results_count()); }
+
+    std::optional<std::uint64_t> MainViewModel::get_scanned_result_address_at(const int index) const
+    {
+        if (index < 0)
+        {
+            return std::nullopt;
+        }
+
+        if (m_cacheWindow.startIndex >= 0 && index >= m_cacheWindow.startIndex && index < m_cacheWindow.endIndex)
+        {
+            const int cacheIndex = index - m_cacheWindow.startIndex;
+            if (cacheIndex >= 0 && cacheIndex < static_cast<int>(m_cacheWindow.addresses.size()))
+            {
+                return m_cacheWindow.addresses[cacheIndex].address;
+            }
+        }
+
+        std::vector<Scanner::IMemoryScanner::ScanResultEntry> scanResults{};
+        const StatusCode status = m_model->get_scan_results_range(scanResults, index, 1);
+        if (status != StatusCode::STATUS_OK || scanResults.empty())
+        {
+            return std::nullopt;
+        }
+
+        return scanResults[0].address;
+    }
 
     std::string MainViewModel::get_value_input() const { return m_valueInput; }
 
@@ -838,6 +1197,10 @@ namespace Vertex::ViewModel
 
     bool MainViewModel::is_value_input2_visible() const
     {
+        if (current_type_is_plugin())
+        {
+            return false;
+        }
         const auto valueType = get_current_value_type();
         if (Scanner::is_string_type(valueType))
         {
@@ -892,6 +1255,40 @@ namespace Vertex::ViewModel
         return SavedAddress{};
     }
 
+    std::uint32_t MainViewModel::get_saved_address_watch_size(const int index) const
+    {
+        SavedAddress saved{};
+        {
+            std::scoped_lock lock(m_savedAddressesMutex);
+            if (index < 0 || index >= static_cast<int>(m_savedAddresses.size()))
+            {
+                return 0;
+            }
+            saved = m_savedAddresses[index];
+        }
+
+        if (saved.monitoredAddress && saved.monitoredAddress->valueSize > 0)
+        {
+            return saved.monitoredAddress->valueSize;
+        }
+
+        const bool isPlugin = saved.valueTypeIndex < 0
+            || saved.valueTypeIndex >= static_cast<int>(Scanner::ValueType::COUNT);
+        if (isPlugin)
+        {
+            const auto schema = m_model->find_scanner_type(saved.typeId);
+            if (!schema || schema->valueSize == 0)
+            {
+                return 0;
+            }
+            return static_cast<std::uint32_t>(schema->valueSize);
+        }
+
+        const auto valueType = static_cast<Scanner::ValueType>(saved.valueTypeIndex);
+        const auto size = Scanner::get_value_type_size(valueType);
+        return size > 0 ? static_cast<std::uint32_t>(size) : 0;
+    }
+
     bool MainViewModel::has_saved_address(const std::uint64_t address) const
     {
         std::scoped_lock lock(m_savedAddressesMutex);
@@ -904,38 +1301,63 @@ namespace Vertex::ViewModel
 
     void MainViewModel::add_saved_address(const std::uint64_t address)
     {
-        const auto valueType = get_current_value_type();
+        const auto* entry = current_type_entry();
+        if (!entry)
+        {
+            return;
+        }
 
         SavedAddress saved{};
         saved.frozen = false;
         saved.address = address;
         saved.addressStr = fmt::format("{:016X}", address);
-        saved.valueTypeIndex = m_valueTypeIndex;
-        saved.valueType = Scanner::get_value_type_name(valueType);
+        saved.typeId = entry->id;
+        saved.valueType = entry->name;
 
-        const auto endianness = static_cast<Scanner::Endianness>(m_endiannessTypeIndex);
-        saved.monitoredAddress = m_addressMonitor.get_or_create(address, valueType, endianness);
-
-        if (saved.monitoredAddress)
+        if (entry->kind == Scanner::TypeKind::PluginDefined)
         {
-            std::vector<Scanner::MonitoredAddressPtr> toRefresh = {saved.monitoredAddress};
-            m_addressMonitor.refresh(toRefresh, m_isHexadecimal);
-
-            saved.value = saved.monitoredAddress->formattedValue;
-        }
-        else
-        {
-            const std::size_t valueSize = Scanner::get_value_type_size(valueType);
-            std::vector<char> buffer;
-            const StatusCode status = m_model->read_process_memory(address, valueSize, buffer);
-
-            if (status == StatusCode::STATUS_OK && !buffer.empty())
+            saved.valueTypeIndex = -1;
+            auto schema = std::make_shared<const Scanner::TypeSchema>(*entry);
+            saved.monitoredAddress = m_addressMonitor.get_or_create_plugin(address, schema);
+            if (saved.monitoredAddress)
             {
-                saved.value = Scanner::ValueConverter::format(valueType, reinterpret_cast<const std::uint8_t*>(buffer.data()), buffer.size(), m_isHexadecimal);
+                std::vector<Scanner::MonitoredAddressPtr> toRefresh = {saved.monitoredAddress};
+                m_addressMonitor.refresh(toRefresh, m_isHexadecimal);
+                saved.value = saved.monitoredAddress->formattedValue;
             }
             else
             {
-                saved.value = "???";
+                saved.value = "";
+            }
+        }
+        else
+        {
+            const auto valueType = get_current_value_type();
+            saved.valueTypeIndex = static_cast<int>(valueType);
+
+            const auto endianness = static_cast<Scanner::Endianness>(m_endiannessTypeIndex);
+            saved.monitoredAddress = m_addressMonitor.get_or_create(address, valueType, endianness);
+
+            if (saved.monitoredAddress)
+            {
+                std::vector<Scanner::MonitoredAddressPtr> toRefresh = {saved.monitoredAddress};
+                m_addressMonitor.refresh(toRefresh, m_isHexadecimal);
+                saved.value = saved.monitoredAddress->formattedValue;
+            }
+            else
+            {
+                const std::size_t valueSize = Scanner::get_value_type_size(valueType);
+                std::vector<char> buffer;
+                const StatusCode status = m_model->read_process_memory(address, valueSize, buffer);
+
+                if (status == StatusCode::STATUS_OK && !buffer.empty())
+                {
+                    saved.value = Scanner::ValueConverter::format(valueType, reinterpret_cast<const std::uint8_t*>(buffer.data()), buffer.size(), m_isHexadecimal);
+                }
+                else
+                {
+                    saved.value = "???";
+                }
             }
         }
 
@@ -946,40 +1368,70 @@ namespace Vertex::ViewModel
         notify_property_changed();
     }
 
-    void MainViewModel::add_saved_address(const std::uint64_t address, const int valueTypeIndex)
+    void MainViewModel::add_saved_address(const std::uint64_t address, const int dropdownIndex)
     {
-        const auto valueType = static_cast<Scanner::ValueType>(valueTypeIndex);
+        Scanner::TypeSchema entrySnapshot{};
+        {
+            std::scoped_lock lock{m_typeEntriesMutex};
+            if (dropdownIndex < 0 || static_cast<std::size_t>(dropdownIndex) >= m_typeEntries.size())
+            {
+                return;
+            }
+            entrySnapshot = m_typeEntries[static_cast<std::size_t>(dropdownIndex)];
+        }
 
         SavedAddress saved{};
         saved.frozen = false;
         saved.address = address;
         saved.addressStr = fmt::format("{:016X}", address);
-        saved.valueTypeIndex = valueTypeIndex;
-        saved.valueType = Scanner::get_value_type_name(valueType);
+        saved.typeId = entrySnapshot.id;
+        saved.valueType = entrySnapshot.name;
 
-        const auto endianness = static_cast<Scanner::Endianness>(m_endiannessTypeIndex);
-        saved.monitoredAddress = m_addressMonitor.get_or_create(address, valueType, endianness);
-
-        if (saved.monitoredAddress)
+        if (entrySnapshot.kind == Scanner::TypeKind::PluginDefined)
         {
-            std::vector<Scanner::MonitoredAddressPtr> toRefresh = {saved.monitoredAddress};
-            m_addressMonitor.refresh(toRefresh, m_isHexadecimal);
-
-            saved.value = saved.monitoredAddress->formattedValue;
-        }
-        else
-        {
-            const std::size_t valueSize = Scanner::get_value_type_size(valueType);
-            std::vector<char> buffer;
-            const StatusCode status = m_model->read_process_memory(address, valueSize, buffer);
-
-            if (status == StatusCode::STATUS_OK && !buffer.empty())
+            saved.valueTypeIndex = -1;
+            auto schema = std::make_shared<const Scanner::TypeSchema>(entrySnapshot);
+            saved.monitoredAddress = m_addressMonitor.get_or_create_plugin(address, schema);
+            if (saved.monitoredAddress)
             {
-                saved.value = Scanner::ValueConverter::format(valueType, reinterpret_cast<const std::uint8_t*>(buffer.data()), buffer.size(), m_isHexadecimal);
+                std::vector<Scanner::MonitoredAddressPtr> toRefresh = {saved.monitoredAddress};
+                m_addressMonitor.refresh(toRefresh, m_isHexadecimal);
+                saved.value = saved.monitoredAddress->formattedValue;
             }
             else
             {
-                saved.value = "???";
+                saved.value = "";
+            }
+        }
+        else
+        {
+            const auto raw = static_cast<std::uint32_t>(entrySnapshot.id);
+            const auto valueType = static_cast<Scanner::ValueType>(raw - 1);
+            saved.valueTypeIndex = static_cast<int>(valueType);
+
+            const auto endianness = static_cast<Scanner::Endianness>(m_endiannessTypeIndex);
+            saved.monitoredAddress = m_addressMonitor.get_or_create(address, valueType, endianness);
+
+            if (saved.monitoredAddress)
+            {
+                std::vector<Scanner::MonitoredAddressPtr> toRefresh = {saved.monitoredAddress};
+                m_addressMonitor.refresh(toRefresh, m_isHexadecimal);
+                saved.value = saved.monitoredAddress->formattedValue;
+            }
+            else
+            {
+                const std::size_t valueSize = Scanner::get_value_type_size(valueType);
+                std::vector<char> buffer;
+                const StatusCode status = m_model->read_process_memory(address, valueSize, buffer);
+
+                if (status == StatusCode::STATUS_OK && !buffer.empty())
+                {
+                    saved.value = Scanner::ValueConverter::format(valueType, reinterpret_cast<const std::uint8_t*>(buffer.data()), buffer.size(), m_isHexadecimal);
+                }
+                else
+                {
+                    saved.value = "???";
+                }
             }
         }
 
@@ -1027,20 +1479,39 @@ namespace Vertex::ViewModel
 
             if (frozen)
             {
-                const auto valueType = static_cast<Scanner::ValueType>(saved.valueTypeIndex);
-                std::vector<std::uint8_t> parsedBytes;
+                const auto effectiveId = saved.effective_type_id();
+                if (effectiveId == Scanner::TypeId::Invalid)
+                {
+                    saved.frozen = false;
+                    saved.frozenBytes.clear();
+                    return;
+                }
 
-                const StatusCode parseStatus = m_model->validate_input(valueType, m_isHexadecimal, saved.value, parsedBytes);
+                const auto schema = m_model->find_scanner_type(effectiveId);
+                std::size_t fallbackSize{};
+                if (saved.valueTypeIndex >= 0 && saved.valueTypeIndex < static_cast<int>(Scanner::ValueType::COUNT))
+                {
+                    fallbackSize = Scanner::get_value_type_size(static_cast<Scanner::ValueType>(saved.valueTypeIndex));
+                }
+                else if (schema)
+                {
+                    fallbackSize = schema->valueSize;
+                }
+
+                const bool isPluginType = schema && schema->kind == Scanner::TypeKind::PluginDefined;
+                std::vector<std::uint8_t> parsedBytes;
+                const StatusCode parseStatus = isPluginType
+                    ? m_model->validate_input(effectiveId, m_pluginNumericBase, saved.value, parsedBytes)
+                    : m_model->validate_input(effectiveId, m_isHexadecimal, saved.value, parsedBytes);
 
                 if (parseStatus == StatusCode::STATUS_OK && !parsedBytes.empty())
                 {
                     saved.frozenBytes = parsedBytes;
                 }
-                else
+                else if (fallbackSize > 0)
                 {
-                    const std::size_t valueSize = Scanner::get_value_type_size(valueType);
                     std::vector<char> buffer;
-                    const StatusCode status = m_model->read_process_memory(saved.address, valueSize, buffer);
+                    const StatusCode status = m_model->read_process_memory(saved.address, fallbackSize, buffer);
 
                     if (status == StatusCode::STATUS_OK && !buffer.empty())
                     {
@@ -1074,7 +1545,7 @@ namespace Vertex::ViewModel
     {
         std::uint64_t addressToWrite{};
         std::vector<std::uint8_t> inputBuffer{};
-        Scanner::ValueType valueType{};
+        Scanner::TypeId typeId{Scanner::TypeId::Invalid};
         bool shouldWrite{};
 
         {
@@ -1086,16 +1557,24 @@ namespace Vertex::ViewModel
             }
 
             auto& saved = m_savedAddresses[index];
-            valueType = static_cast<Scanner::ValueType>(saved.valueTypeIndex);
+            typeId = saved.effective_type_id();
+            if (typeId == Scanner::TypeId::Invalid)
+            {
+                return;
+            }
             addressToWrite = saved.address;
 
             const std::string valueStr{value};
-            const StatusCode parseStatus = m_model->validate_input(valueType, m_isHexadecimal, valueStr, inputBuffer);
+            const auto schema = m_model->find_scanner_type(typeId);
+            const bool isPluginType = schema && schema->kind == Scanner::TypeKind::PluginDefined;
+            const StatusCode parseStatus = isPluginType
+                ? m_model->validate_input(typeId, m_pluginNumericBase, valueStr, inputBuffer)
+                : m_model->validate_input(typeId, m_isHexadecimal, valueStr, inputBuffer);
 
             auto* log = m_model->get_log_service();
             if (log)
             {
-                log->log_info(fmt::format("[ValueWrite] Parsing value='{}' for type={}, hex={}, parseStatus={}", valueStr, static_cast<int>(valueType), m_isHexadecimal, static_cast<int>(parseStatus)));
+                log->log_info(fmt::format("[ValueWrite] Parsing value='{}' for typeId={}, plugin={}, hex={}, pluginBase={}, parseStatus={}", valueStr, static_cast<std::uint32_t>(typeId), isPluginType, m_isHexadecimal, static_cast<int>(m_pluginNumericBase), static_cast<int>(parseStatus)));
             }
 
             if (parseStatus == StatusCode::STATUS_OK && !inputBuffer.empty())
@@ -1145,7 +1624,19 @@ namespace Vertex::ViewModel
                         saved.frozenBytes = inputBuffer;
                     }
 
-                    saved.value = Scanner::ValueConverter::format(valueType, inputBuffer.data(), inputBuffer.size(), m_isHexadecimal);
+                    if (saved.valueTypeIndex >= 0 && saved.valueTypeIndex < static_cast<int>(Scanner::ValueType::COUNT))
+                    {
+                        const auto valueType = static_cast<Scanner::ValueType>(saved.valueTypeIndex);
+                        saved.value = Scanner::ValueConverter::format(valueType, inputBuffer.data(), inputBuffer.size(), m_isHexadecimal);
+                    }
+                    else
+                    {
+                        const auto schema = m_model->find_scanner_type(saved.typeId);
+                        if (schema && schema->kind == Scanner::TypeKind::PluginDefined)
+                        {
+                            saved.value = Scanner::format_plugin_bytes(*schema, inputBuffer.data(), inputBuffer.size());
+                        }
+                    }
                 }
             }
             else if (log)
@@ -1159,67 +1650,131 @@ namespace Vertex::ViewModel
 
     void MainViewModel::set_saved_address_address(const int index, const std::uint64_t newAddress)
     {
-        if (index >= 0 && index < static_cast<int>(m_savedAddresses.size()))
+        if (index < 0 || index >= static_cast<int>(m_savedAddresses.size()))
         {
-            auto& saved = m_savedAddresses[index];
-            saved.address = newAddress;
-            saved.addressStr = fmt::format("{:016X}", newAddress);
+            return;
+        }
 
+        auto& saved = m_savedAddresses[index];
+        saved.address = newAddress;
+        saved.addressStr = fmt::format("{:016X}", newAddress);
+
+        if (saved.valueTypeIndex < 0 ||
+            saved.valueTypeIndex >= static_cast<int>(Scanner::ValueType::COUNT))
+        {
+            saved.monitoredAddress.reset();
+            const auto schema = m_model->find_scanner_type(saved.typeId);
+            if (schema && schema->kind == Scanner::TypeKind::PluginDefined)
+            {
+                auto schemaPtr = std::make_shared<const Scanner::TypeSchema>(*schema);
+                saved.monitoredAddress = m_addressMonitor.get_or_create_plugin(newAddress, schemaPtr);
+            }
+        }
+        else
+        {
             const auto valueType = static_cast<Scanner::ValueType>(saved.valueTypeIndex);
             const auto endianness = static_cast<Scanner::Endianness>(m_endiannessTypeIndex);
             saved.monitoredAddress = m_addressMonitor.get_or_create(newAddress, valueType, endianness);
-
-            refresh_saved_address(index);
-            notify_property_changed();
         }
+
+        refresh_saved_address(index);
+        notify_property_changed();
     }
 
-    void MainViewModel::set_saved_address_type(const int index, const int typeIndex)
+    void MainViewModel::set_saved_address_type(const int index, const int dropdownIndex)
     {
-        if (index >= 0 && index < static_cast<int>(m_savedAddresses.size()))
+        Scanner::TypeSchema entrySnapshot{};
         {
-            auto& saved = m_savedAddresses[index];
-            saved.valueTypeIndex = typeIndex;
-            saved.valueType = Scanner::get_value_type_name(static_cast<Scanner::ValueType>(typeIndex));
+            std::scoped_lock lock{m_typeEntriesMutex};
+            if (dropdownIndex < 0 || static_cast<std::size_t>(dropdownIndex) >= m_typeEntries.size())
+            {
+                return;
+            }
+            entrySnapshot = m_typeEntries[static_cast<std::size_t>(dropdownIndex)];
+        }
 
-            const auto valueType = static_cast<Scanner::ValueType>(typeIndex);
+        if (index < 0 || index >= static_cast<int>(m_savedAddresses.size()))
+        {
+            return;
+        }
+
+        auto& saved = m_savedAddresses[index];
+        saved.typeId = entrySnapshot.id;
+        saved.valueType = entrySnapshot.name;
+
+        if (entrySnapshot.kind == Scanner::TypeKind::PluginDefined)
+        {
+            saved.valueTypeIndex = -1;
+            auto schema = std::make_shared<const Scanner::TypeSchema>(entrySnapshot);
+            saved.monitoredAddress = m_addressMonitor.get_or_create_plugin(saved.address, schema);
+        }
+        else
+        {
+            const auto raw = static_cast<std::uint32_t>(entrySnapshot.id);
+            const auto valueType = static_cast<Scanner::ValueType>(raw - 1);
+            saved.valueTypeIndex = static_cast<int>(valueType);
+
             const auto endianness = static_cast<Scanner::Endianness>(m_endiannessTypeIndex);
             saved.monitoredAddress = m_addressMonitor.get_or_create(saved.address, valueType, endianness);
-
-            refresh_saved_address(index);
-            notify_property_changed();
         }
+
+        refresh_saved_address(index);
+        notify_property_changed();
     }
 
     void MainViewModel::refresh_saved_address(const int index)
     {
-        if (index >= 0 && index < static_cast<int>(m_savedAddresses.size()))
+        if (index < 0 || index >= static_cast<int>(m_savedAddresses.size()))
         {
-            auto& saved = m_savedAddresses[index];
+            return;
+        }
+        auto& saved = m_savedAddresses[index];
 
-            if (saved.monitoredAddress)
+        if (saved.monitoredAddress)
+        {
+            std::vector<Scanner::MonitoredAddressPtr> toRefresh = {saved.monitoredAddress};
+            m_addressMonitor.refresh(toRefresh, m_isHexadecimal);
+            saved.value = saved.monitoredAddress->formattedValue;
+            return;
+        }
+
+        const bool isPlugin = saved.valueTypeIndex < 0 ||
+                              saved.valueTypeIndex >= static_cast<int>(Scanner::ValueType::COUNT);
+
+        if (isPlugin)
+        {
+            const auto schema = m_model->find_scanner_type(saved.typeId);
+            if (!schema || schema->kind != Scanner::TypeKind::PluginDefined || schema->valueSize == 0)
             {
-                std::vector<Scanner::MonitoredAddressPtr> toRefresh = {saved.monitoredAddress};
-                m_addressMonitor.refresh(toRefresh, m_isHexadecimal);
-                saved.value = saved.monitoredAddress->formattedValue;
+                saved.value = "";
+                return;
+            }
+            std::vector<char> buffer;
+            const StatusCode status = m_model->read_process_memory(saved.address, schema->valueSize, buffer);
+            if (status == StatusCode::STATUS_OK && !buffer.empty())
+            {
+                saved.value = Scanner::format_plugin_bytes(*schema, buffer.data(), buffer.size());
             }
             else
             {
-                const auto valueType = static_cast<Scanner::ValueType>(saved.valueTypeIndex);
-                const std::size_t valueSize = Scanner::get_value_type_size(valueType);
-
-                std::vector<char> buffer;
-                const StatusCode status = m_model->read_process_memory(saved.address, valueSize, buffer);
-
-                if (status == StatusCode::STATUS_OK && !buffer.empty())
-                {
-                    saved.value = Scanner::ValueConverter::format(valueType, reinterpret_cast<const std::uint8_t*>(buffer.data()), buffer.size(), m_isHexadecimal);
-                }
-                else
-                {
-                    saved.value = "???";
-                }
+                saved.value = "???";
             }
+            return;
+        }
+
+        const auto valueType = static_cast<Scanner::ValueType>(saved.valueTypeIndex);
+        const std::size_t valueSize = Scanner::get_value_type_size(valueType);
+
+        std::vector<char> buffer;
+        const StatusCode status = m_model->read_process_memory(saved.address, valueSize, buffer);
+
+        if (status == StatusCode::STATUS_OK && !buffer.empty())
+        {
+            saved.value = Scanner::ValueConverter::format(valueType, reinterpret_cast<const std::uint8_t*>(buffer.data()), buffer.size(), m_isHexadecimal);
+        }
+        else
+        {
+            saved.value = "???";
         }
     }
 
@@ -1241,9 +1796,11 @@ namespace Vertex::ViewModel
             int index{};
             std::uint64_t address{};
             int valueTypeIndex{};
+            Scanner::TypeId typeId{Scanner::TypeId::Invalid};
             std::size_t valueSize{};
             std::vector<char> buffer{};
             bool readOk{};
+            bool isPlugin{};
         };
         std::vector<SavedReadRequest> nonMonitoredReads{};
 
@@ -1265,19 +1822,36 @@ namespace Vertex::ViewModel
                 if (saved.monitoredAddress)
                 {
                     monitoredAddresses.push_back(saved.monitoredAddress);
+                    continue;
+                }
+
+                const bool isPlugin = saved.valueTypeIndex < 0 ||
+                                       saved.valueTypeIndex >= static_cast<int>(Scanner::ValueType::COUNT);
+
+                std::size_t valueSize{};
+                if (isPlugin)
+                {
+                    const auto schema = m_model->find_scanner_type(saved.typeId);
+                    if (!schema || schema->kind != Scanner::TypeKind::PluginDefined || schema->valueSize == 0)
+                    {
+                        continue;
+                    }
+                    valueSize = schema->valueSize;
                 }
                 else
                 {
                     const auto valueType = static_cast<Scanner::ValueType>(saved.valueTypeIndex);
-                    const std::size_t valueSize = Scanner::get_value_type_size(valueType);
-
-                    auto& readRequest = nonMonitoredReads.emplace_back();
-                    readRequest.index = i;
-                    readRequest.address = saved.address;
-                    readRequest.valueTypeIndex = saved.valueTypeIndex;
-                    readRequest.valueSize = valueSize;
-                    readRequest.buffer.resize(valueSize);
+                    valueSize = Scanner::get_value_type_size(valueType);
                 }
+
+                auto& readRequest = nonMonitoredReads.emplace_back();
+                readRequest.index = i;
+                readRequest.address = saved.address;
+                readRequest.valueTypeIndex = saved.valueTypeIndex;
+                readRequest.typeId = saved.typeId;
+                readRequest.valueSize = valueSize;
+                readRequest.buffer.resize(valueSize);
+                readRequest.isPlugin = isPlugin;
             }
         }
 
@@ -1343,30 +1917,43 @@ namespace Vertex::ViewModel
                 if (saved.monitoredAddress)
                 {
                     saved.value = saved.monitoredAddress->formattedValue;
+                    continue;
                 }
-                else
+
+                const auto readIt = readIndexBySavedIndex.find(i);
+                if (readIt == readIndexBySavedIndex.end())
                 {
-                    const auto readIt = readIndexBySavedIndex.find(i);
-                    if (readIt == readIndexBySavedIndex.end())
-                    {
-                        continue;
-                    }
+                    continue;
+                }
 
-                    const auto& readRequest = nonMonitoredReads[readIt->second];
-                    if (saved.address != readRequest.address || saved.valueTypeIndex != readRequest.valueTypeIndex)
-                    {
-                        continue;
-                    }
+                const auto& readRequest = nonMonitoredReads[readIt->second];
+                if (saved.address != readRequest.address || saved.valueTypeIndex != readRequest.valueTypeIndex)
+                {
+                    continue;
+                }
 
-                    if (readRequest.readOk)
+                if (!readRequest.readOk)
+                {
+                    saved.value = "???";
+                    continue;
+                }
+
+                if (readRequest.isPlugin)
+                {
+                    const auto schema = m_model->find_scanner_type(readRequest.typeId);
+                    if (schema && schema->kind == Scanner::TypeKind::PluginDefined)
                     {
-                        const auto valueType = static_cast<Scanner::ValueType>(saved.valueTypeIndex);
-                        saved.value = Scanner::ValueConverter::format(valueType, reinterpret_cast<const std::uint8_t*>(readRequest.buffer.data()), readRequest.buffer.size(), m_isHexadecimal);
+                        saved.value = Scanner::format_plugin_bytes(*schema, readRequest.buffer.data(), readRequest.buffer.size());
                     }
                     else
                     {
-                        saved.value = "???";
+                        saved.value = "";
                     }
+                }
+                else
+                {
+                    const auto valueType = static_cast<Scanner::ValueType>(saved.valueTypeIndex);
+                    saved.value = Scanner::ValueConverter::format(valueType, reinterpret_cast<const std::uint8_t*>(readRequest.buffer.data()), readRequest.buffer.size(), m_isHexadecimal);
                 }
             }
         }

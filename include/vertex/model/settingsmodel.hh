@@ -66,6 +66,13 @@ namespace Vertex::Model
         [[nodiscard]] StatusCode add_language_path(const std::filesystem::path& path) const override;
         [[nodiscard]] StatusCode remove_language_path(const std::filesystem::path& path) const override;
 
+        [[nodiscard]] std::vector<std::filesystem::path> get_script_paths() const override;
+        [[nodiscard]] StatusCode add_script_path(const std::filesystem::path& path) const override;
+        [[nodiscard]] StatusCode remove_script_path(const std::filesystem::path& path) const override;
+        [[nodiscard]] std::vector<std::filesystem::path> get_available_scripts() const override;
+        [[nodiscard]] bool is_script_auto_start(const std::filesystem::path& scriptPath) const override;
+        [[nodiscard]] StatusCode set_script_auto_start(const std::filesystem::path& scriptPath, bool enabled) const override;
+
         [[nodiscard]] int get_ui_state_int(std::string_view key, int defaultValue) const override;
         void set_ui_state_int(std::string_view key, int value) const override;
 

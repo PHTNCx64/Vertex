@@ -5,7 +5,6 @@
 #include <utility>
 #include <vertex/view/aboutview.hh>
 #include <vertex/utility.hh>
-#include <vertex/gui/theme/themeprovider.hh>
 
 #include <wx/statbox.h>
 #include <wx/statline.h>
@@ -26,7 +25,7 @@ namespace Vertex::View
         constexpr int DEFAULT_WIDTH = -1;
     }
 
-    AboutView::AboutView(wxWindow* parent, Language::ILanguage& languageService, Gui::IThemeProvider& themeProvider, AboutInfo  aboutInfo)
+    AboutView::AboutView(wxWindow* parent, Language::ILanguage& languageService, AboutInfo  aboutInfo)
         : wxDialog(parent,
                    wxID_ANY,
                    wxString::FromUTF8(languageService.fetch_translation("aboutWindow.title")),
@@ -34,7 +33,6 @@ namespace Vertex::View
                    wxWindowBase::FromDIP(wxSize(ABOUT_DIALOG_WIDTH, ABOUT_DIALOG_HEIGHT), parent),
                    wxDEFAULT_DIALOG_STYLE | wxRESIZE_BORDER),
           m_languageService(languageService),
-          m_themeProvider(themeProvider),
           m_aboutInfo(std::move(aboutInfo))
     {
         create_controls();
@@ -65,14 +63,6 @@ namespace Vertex::View
 
     void AboutView::bind_events()
     {
-        Bind(wxEVT_SYS_COLOUR_CHANGED, [this](wxSysColourChangedEvent& event)
-        {
-            m_themeProvider.refresh();
-            Gui::ThemeProvider::apply_palette_to_tree(this, m_themeProvider.palette());
-            Refresh();
-            event.Skip();
-        });
-
         m_closeButton->Bind(wxEVT_BUTTON, [this]([[maybe_unused]] wxCommandEvent& event)
         {
             EndModal(wxID_OK);
@@ -113,7 +103,6 @@ namespace Vertex::View
         m_vendorLabel = new wxStaticText(m_headerPanel, wxID_ANY, wxString::FromUTF8(m_aboutInfo.vendor));
 
         m_copyrightLabel = new wxStaticText(m_headerPanel, wxID_ANY, wxString::FromUTF8(m_aboutInfo.copyright));
-        m_copyrightLabel->SetForegroundColour(m_themeProvider.palette().textSecondary);
 
         m_descriptionLabel = new wxStaticText(m_headerPanel, wxID_ANY, wxString::FromUTF8(m_aboutInfo.description),
                                               wxDefaultPosition, wxDefaultSize, wxALIGN_CENTER | wxST_NO_AUTORESIZE);
@@ -179,7 +168,6 @@ namespace Vertex::View
                 wxString::FromUTF8(m_languageService.fetch_translation("aboutWindow.license")),
                 wxString::FromUTF8(m_aboutInfo.license));
             m_licenseLabel = new wxStaticText(m_footerPanel, wxID_ANY, licenseText);
-            m_licenseLabel->SetForegroundColour(m_themeProvider.palette().textSecondary);
         }
 
         m_closeButton = new wxButton(m_footerPanel, wxID_OK,
@@ -298,7 +286,6 @@ namespace Vertex::View
             if (!role.empty())
             {
                 auto* roleLabel = new wxStaticText(staticBox, wxID_ANY, wxString::Format(" - %s", wxString::FromUTF8(role)));
-                roleLabel->SetForegroundColour(m_themeProvider.palette().textSecondary);
                 entrySizer->Add(roleLabel, StandardWidgetValues::NO_PROPORTION,
                                wxALIGN_CENTER_VERTICAL);
             }

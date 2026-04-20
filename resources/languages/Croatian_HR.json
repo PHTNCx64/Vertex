@@ -141,7 +141,9 @@
       "analytics": "Analitika",
       "analyticsDescription": "Otvara prozor analitike",
       "injector": "Injektor",
-      "injectorDescription": "Otvara prozor injektora"
+      "injectorDescription": "Otvara prozor injektora",
+      "code": "Uređivač skripti",
+      "codeDescription": "Otvara uređivač skripti"
     },
     "buttons": {
       "initialScan": "Početno skeniranje",
@@ -736,6 +738,42 @@
       "stateSleeping": "Spava",
       "stateFinished": "Završen",
       "stateError": "Greška"
+    }
+  },
+  "accessTracker": {
+    "title": "Praćenje pristupa",
+    "tracking": "Praćenje",
+    "stop": "Zaustavi",
+    "clear": "Očisti",
+    "close": "Zatvori",
+    "columnInstruction": "Instrukcija",
+    "columnModule": "Modul",
+    "columnFunction": "Funkcija",
+    "columnMnemonic": "Mnemonik",
+    "columnHits": "Pogodci",
+    "columnAccess": "Pristup",
+    "columnSize": "Veličina",
+    "columnRegisters": "Registri",
+    "columnCaller": "Pozivatelj",
+    "statusIdle": "Neaktivno",
+    "statusStarting": "Pokretanje…",
+    "statusActive": "Aktivno",
+    "statusStopping": "Zaustavljanje…",
+    "statusStartFailed": "Pokretanje neuspješno",
+    "statusStopFailed": "Zaustavljanje neuspješno",
+    "context": {
+      "viewInDisassembly": "Prikaži u disassembleru",
+      "showCallStack": "Prikaži stog poziva",
+      "copyInstructionAddress": "Kopiraj adresu instrukcije",
+      "copyRegisters": "Kopiraj registre"
+    },
+    "callStackDialog": {
+      "title": "Stog poziva",
+      "columnIndex": "#",
+      "columnReturnAddress": "Povratna adresa",
+      "columnModule": "Modul",
+      "columnFunction": "Funkcija",
+      "goToFrame": "Idi na okvir"
     }
   }
 }

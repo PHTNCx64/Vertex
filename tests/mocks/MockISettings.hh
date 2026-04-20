@@ -1,6 +1,10 @@
 //
-// Mock for ISettings interface
+// Copyright (C) 2026 PHTNC<>.
+// Licensed under GPLv3.0 with Plugin Interface exceptions.
 //
+
+
+
 
 #pragma once
 
@@ -22,7 +26,7 @@ namespace Vertex::Testing::Mocks
         MOCK_METHOD(nlohmann::json, get_settings, (), (const, override));
         MOCK_METHOD(void, update_settings, (const nlohmann::json& settings), (override));
 
-        // Convenience methods
+        
         MOCK_METHOD(bool, get_bool, (const std::string& key, bool defaultValue), (const, override));
         MOCK_METHOD(int, get_int, (const std::string& key, int defaultValue), (const, override));
         MOCK_METHOD(std::string, get_string, (const std::string& key, const std::string& defaultValue), (const, override));
@@ -31,4 +35,4 @@ namespace Vertex::Testing::Mocks
         MOCK_METHOD(nlohmann::json, get_value, (const std::string& key), (const, override));
         MOCK_METHOD(void, set_value, (const std::string& key, const nlohmann::json& value), (override));
     };
-} // namespace Vertex::Testing::Mocks
+} 
