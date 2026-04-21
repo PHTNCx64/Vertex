@@ -8,6 +8,9 @@
 #include <unistd.h>
 #elif defined(_WIN32) || defined(_WIN64)
 #include <windows.h>
+#ifdef STATUS_TIMEOUT
+#undef STATUS_TIMEOUT
+#endif
 #endif
 
 #include <utility>

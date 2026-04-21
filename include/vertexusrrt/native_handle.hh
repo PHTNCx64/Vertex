@@ -7,6 +7,9 @@
 
 #if defined (_WIN32) || defined(_WIN64)
 #include <windows.h>
+#ifdef STATUS_TIMEOUT
+#undef STATUS_TIMEOUT
+#endif
 using native_handle = HANDLE;
 #elif defined (__linux__) || defined(__linux) || defined (linux)
 using native_handle = int;

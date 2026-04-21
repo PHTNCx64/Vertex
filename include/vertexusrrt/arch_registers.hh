@@ -9,6 +9,9 @@
 
 #ifdef _WIN32
 #include <windows.h>
+#ifdef STATUS_TIMEOUT
+#undef STATUS_TIMEOUT
+#endif
 #endif
 
 namespace PluginRuntime

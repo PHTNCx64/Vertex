@@ -14,6 +14,9 @@
 
 #if defined(_WIN32) || defined(_WIN64)
 #include <windows.h>
+#ifdef STATUS_TIMEOUT
+#undef STATUS_TIMEOUT
+#endif
 constexpr std::size_t PROCESS_INTERNAL_SECTION_NAME_MAX = IMAGE_SIZEOF_SHORT_NAME;
 #else
 constexpr std::size_t PROCESS_INTERNAL_SECTION_NAME_MAX = 16;

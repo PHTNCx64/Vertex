@@ -17,6 +17,9 @@
 
 #if defined(_WIN32) || defined(_WIN64)
 #include <windows.h>
+#ifdef STATUS_TIMEOUT
+#undef STATUS_TIMEOUT
+#endif
 #include <tlhelp32.h>
 #else
 #include <charconv>

@@ -52,6 +52,13 @@ namespace Vertex::Testing::Mocks
         MOCK_METHOD(StatusCode, add_language_path, (const std::filesystem::path& path), (const, override));
         MOCK_METHOD(StatusCode, remove_language_path, (const std::filesystem::path& path), (const, override));
 
+        MOCK_METHOD(std::vector<std::filesystem::path>, get_script_paths, (), (const, override));
+        MOCK_METHOD(StatusCode, add_script_path, (const std::filesystem::path& path), (const, override));
+        MOCK_METHOD(StatusCode, remove_script_path, (const std::filesystem::path& path), (const, override));
+        MOCK_METHOD(std::vector<std::filesystem::path>, get_available_scripts, (), (const, override));
+        MOCK_METHOD(bool, is_script_auto_start, (const std::filesystem::path& scriptPath), (const, override));
+        MOCK_METHOD(StatusCode, set_script_auto_start, (const std::filesystem::path& scriptPath, bool enabled), (const, override));
+
         MOCK_METHOD(int, get_ui_state_int, (std::string_view key, int defaultValue), (const, override));
         MOCK_METHOD(void, set_ui_state_int, (std::string_view key, int value), (const, override));
     };
